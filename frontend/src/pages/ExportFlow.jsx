@@ -41,59 +41,51 @@ export default function ExportFlow() {
 
   if (activeSession) {
     return (
-      <div className="page">
-        <main className="page-main">
-          <CountingScreen
-            session={activeSession.session}
-            expectedQuantity={activeSession.expected}
-            label={activeSession.label}
-            onCancel={() => setActiveSession(null)}
-            onDone={backToForm}
-          />
-        </main>
-      </div>
+      <main className="page-main">
+        <CountingScreen
+          session={activeSession.session}
+          expectedQuantity={activeSession.expected}
+          label={activeSession.label}
+          onCancel={() => setActiveSession(null)}
+          onDone={backToForm}
+        />
+      </main>
     );
   }
 
   return (
-    <div className="page">
-      <header className="page-header">
-        <Link to="/" className="backlink">
-          ← Về trang chủ
-        </Link>
-        <h1>⬆ Xuất hàng</h1>
-      </header>
+    <main className="page-main">
+      <Link to="/inout" className="backlink">
+        ← Chọn Nhập / Xuất kho
+      </Link>
+      <div className="card">
+        <h2>Chọn sản phẩm cần xuất</h2>
+        <label>Sản phẩm</label>
+        <select value={productId} onChange={(e) => setProductId(e.target.value)}>
+          <option value="">— Chọn sản phẩm —</option>
+          {products.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+              {p.sku ? ` (${p.sku})` : ""}
+            </option>
+          ))}
+        </select>
 
-      <main className="page-main">
-        <div className="card">
-          <h2>Chọn sản phẩm cần xuất</h2>
-          <label>Sản phẩm</label>
-          <select value={productId} onChange={(e) => setProductId(e.target.value)}>
-            <option value="">— Chọn sản phẩm —</option>
-            {products.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-                {p.sku ? ` (${p.sku})` : ""}
-              </option>
-            ))}
-          </select>
+        <label>Số lượng dự kiến xuất</label>
+        <input
+          type="number"
+          inputMode="numeric"
+          placeholder="20"
+          value={qty}
+          onChange={(e) => setQty(e.target.value)}
+        />
 
-          <label>Số lượng dự kiến xuất</label>
-          <input
-            type="number"
-            inputMode="numeric"
-            placeholder="20"
-            value={qty}
-            onChange={(e) => setQty(e.target.value)}
-          />
+        <button className="primary" onClick={begin}>
+          Bắt đầu đếm
+        </button>
 
-          <button className="primary" onClick={begin}>
-            Bắt đầu đếm
-          </button>
-
-          {errorMsg && <div className="empty" style={{ color: "var(--danger)" }}>{errorMsg}</div>}
-        </div>
-      </main>
-    </div>
+        {errorMsg && <div className="empty" style={{ color: "var(--danger)" }}>{errorMsg}</div>}
+      </div>
+    </main>
   );
 }

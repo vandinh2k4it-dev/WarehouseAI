@@ -23,6 +23,17 @@ export const api = {
   health: () => request("/health"),
 
   listProducts: () => request("/products"),
+  listInventory: () => request("/inventory"),
+  listAlerts: (status) => request(`/alerts?status=${status ?? "open"}`),
+  acknowledgeAlert: async (alertId) => {
+    const result = await request(`/alerts/${alertId}/acknowledge`, { method: "POST" });
+    // Báo cho TopNav (và bất kỳ ai đang lắng nghe) biết số cảnh báo vừa đổi,
+    // để cập nhật lại số đếm trên tab "Cảnh báo" ngay lập tức — 2 component
+    // này không có state dùng chung nên dùng sự kiện toàn cục cho đơn giản,
+    // không cần thêm thư viện quản lý state chỉ vì 1 con số nhỏ này.
+    window.dispatchEvent(new CustomEvent("alerts-changed"));
+    return result;
+  },
 
   // Nhập hàng — theo từng dòng trên phiếu
   listReceipts: (status) => request(`/receipts${status ? `?status=${status}` : ""}`),

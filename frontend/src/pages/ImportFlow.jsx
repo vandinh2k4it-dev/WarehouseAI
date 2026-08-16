@@ -88,109 +88,55 @@ export default function ImportFlow() {
   // ---------- Màn hình đếm ----------
   if (activeSession) {
     return (
-      <div className="page">
-        <main className="page-main">
-          <CountingScreen
-            session={activeSession.session}
-            expectedQuantity={activeSession.expected}
-            label={activeSession.label}
-            onCancel={() => setActiveSession(null)}
-            onDone={backToLines}
-          />
-        </main>
-      </div>
+      <main className="page-main">
+        <CountingScreen
+          session={activeSession.session}
+          expectedQuantity={activeSession.expected}
+          label={activeSession.label}
+          onCancel={() => setActiveSession(null)}
+          onDone={backToLines}
+        />
+      </main>
     );
   }
 
   // ---------- Danh sách dòng hàng của phiếu đã chọn ----------
   if (selectedReceipt) {
     return (
-      <div className="page">
-        <header className="page-header">
-          <a className="backlink" onClick={backToReceiptList} style={{ cursor: "pointer" }}>
-            ← Chọn phiếu khác
-          </a>
-          <h1>⬇ Nhập hàng</h1>
-        </header>
-        <main className="page-main">
-          <div className="card">
-            <h2>
-              {selectedReceipt.receipt_code || `Phiếu #${selectedReceipt.id}`}
-              {selectedReceipt.store_location ? ` — ${selectedReceipt.store_location}` : ""}
-            </h2>
-
-            {!lines && !errorMsg && <div className="empty">Đang tải…</div>}
-            {errorMsg && <div className="empty" style={{ color: "var(--danger)" }}>{errorMsg}</div>}
-
-            {lines && (
-              <div className="lineList">
-                {lines.length === 0 && <div className="empty">Phiếu không có dòng hàng nào</div>}
-                {lines.map((line) => (
-                  <div className="lineCard" key={line.line_id}>
-                    <div>
-                      <div className="lineCard-name">{line.product_name_raw}</div>
-                      <div className="lineCard-sub">
-                        Cần {line.declared_quantity}
-                        {line.counted_quantity != null ? ` · camera đếm ${line.counted_quantity}` : ""}
-                      </div>
-                    </div>
-                    <div className="lineCard-actions">
-                      <span className={`badge ${line.counting_status}`}>
-                        {LINE_STATUS_LABEL[line.counting_status] || line.counting_status}
-                      </span>
-                      {(line.counting_status === "not_started" || line.counting_status === "needs_review") && (
-                        <button className="tapbtn" onClick={() => beginLine(line)}>
-                          Đếm
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </main>
-      </div>
-    );
-  }
-
-  // ---------- Danh sách phiếu nhập ----------
-  return (
-    <div className="page">
-      <header className="page-header">
-        <Link to="/" className="backlink">
-          ← Về trang chủ
-        </Link>
-        <h1>⬇ Nhập hàng</h1>
-      </header>
-
       <main className="page-main">
+        <a className="backlink" onClick={backToReceiptList} style={{ cursor: "pointer" }}>
+          ← Chọn phiếu khác
+        </a>
         <div className="card">
-          <h2>Chọn phiếu nhập</h2>
+          <h2>
+            {selectedReceipt.receipt_code || `Phiếu #${selectedReceipt.id}`}
+            {selectedReceipt.store_location ? ` — ${selectedReceipt.store_location}` : ""}
+          </h2>
 
-          {loadingReceipts && <div className="empty">Đang tải danh sách phiếu…</div>}
+          {!lines && !errorMsg && <div className="empty">Đang tải…</div>}
           {errorMsg && <div className="empty" style={{ color: "var(--danger)" }}>{errorMsg}</div>}
 
-          {!loadingReceipts && receipts && receipts.length === 0 && (
-            <div className="empty">Chưa có phiếu nhập nào — quét phiếu trên máy tính trước.</div>
-          )}
-
-          {receipts && receipts.length > 0 && (
+          {lines && (
             <div className="lineList">
-              {receipts.map((r) => (
-                <div className="lineCard clickable" key={r.id} onClick={() => pickReceipt(r)}>
+              {lines.length === 0 && <div className="empty">Phiếu không có dòng hàng nào</div>}
+              {lines.map((line) => (
+                <div className="lineCard" key={line.line_id}>
                   <div>
-                    <div className="lineCard-name">{r.receipt_code || `Phiếu #${r.id}`}</div>
+                    <div className="lineCard-name">{line.product_name_raw}</div>
                     <div className="lineCard-sub">
-                      {r.store_location ? `${r.store_location} · ` : ""}
-                      {r.line_items?.length ?? 0} dòng hàng
-                      {r.received_at ? ` · ${new Date(r.received_at).toLocaleDateString("vi-VN")}` : ""}
+                      Cần {line.declared_quantity}
+                      {line.counted_quantity != null ? ` · camera đếm ${line.counted_quantity}` : ""}
                     </div>
                   </div>
                   <div className="lineCard-actions">
-                    <span className={`badge ${RECEIPT_STATUS_BADGE[r.status] || "not_started"}`}>
-                      {RECEIPT_STATUS_LABEL[r.status] || r.status}
+                    <span className={`badge ${line.counting_status}`}>
+                      {LINE_STATUS_LABEL[line.counting_status] || line.counting_status}
                     </span>
+                    {(line.counting_status === "not_started" || line.counting_status === "needs_review") && (
+                      <button className="tapbtn" onClick={() => beginLine(line)}>
+                        Đếm
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}
@@ -198,6 +144,47 @@ export default function ImportFlow() {
           )}
         </div>
       </main>
-    </div>
+    );
+  }
+
+  // ---------- Danh sách phiếu nhập ----------
+  return (
+    <main className="page-main">
+      <Link to="/inout" className="backlink">
+        ← Chọn Nhập / Xuất kho
+      </Link>
+      <div className="card">
+        <h2>Chọn phiếu nhập</h2>
+
+        {loadingReceipts && <div className="empty">Đang tải danh sách phiếu…</div>}
+        {errorMsg && <div className="empty" style={{ color: "var(--danger)" }}>{errorMsg}</div>}
+
+        {!loadingReceipts && receipts && receipts.length === 0 && (
+          <div className="empty">Chưa có phiếu nhập nào — quét phiếu trên máy tính trước.</div>
+        )}
+
+        {receipts && receipts.length > 0 && (
+          <div className="lineList">
+            {receipts.map((r) => (
+              <div className="lineCard clickable" key={r.id} onClick={() => pickReceipt(r)}>
+                <div>
+                  <div className="lineCard-name">{r.receipt_code || `Phiếu #${r.id}`}</div>
+                  <div className="lineCard-sub">
+                    {r.store_location ? `${r.store_location} · ` : ""}
+                    {r.line_items?.length ?? 0} dòng hàng
+                    {r.received_at ? ` · ${new Date(r.received_at).toLocaleDateString("vi-VN")}` : ""}
+                  </div>
+                </div>
+                <div className="lineCard-actions">
+                  <span className={`badge ${RECEIPT_STATUS_BADGE[r.status] || "not_started"}`}>
+                    {RECEIPT_STATUS_LABEL[r.status] || r.status}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </main>
   );
 }

@@ -270,6 +270,253 @@ button.ghost {
   font-size: 13.5px;
 }
 
+.card-sub {
+  color: var(--text-muted);
+  font-size: 13px;
+  margin: -6px 0 14px;
+  line-height: 1.5;
+}
+
+.text-muted {
+  color: var(--text-muted);
+}
+
+/* ==========================================================
+   TOP NAV — thanh điều hướng dùng chung cho toàn bộ trang
+   (Tổng quan / Sản phẩm / Nhập-Xuất kho / Cảnh báo)
+   ========================================================== */
+.topnav {
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.topnav-top {
+  padding: 14px 16px 0;
+}
+
+.topnav-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.topnav-logo {
+  font-size: 24px;
+}
+
+.topnav-h1 {
+  font-family: 'Space Grotesk', sans-serif;
+  font-weight: 700;
+  font-size: 17px;
+}
+
+.topnav-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 12px 12px 0;
+  overflow-x: auto;
+}
+
+.topnav-tab {
+  flex: none;
+  padding: 9px 14px;
+  border-radius: 10px 10px 0 0;
+  color: var(--text-muted);
+  text-decoration: none;
+  font-size: 13.5px;
+  font-weight: 600;
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.topnav-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+  background: var(--surface);
+}
+
+.topnav-badge {
+  background: var(--danger);
+  color: #fff;
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 999px;
+}
+
+/* ==========================================================
+   TỔNG QUAN — thẻ thống kê + bố cục 2 cột
+   ========================================================== */
+.statGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.statCard {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+}
+.statCard-value {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 26px;
+  font-weight: 700;
+}
+.statCard-value.accent { color: var(--accent); }
+.statCard-value.danger { color: var(--danger); }
+.statCard-label {
+  color: var(--text-muted);
+  font-size: 12.5px;
+  margin-top: 4px;
+}
+
+.dashGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+}
+
+/* ==========================================================
+   CẢNH BÁO — danh sách hàng, mỗi hàng có nút "Đã xử lý"
+   ========================================================== */
+.alertList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.alertRow {
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+.alertRow-msg {
+  margin-top: 6px;
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+.alertRow-time {
+  font-size: 11.5px;
+  margin-left: 8px;
+}
+.badge.alertType-discrepancy { background: var(--danger-dim); color: var(--danger); }
+.badge.alertType-low_stock { background: var(--accent-dim); color: var(--accent); }
+.badge.alertType-expiring_soon { background: var(--accent-dim); color: var(--accent); }
+
+/* ==========================================================
+   BẢNG DỮ LIỆU (phiếu nhập gần đây...)
+   ========================================================== */
+.dataTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13.5px;
+}
+.dataTable th {
+  text-align: left;
+  color: var(--text-muted);
+  font-weight: 600;
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  padding: 8px 6px;
+  border-bottom: 1px solid var(--border);
+}
+.dataTable td {
+  padding: 10px 6px;
+  border-bottom: 1px solid var(--border);
+}
+.dataTable tr:last-child td {
+  border-bottom: none;
+}
+
+/* ==========================================================
+   CHIP TOGGLE (Đang mở / Đã xử lý ở trang Cảnh báo)
+   ========================================================== */
+.chips {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.chip {
+  border: 1px solid var(--border);
+  background: var(--surface-raised);
+  color: var(--text-muted);
+  padding: 8px 14px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.chip.active {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+
+/* ==========================================================
+   SẢN PHẨM — lưới thẻ, mỗi thẻ có tổng tồn + chi tiết từng lô
+   ========================================================== */
+.productGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  margin-top: 14px;
+}
+.productCard {
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+}
+.productCard-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+.productCard-name {
+  font-weight: 700;
+  font-size: 14.5px;
+}
+.productCard-sku {
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+.productCard-total {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 20px;
+  font-weight: 700;
+  margin: 8px 0 10px;
+}
+.productCard-total.low {
+  color: var(--danger);
+}
+.productCard-batches {
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.productCard-batchRow {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  gap: 8px;
+}
+
+
 /* ==========================================================
    RESPONSIVE — màn hình rộng (PC/tablet, từ 768px trở lên)
    Mobile-first ở trên là mặc định; media query dưới đây MỞ
@@ -373,6 +620,35 @@ button.ghost {
     background: var(--accent);
     color: #1a1200;
   }
+
+  /* Tổng quan: 4 thẻ thống kê 1 hàng, 2 khối (cảnh báo/phiếu) cạnh nhau */
+  .statGrid {
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+  }
+  .dashGrid {
+    grid-template-columns: 1fr 1fr;
+    align-items: start;
+  }
+
+  /* Sản phẩm: lưới nhiều cột thay vì 1 cột dài */
+  .productGrid {
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  }
+
+  /* TopNav: rộng rãi hơn, không cần cuộn ngang tab nữa */
+  .topnav-top,
+  .topnav-tabs {
+    padding-left: 32px;
+    padding-right: 32px;
+  }
+  .topnav-tabs {
+    overflow-x: visible;
+  }
+
+  .alertRow {
+    align-items: center;
+  }
 }
 
 /* Màn hình rất rộng (desktop lớn, ≥1200px): thêm chút khoảng thở,
@@ -383,6 +659,9 @@ button.ghost {
   }
   .lineList {
     grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  }
+  .productGrid {
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   }
 }
 

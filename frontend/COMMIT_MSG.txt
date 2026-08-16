@@ -1,0 +1,77 @@
+feat(frontend): thêm Bảng điều khiển đầy đủ (Tổng quan/Sản phẩm/Cảnh báo) + responsive PC-mobile
+
+Bối cảnh:
+Ứng dụng trước đây chỉ có 1 chức năng duy nhất (đếm hàng qua camera).
+Theo yêu cầu, bổ sung thêm giao diện quản trị đầy đủ tương tự bản
+desktop cũ (static/index.html) — Tổng quan, Sản phẩm, Cảnh báo — đồng
+thời làm giao diện responsive dùng tốt cả PC lẫn điện thoại.
+
+============================================================
+PHẦN 1 — BẢNG ĐIỀU KHIỂN ĐẦY ĐỦ
+============================================================
+
+File mới:
+- src/components/TopNav.jsx
+  Thanh điều hướng dùng chung, sticky trên đầu mọi trang: 4 tab
+  (Tổng quan / Sản phẩm / Nhập-Xuất kho / Cảnh báo), tự nhận diện tab
+  đang active kể cả khi đứng ở trang con (/import, /export vẫn sáng
+  tab "Nhập/Xuất kho"). Hiện trạng thái kết nối backend + số cảnh báo
+  đang mở (badge đỏ), tự cập nhật qua sự kiện "alerts-changed" khi có
+  nơi khác vừa xử lý xong 1 cảnh báo.
+
+- src/pages/Overview.jsx (mới — route "/")
+  4 thẻ thống kê (tổng sản phẩm, tổng tồn kho, cảnh báo đang mở, phiếu
+  chờ OCR) + khối cảnh báo gần đây (5 mới nhất, có nút "Đã xử lý" gọi
+  thẳng API) + bảng phiếu nhập gần đây.
+
+- src/pages/Products.jsx (mới — route "/products")
+  Danh sách đầy đủ sản phẩm dạng lưới thẻ, mỗi thẻ hiện tổng tồn kho
+  + chi tiết từng lô (mã lô, số lượng, HSD, sắp xếp theo HSD tăng
+  dần), tự đánh dấu đỏ "sắp hết" khi dưới ngưỡng cảnh báo của sản
+  phẩm đó. Có ô tìm kiếm theo tên/SKU.
+
+- src/pages/Alerts.jsx (mới — route "/alerts")
+  Danh sách đầy đủ cảnh báo, lọc Đang mở/Đã xử lý, nút xử lý gọi API
+  thật.
+
+- src/pages/InOutChoice.jsx (mới — route "/inout")
+  Trang chọn Nhập hàng/Xuất hàng — tách riêng khỏi luồng đếm, thay
+  cho Home.jsx cũ đã xoá.
+
+File sửa:
+- src/api.js — thêm listInventory(), listAlerts(), acknowledgeAlert()
+  (có phát sự kiện "alerts-changed" để TopNav tự cập nhật số đếm).
+- src/App.jsx — viết lại routing dùng Layout chung (TopNav + Outlet)
+  bọc toàn bộ route, thay vì mỗi trang tự có header riêng.
+- src/pages/ImportFlow.jsx, ExportFlow.jsx — bỏ header riêng (TopNav
+  đã lo phần đó), sửa link "quay lại" trỏ đúng "/inout".
+- src/pages/Home.jsx — XOÁ (thay bằng InOutChoice.jsx).
+
+============================================================
+PHẦN 2 — RESPONSIVE PC/MOBILE (từ commit trước, gộp chung lần này)
+============================================================
+- src/styles/app.css — 2 breakpoint (≥768px, ≥1200px): danh sách
+  chuyển từ 1 cột sang lưới nhiều cột, hover state cho chuột, giới
+  hạn chiều rộng input/form, thẻ thống kê 2x2 -> 1x4, khối Tổng quan
+  1 cột -> 2 cột cạnh nhau trên màn rộng. Mobile giữ nguyên mặc định
+  gốc, không đổi gì.
+
+============================================================
+ĐÃ TỰ KIỂM TRA (Playwright + backend thật, seed dữ liệu đầy đủ:
+6 sản phẩm, 3 cảnh báo đủ 3 loại, 3 phiếu đủ 3 trạng thái)
+============================================================
+- Chụp cả desktop (1440px) và mobile (390px) cho: Tổng quan, Sản
+  phẩm, Cảnh báo, Nhập/Xuất kho — đối chiếu đúng dữ liệu thật hiện
+  ra (không phải giao diện tĩnh).
+- Test chức năng "Đã xử lý" cảnh báo: bấm xong alert biến mất khỏi
+  danh sách NGAY (3 -> 2), badge số trên tab Cảnh báo cũng tự giảm
+  theo (2 -> 1) sau khi vá lỗi đồng bộ state giữa 2 component.
+- npm run build thành công, không lỗi, cả 2 lần (trước và sau khi
+  sửa lỗi badge).
+
+Việc còn thiếu:
+- Chưa có trang chi tiết/sửa từng sản phẩm riêng lẻ (chỉ xem, chưa
+  sửa được thông tin sản phẩm từ giao diện này).
+- Chưa có phân trang cho danh sách sản phẩm/cảnh báo nếu số lượng
+  lớn — hiện tải hết 1 lần, ổn với quy mô demo khóa luận nhưng cần
+  lưu ý nếu dữ liệu thật nhiều hơn nhiều lần.
