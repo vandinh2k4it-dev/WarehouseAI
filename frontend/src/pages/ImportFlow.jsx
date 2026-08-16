@@ -178,7 +178,7 @@ export default function ImportFlow() {
           {receipts && receipts.length > 0 && (
             <div className="lineList">
               {receipts.map((r) => (
-                <div className="lineCard" key={r.id} onClick={() => pickReceipt(r)} style={{ cursor: "pointer" }}>
+                <div className="lineCard clickable" key={r.id} onClick={() => pickReceipt(r)}>
                   <div>
                     <div className="lineCard-name">{r.receipt_code || `Phiếu #${r.id}`}</div>
                     <div className="lineCard-sub">

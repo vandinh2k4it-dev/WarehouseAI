@@ -161,6 +161,10 @@ button.ghost {
   gap: 10px;
 }
 
+.lineCard.clickable {
+  cursor: pointer;
+}
+
 .lineCard-name {
   font-weight: 600;
   font-size: 15px;
@@ -265,3 +269,120 @@ button.ghost {
   color: var(--text-muted);
   font-size: 13.5px;
 }
+
+/* ==========================================================
+   RESPONSIVE — màn hình rộng (PC/tablet, từ 768px trở lên)
+   Mobile-first ở trên là mặc định; media query dưới đây MỞ
+   RỘNG bố cục khi có đủ chỗ, không đổi logic, chỉ đổi layout.
+   ========================================================== */
+@media (min-width: 768px) {
+  .page-main {
+    max-width: 880px;
+    padding: 32px 24px;
+  }
+
+  .page-header {
+    padding: 20px 32px;
+  }
+
+  .page-header h1 {
+    font-size: 24px;
+  }
+
+  .hint {
+    max-width: 480px;
+  }
+
+  /* Trang chủ: 2 nút to đặt cạnh nhau rộng rãi hơn, có hover rõ ràng cho chuột */
+  .bigtoggle {
+    max-width: 480px;
+    margin-top: 28px;
+    gap: 16px;
+  }
+  .bigtoggle-btn {
+    padding: 34px 12px;
+    font-size: 19px;
+    transition: border-color 0.15s, background 0.15s, transform 0.1s;
+  }
+  .bigtoggle-btn:hover {
+    border-color: var(--accent);
+    background: var(--accent-dim);
+    color: var(--accent);
+    transform: translateY(-1px);
+  }
+
+  .card {
+    padding: 24px 28px;
+  }
+
+  /* Danh sách phiếu/dòng hàng: chuyển từ xếp dọc 1 cột sang lưới nhiều
+     cột — tận dụng chiều ngang, không phải cuộn dài như trên điện thoại */
+  .lineList {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 12px;
+  }
+  .lineCard {
+    margin-bottom: 0; /* gap của grid đã lo khoảng cách */
+  }
+  .lineCard.clickable {
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .lineCard.clickable:hover {
+    border-color: var(--accent);
+    background: var(--surface);
+  }
+
+  /* Form nhập liệu (Xuất hàng): giới hạn chiều rộng để không kéo dài
+     input/select ra hết màn hình, dễ đọc, giống form desktop chuẩn */
+  input[type="number"],
+  input[type="text"],
+  select {
+    max-width: 420px;
+  }
+
+  button.primary,
+  button.ghost {
+    max-width: 420px;
+  }
+  button.primary:hover {
+    filter: brightness(1.08);
+  }
+  button.ghost:hover {
+    border-color: var(--text-muted);
+    background: var(--surface-raised);
+  }
+
+  /* Màn hình đếm: căn giữa, giới hạn chiều rộng thay vì full-bleed */
+  .countStage {
+    max-width: 420px;
+    margin: 0 auto;
+  }
+  .camBtn {
+    padding: 36px 20px;
+  }
+  .camBtn:hover {
+    background: rgba(245, 165, 36, 0.12);
+  }
+
+  .tapbtn {
+    transition: background 0.15s;
+  }
+  .tapbtn:hover {
+    background: var(--accent);
+    color: #1a1200;
+  }
+}
+
+/* Màn hình rất rộng (desktop lớn, ≥1200px): thêm chút khoảng thở,
+   tránh nội dung bị kéo dẹt/quá to so với phần còn lại của trang */
+@media (min-width: 1200px) {
+  .page-main {
+    max-width: 1040px;
+  }
+  .lineList {
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  }
+}
+
