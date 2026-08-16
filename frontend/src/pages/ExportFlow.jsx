@@ -5,17 +5,26 @@ import CountingScreen from "../components/CountingScreen";
 
 export default function ExportFlow() {
   const [products, setProducts] = useState([]);
+  const [inventory, setInventory] = useState([]);
   const [productId, setProductId] = useState("");
   const [qty, setQty] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
   const [activeSession, setActiveSession] = useState(null); // { session, expected, label }
 
   useEffect(() => {
-    api
-      .listProducts()
-      .then(setProducts)
+    Promise.all([api.listProducts(), api.listInventory()])
+      .then(([p, inv]) => {
+        setProducts(p);
+        setInventory(inv);
+      })
       .catch((err) => setErrorMsg(err.message || String(err)));
   }, []);
+
+  function stockOf(productId) {
+    return inventory
+      .filter((i) => i.product_id === productId)
+      .reduce((sum, i) => sum + parseFloat(i.quantity), 0);
+  }
 
   async function begin() {
     setErrorMsg("");
@@ -53,6 +62,15 @@ export default function ExportFlow() {
     );
   }
 
+  const selectedProduct = products.find((p) => p.id === parseInt(productId, 10));
+  const selectedBatches = selectedProduct
+    ? inventory
+        .filter((i) => i.product_id === selectedProduct.id && parseFloat(i.quantity) > 0)
+        .slice()
+        .sort((a, b) => (a.expiry_date || "9999").localeCompare(b.expiry_date || "9999"))
+    : [];
+  const selectedTotal = selectedProduct ? stockOf(selectedProduct.id) : null;
+
   return (
     <main className="page-main">
       <Link to="/inout" className="backlink">
@@ -66,12 +84,37 @@ export default function ExportFlow() {
           {products.map((p) => (
             <option key={p.id} value={p.id}>
               {p.name}
-              {p.sku ? ` (${p.sku})` : ""}
+              {p.sku ? ` (${p.sku})` : ""} — còn {stockOf(p.id).toLocaleString("vi-VN")} {p.unit}
             </option>
           ))}
         </select>
 
-        <label>Số lượng dự kiến xuất</label>
+        {selectedProduct && (
+          <div className="stockHint">
+            {selectedTotal <= selectedProduct.low_stock_threshold && (
+              <div className="stockHint-warn">⚠ Sản phẩm này sắp hết hàng trong kho</div>
+            )}
+            {selectedBatches.length === 0 ? (
+              <div className="stockHint-warn">⚠ Hiện KHÔNG còn tồn kho cho sản phẩm này</div>
+            ) : (
+              <>
+                <div className="stockHint-total">
+                  Tồn kho hiện có: <b>{selectedTotal.toLocaleString("vi-VN")} {selectedProduct.unit}</b>
+                </div>
+                <div className="stockHint-batches">
+                  {selectedBatches.map((b) => (
+                    <span key={b.id} className="mono">
+                      {b.batch_code}: {b.quantity} {selectedProduct.unit}
+                      {b.expiry_date ? ` (HSD ${b.expiry_date})` : ""}
+                    </span>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        <label style={{ marginTop: 14 }}>Số lượng dự kiến xuất</label>
         <input
           type="number"
           inputMode="numeric"

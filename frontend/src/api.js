@@ -39,6 +39,26 @@ export const api = {
   listReceipts: (status) => request(`/receipts${status ? `?status=${status}` : ""}`),
   getLinesProgress: (receiptId) => request(`/receipts/${receiptId}/lines-progress`),
 
+  // Quét phiếu nhập bằng ảnh chụp từ camera — backend chạy OCR (PaddleOCR +
+  // VietOCR) ngay khi nhận ảnh, trả về phiếu đã tạo kèm các dòng hàng đã
+  // trích xuất (tự động so khớp với danh mục sản phẩm nếu tên khớp đủ gần).
+  uploadReceipt: async (imageFile, storeLocation) => {
+    const form = new FormData();
+    form.append("file", imageFile);
+    const qs = storeLocation ? `?store_location=${encodeURIComponent(storeLocation)}` : "";
+    const res = await fetch(`${API_BASE}/receipts/upload${qs}`, { method: "POST", body: form });
+    if (!res.ok) {
+      let detail = res.statusText;
+      try {
+        detail = (await res.json()).detail || detail;
+      } catch {
+        // ignore
+      }
+      throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
+    }
+    return res.json();
+  },
+
   startImport: (receiptLineItemId) =>
     request("/camera-sessions/start-import", {
       method: "POST",
@@ -75,6 +95,15 @@ export const api = {
     }
     return res.json();
   },
+
+  // Nhập tay số lượng đã đếm — dùng khi số lượng ít, không cần quay video.
+  // Gọi thẳng /stop với số đã đếm, cùng logic đối chiếu như count-video.
+  stopManualCount: (sessionId, countedQuantity, thresholdPct = 0.02) =>
+    request(`/camera-sessions/${sessionId}/stop`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ counted_quantity: countedQuantity, threshold_pct: thresholdPct }),
+    }),
 
   // Xử lý dòng đang lệch (needs_review) khi quay lại sau
   resolveSegment: (sessionId, action, overrideNote) =>

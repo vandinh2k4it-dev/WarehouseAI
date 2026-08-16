@@ -237,6 +237,21 @@ button.ghost {
   cursor: pointer;
   margin-bottom: 14px;
 }
+.camBtn.secondary {
+  border-color: var(--border);
+  background: var(--surface-raised);
+  color: var(--text);
+}
+
+.scanBtnRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.scanBtnRow .camBtn {
+  padding: 20px 8px;
+  font-size: 14px;
+}
 
 .spinner {
   width: 34px;
@@ -275,6 +290,17 @@ button.ghost {
   font-size: 13px;
   margin: -6px 0 14px;
   line-height: 1.5;
+}
+
+.card-headRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.card-headRow h2 {
+  margin: 0;
 }
 
 .text-muted {
@@ -514,6 +540,32 @@ button.ghost {
   justify-content: space-between;
   font-size: 12px;
   gap: 8px;
+}
+
+/* ==========================================================
+   GỢI Ý TỒN KHO — hiện dưới dropdown chọn sản phẩm khi xuất hàng
+   ========================================================== */
+.stockHint {
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin: -6px 0 14px;
+  font-size: 13px;
+}
+.stockHint-warn {
+  color: var(--danger);
+  font-weight: 600;
+}
+.stockHint-total {
+  margin-bottom: 6px;
+}
+.stockHint-batches {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  color: var(--text-muted);
+  font-size: 12px;
 }
 
 
