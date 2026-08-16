@@ -167,3 +167,17 @@ class Alert(Base):
     status = Column(String(20), nullable=False, default="open")
     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
     resolved_at = Column(TIMESTAMP(timezone=True))
+
+
+class PushSubscription(Base):
+    """Đăng ký nhận thông báo đẩy (Web Push) của 1 trình duyệt/thiết bị cụ
+    thể — lưu lại thông tin PushManager.subscribe() trả về từ frontend, dùng
+    để gửi push mỗi khi có Alert mới (xem app/push_service.py)."""
+    __tablename__ = "push_subscriptions"
+
+    id = Column(Integer, primary_key=True)
+    endpoint = Column(Text, nullable=False, unique=True)
+    p256dh = Column(Text, nullable=False)
+    auth = Column(Text, nullable=False)
+    label = Column(String(100))  # tuỳ chọn: tên thiết bị để dễ quản lý nhiều máy
+    created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())

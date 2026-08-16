@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app import models, schemas
+from app import push_service
 from app.routers.reconciliation import apply_line_import
 from app.routers.inventory import perform_fefo_export
 
@@ -208,16 +209,20 @@ def _finalize_stop(
         )
     else:
         session.status = "needs_review"
+        alert_message = (
+            f"[{session.direction.upper()}] Lệch {difference:+.0f} khi đếm '{product_name}' — "
+            f"camera đếm {counted_quantity}, cần {expected:.0f} "
+            f"(vượt ngưỡng {threshold_pct:.1%}). Chưa cập nhật tồn kho cho loại này — "
+            f"cần kiểm tra lại (phiên #{session.id})."
+        )
         db.add(models.Alert(
             alert_type="discrepancy", severity="high", reconciliation_id=recon.id,
-            message=(
-                f"[{session.direction.upper()}] Lệch {difference:+.0f} khi đếm '{product_name}' — "
-                f"camera đếm {counted_quantity}, cần {expected:.0f} "
-                f"(vượt ngưỡng {threshold_pct:.1%}). Chưa cập nhật tồn kho cho loại này — "
-                f"cần kiểm tra lại (phiên #{session.id})."
-            ),
+            message=alert_message,
         ))
         db.commit()
+        push_service.send_push_to_all(
+            db, title="⚠️ Phát hiện lệch số", body=alert_message[:180], url="/alerts",
+        )
         db.refresh(session)
         db.refresh(recon)
         return schemas.CameraSegmentStopResult(

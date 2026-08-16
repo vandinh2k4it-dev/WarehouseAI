@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app import models, schemas
+from app import push_service
 
 router = APIRouter(prefix="/reconciliation", tags=["reconciliation"])
 
@@ -57,22 +58,24 @@ def run_reconciliation(payload: schemas.ReconciliationRunRequest, db: Session = 
 
     if status == "matched":
         _apply_inventory_update(db, receipt)
+        db.commit()
     else:
         db.flush()  # cần recon.id cho alert
+        alert_message = (
+            f"Chênh lệch {difference:+.0f} thùng giữa camera ({camera_total}) "
+            f"và phiếu nhập #{receipt.id} ({receipt_total}) — vượt ngưỡng "
+            f"{payload.threshold_pct:.1%}. Cần kiểm tra thủ công."
+        )
         db.add(
             models.Alert(
                 alert_type="discrepancy",
                 severity="high",
                 reconciliation_id=recon.id,
-                message=(
-                    f"Chênh lệch {difference:+.0f} thùng giữa camera ({camera_total}) "
-                    f"và phiếu nhập #{receipt.id} ({receipt_total}) — vượt ngưỡng "
-                    f"{payload.threshold_pct:.1%}. Cần kiểm tra thủ công."
-                ),
+                message=alert_message,
             )
         )
-
-    db.commit()
+        db.commit()
+        push_service.send_push_to_all(db, title="⚠️ Phát hiện lệch số", body=alert_message[:180], url="/alerts")
     db.refresh(recon)
     return recon
 

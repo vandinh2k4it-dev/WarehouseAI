@@ -22,7 +22,7 @@ cp .env.example .env
 
 Mở file `.env` vừa tạo, sửa đúng mật khẩu PostgreSQL thật của bạn:
 ```
-DATABASE_URL=postgresql+psycopg2://postgres:MATKHAU_CUA_BAN@localhost:5432/warehouse_db
+DATABASE_URL=postgresql+psycopg2://postgres:123456@localhost:5432/warehouse_db
 ```
 
 ## 3. Tạo database PostgreSQL

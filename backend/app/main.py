@@ -8,7 +8,7 @@ from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.database import Base, engine
-from app.routers import receipts, camera, reconciliation, inventory, alerts, products, chatbot
+from app.routers import receipts, camera, reconciliation, inventory, alerts, products, chatbot, push
 
 
 @asynccontextmanager
@@ -51,6 +51,7 @@ app.include_router(inventory.router)
 app.include_router(alerts.router)
 app.include_router(products.router)
 app.include_router(chatbot.router)
+app.include_router(push.router)
 
 
 @app.get("/health")

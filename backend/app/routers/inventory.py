@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app import models, schemas
+from app import push_service
 
 router = APIRouter(prefix="/inventory", tags=["inventory"])
 
@@ -97,6 +98,7 @@ def perform_fefo_export(
 
     remaining_to_deduct = quantity
     details: list[schemas.ExportBatchDetail] = []
+    triggered_alert_messages: list[str] = []
 
     for batch in batches:
         if remaining_to_deduct <= 0:
@@ -124,18 +126,31 @@ def perform_fefo_export(
             )
         )
 
-        _check_low_stock_alert(db, batch, product)
+        alert_msg = _check_low_stock_alert(db, batch, product)
+        if alert_msg:
+            triggered_alert_messages.append(alert_msg)
 
     db.commit()
+
+    # Gửi push SAU KHI commit thành công toàn bộ giao dịch — tách khỏi vòng
+    # lặp phía trên để không commit dở dang giữa chừng nếu 1 lô sau đó lỗi.
+    for msg in triggered_alert_messages:
+        push_service.send_push_to_all(db, title="📦 Sắp hết hàng", body=msg[:180], url="/alerts")
+
     return schemas.ExportResult(product_id=product.id, total_exported=quantity, details=details)
 
 
-def _check_low_stock_alert(db: Session, inventory_row: models.Inventory, product: models.Product):
+def _check_low_stock_alert(db: Session, inventory_row: models.Inventory, product: models.Product) -> str | None:
     """Sau khi trừ kho, nếu số lượng còn lại <= ngưỡng cảnh báo của sản phẩm,
     tạo cảnh báo mới — trừ khi đã có cảnh báo 'low_stock' đang mở cho đúng
-    lô này rồi (tránh tạo trùng lặp mỗi lần xuất thêm 1 chút)."""
+    lô này rồi (tránh tạo trùng lặp mỗi lần xuất thêm 1 chút).
+
+    Trả về nội dung cảnh báo (str) nếu vừa tạo mới, hoặc None nếu không tạo
+    gì — hàm gọi (perform_fefo_export) tự quyết định lúc nào gửi push, KHÔNG
+    commit/gửi push ngay tại đây vì hàm này chạy giữa 1 vòng lặp, commit sớm
+    sẽ phá vỡ tính toàn vẹn giao dịch của cả lượt xuất kho."""
     if float(inventory_row.quantity) > float(product.low_stock_threshold):
-        return
+        return None
 
     existing_open_alert = (
         db.query(models.Alert)
@@ -147,16 +162,18 @@ def _check_low_stock_alert(db: Session, inventory_row: models.Inventory, product
         .first()
     )
     if existing_open_alert:
-        return
+        return None
 
+    alert_message = (
+        f"Sản phẩm '{product.name}' (lô {inventory_row.batch_code}) chỉ còn "
+        f"{inventory_row.quantity} {product.unit} — dưới ngưỡng {product.low_stock_threshold}."
+    )
     db.add(
         models.Alert(
             alert_type="low_stock",
             severity="medium" if inventory_row.quantity > 0 else "high",
             inventory_id=inventory_row.id,
-            message=(
-                f"Sản phẩm '{product.name}' (lô {inventory_row.batch_code}) chỉ còn "
-                f"{inventory_row.quantity} {product.unit} — dưới ngưỡng {product.low_stock_threshold}."
-            ),
+            message=alert_message,
         )
     )
+    return alert_message

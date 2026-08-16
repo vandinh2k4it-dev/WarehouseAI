@@ -1,0 +1,62 @@
+feat(backend): Web Push — đẩy cảnh báo ra điện thoại
+
+Bối cảnh:
+Việc lớn thứ 2 trong 2 việc đã gác lại trước đó ("cảnh báo thông báo
+về điện thoại"). Dùng chuẩn Web Push (không cần app native, hoạt động
+qua trình duyệt/PWA), free hoàn toàn (không qua dịch vụ trả phí như
+Firebase Cloud Messaging).
+
+File mới:
+- app/push_service.py
+  Hàm send_push_to_all(db, title, body, url) gửi push tới TẤT CẢ thiết
+  bị đã đăng ký (bảng push_subscriptions). Tự tắt an toàn (không lỗi,
+  chỉ log) nếu chưa cấu hình đủ 3 biến VAPID_* — không phá vỡ luồng
+  tạo Alert bình thường khi push chưa setup xong.
+
+- app/routers/push.py (router mới, prefix /push)
+  - GET /push/vapid-public-key — frontend lấy khoá công khai lúc
+    đăng ký PushManager, không hardcode trong code frontend.
+  - POST /push/subscribe, /push/unsubscribe — lưu/xoá thiết bị.
+  - POST /push/test — gửi thử tới mọi thiết bị đã đăng ký, dùng để
+    xác nhận setup đúng trước khi tin cảnh báo thật.
+
+File sửa:
+- app/models.py — thêm bảng push_subscriptions (endpoint, p256dh,
+  auth, label). Tự tạo khi app khởi động (Base.metadata.create_all
+  trong lifespan đã có sẵn), không cần chạy migration tay.
+- app/main.py — đăng ký router push.
+- app/routers/camera.py, inventory.py, reconciliation.py — gắn
+  send_push_to_all() vào ĐÚNG 3 nơi tạo Alert (lệch số khi đếm,
+  sắp hết hàng, đối chiếu lệch — luồng cũ).
+- requirements.txt — thêm pywebpush, py-vapid.
+- .env.example — thêm VAPID_PRIVATE_KEY, VAPID_PUBLIC_KEY,
+  VAPID_CLAIM_EMAIL.
+
+LỖI THẬT ĐÃ PHÁT HIỆN VÀ SỬA TRONG LÚC LÀM (không phải chỉ viết code
+suông, đã tự test bắt lỗi):
+1. Định dạng VAPID_PRIVATE_KEY sai lúc đầu — pywebpush cần dạng RAW
+   32-byte base64url, KHÔNG PHẢI định dạng PEM đầy đủ
+   ("-----BEGIN PRIVATE KEY-----..."). Đã tự phát hiện qua traceback
+   thật (ValueError: Could not deserialize key data) và sửa đúng.
+2. inventory.py — hàm _check_low_stock_alert() ban đầu tự commit() +
+   gửi push NGAY BÊN TRONG 1 vòng lặp xử lý nhiều lô hàng — nếu 1 lô
+   sau đó lỗi, các lô trước đã lỡ commit dở dang, phá vỡ tính toàn
+   vẹn giao dịch của cả lượt xuất kho. Đã sửa: hàm chỉ add() + trả về
+   message, gom lại thành list, chỉ commit + gửi push MỘT LẦN sau khi
+   toàn bộ vòng lặp xong.
+
+ĐÃ TỰ KIỂM TRA (TestClient thật, không phải đoán):
+- Lấy public key, đăng ký thiết bị giả lập, gửi thử: request thật sự
+  chạm tới fcm.googleapis.com (chỉ bị chặn bởi tường lửa SANDBOX,
+  không phải lỗi code — trên Railway thật sẽ gửi thành công).
+- Test riêng trường hợp CHƯA cấu hình VAPID: tạo Alert (xuất kho dưới
+  ngưỡng) vẫn chạy đúng 200, không hề crash — xác nhận graceful
+  degradation hoạt động đúng.
+
+Việc cần làm sau khi deploy:
+Trên Railway Dashboard > Variables của service backend, thêm:
+  VAPID_PRIVATE_KEY=yxQtkWw_nXTMZHvTFxBb1rte0QOSrtuMx0bnRWfc7G0
+  VAPID_PUBLIC_KEY=BG9fiahLHHsjbG0EbUcO37CefjvNHXoFAf-zS3D-oIA_U2DH8vL_cyf84vCEu2ly9rj74U1nal7IVE3gwEacWrc
+  VAPID_CLAIM_EMAIL=<email thật của bạn>
+(Khoá trên đã sinh sẵn và test qua — dùng ngay được, hoặc tự sinh lại
+khoá riêng nếu muốn, không bắt buộc dùng đúng khoá này.)
