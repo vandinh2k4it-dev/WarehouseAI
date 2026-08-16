@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api";
 import CountingScreen from "../components/CountingScreen";
 
-const STATUS_LABEL = {
+const LINE_STATUS_LABEL = {
   not_started: "chưa đếm",
   counting: "đang đếm",
   matched: "đã khớp",
@@ -11,28 +11,51 @@ const STATUS_LABEL = {
   resolved_override: "đã xử lý",
 };
 
+const RECEIPT_STATUS_LABEL = {
+  pending_ocr: "đang xử lý OCR",
+  ocr_done: "chờ đếm hàng",
+  reconciled: "đã xong hết",
+};
+const RECEIPT_STATUS_BADGE = {
+  pending_ocr: "counting",
+  ocr_done: "not_started",
+  reconciled: "matched",
+};
+
 export default function ImportFlow() {
-  const [receiptId, setReceiptId] = useState("");
+  const [receipts, setReceipts] = useState(null);
+  const [loadingReceipts, setLoadingReceipts] = useState(true);
+  const [selectedReceipt, setSelectedReceipt] = useState(null); // receipt object
   const [lines, setLines] = useState(null);
-  const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [activeSession, setActiveSession] = useState(null); // { session, expected, label }
 
-  async function loadLines() {
-    if (!receiptId) {
-      setErrorMsg("Nhập Receipt ID trước");
-      return;
-    }
-    setLoading(true);
+  useEffect(() => {
+    loadReceipts();
+  }, []);
+
+  async function loadReceipts() {
+    setLoadingReceipts(true);
     setErrorMsg("");
     try {
-      const data = await api.getLinesProgress(receiptId);
+      const data = await api.listReceipts();
+      setReceipts(data);
+    } catch (err) {
+      setErrorMsg(err.message || String(err));
+    } finally {
+      setLoadingReceipts(false);
+    }
+  }
+
+  async function pickReceipt(receipt) {
+    setSelectedReceipt(receipt);
+    setErrorMsg("");
+    setLines(null);
+    try {
+      const data = await api.getLinesProgress(receipt.id);
       setLines(data);
     } catch (err) {
       setErrorMsg(err.message || String(err));
-      setLines(null);
-    } finally {
-      setLoading(false);
     }
   }
 
@@ -50,11 +73,19 @@ export default function ImportFlow() {
     }
   }
 
-  function backToList() {
+  async function backToLines() {
     setActiveSession(null);
-    loadLines();
+    const data = await api.getLinesProgress(selectedReceipt.id);
+    setLines(data);
   }
 
+  function backToReceiptList() {
+    setSelectedReceipt(null);
+    setLines(null);
+    loadReceipts();
+  }
+
+  // ---------- Màn hình đếm ----------
   if (activeSession) {
     return (
       <div className="page">
@@ -64,13 +95,66 @@ export default function ImportFlow() {
             expectedQuantity={activeSession.expected}
             label={activeSession.label}
             onCancel={() => setActiveSession(null)}
-            onDone={backToList}
+            onDone={backToLines}
           />
         </main>
       </div>
     );
   }
 
+  // ---------- Danh sách dòng hàng của phiếu đã chọn ----------
+  if (selectedReceipt) {
+    return (
+      <div className="page">
+        <header className="page-header">
+          <a className="backlink" onClick={backToReceiptList} style={{ cursor: "pointer" }}>
+            ← Chọn phiếu khác
+          </a>
+          <h1>⬇ Nhập hàng</h1>
+        </header>
+        <main className="page-main">
+          <div className="card">
+            <h2>
+              {selectedReceipt.receipt_code || `Phiếu #${selectedReceipt.id}`}
+              {selectedReceipt.store_location ? ` — ${selectedReceipt.store_location}` : ""}
+            </h2>
+
+            {!lines && !errorMsg && <div className="empty">Đang tải…</div>}
+            {errorMsg && <div className="empty" style={{ color: "var(--danger)" }}>{errorMsg}</div>}
+
+            {lines && (
+              <div className="lineList">
+                {lines.length === 0 && <div className="empty">Phiếu không có dòng hàng nào</div>}
+                {lines.map((line) => (
+                  <div className="lineCard" key={line.line_id}>
+                    <div>
+                      <div className="lineCard-name">{line.product_name_raw}</div>
+                      <div className="lineCard-sub">
+                        Cần {line.declared_quantity}
+                        {line.counted_quantity != null ? ` · camera đếm ${line.counted_quantity}` : ""}
+                      </div>
+                    </div>
+                    <div className="lineCard-actions">
+                      <span className={`badge ${line.counting_status}`}>
+                        {LINE_STATUS_LABEL[line.counting_status] || line.counting_status}
+                      </span>
+                      {(line.counting_status === "not_started" || line.counting_status === "needs_review") && (
+                        <button className="tapbtn" onClick={() => beginLine(line)}>
+                          Đếm
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  // ---------- Danh sách phiếu nhập ----------
   return (
     <div className="page">
       <header className="page-header">
@@ -83,41 +167,30 @@ export default function ImportFlow() {
       <main className="page-main">
         <div className="card">
           <h2>Chọn phiếu nhập</h2>
-          <label>Receipt ID</label>
-          <input
-            type="number"
-            inputMode="numeric"
-            placeholder="VD: 47"
-            value={receiptId}
-            onChange={(e) => setReceiptId(e.target.value)}
-          />
-          <button className="primary" onClick={loadLines} disabled={loading}>
-            {loading ? "Đang tải…" : "Tải danh sách dòng hàng"}
-          </button>
 
+          {loadingReceipts && <div className="empty">Đang tải danh sách phiếu…</div>}
           {errorMsg && <div className="empty" style={{ color: "var(--danger)" }}>{errorMsg}</div>}
 
-          {lines && (
+          {!loadingReceipts && receipts && receipts.length === 0 && (
+            <div className="empty">Chưa có phiếu nhập nào — quét phiếu trên máy tính trước.</div>
+          )}
+
+          {receipts && receipts.length > 0 && (
             <div className="lineList">
-              {lines.length === 0 && <div className="empty">Phiếu không có dòng hàng nào</div>}
-              {lines.map((line) => (
-                <div className="lineCard" key={line.line_id}>
+              {receipts.map((r) => (
+                <div className="lineCard" key={r.id} onClick={() => pickReceipt(r)} style={{ cursor: "pointer" }}>
                   <div>
-                    <div className="lineCard-name">{line.product_name_raw}</div>
+                    <div className="lineCard-name">{r.receipt_code || `Phiếu #${r.id}`}</div>
                     <div className="lineCard-sub">
-                      Cần {line.declared_quantity}
-                      {line.counted_quantity != null ? ` · camera đếm ${line.counted_quantity}` : ""}
+                      {r.store_location ? `${r.store_location} · ` : ""}
+                      {r.line_items?.length ?? 0} dòng hàng
+                      {r.received_at ? ` · ${new Date(r.received_at).toLocaleDateString("vi-VN")}` : ""}
                     </div>
                   </div>
                   <div className="lineCard-actions">
-                    <span className={`badge ${line.counting_status}`}>
-                      {STATUS_LABEL[line.counting_status] || line.counting_status}
+                    <span className={`badge ${RECEIPT_STATUS_BADGE[r.status] || "not_started"}`}>
+                      {RECEIPT_STATUS_LABEL[r.status] || r.status}
                     </span>
-                    {(line.counting_status === "not_started" || line.counting_status === "needs_review") && (
-                      <button className="tapbtn" onClick={() => beginLine(line)}>
-                        Đếm
-                      </button>
-                    )}
                   </div>
                 </div>
               ))}

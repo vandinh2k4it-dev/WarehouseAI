@@ -25,6 +25,7 @@ export const api = {
   listProducts: () => request("/products"),
 
   // Nhập hàng — theo từng dòng trên phiếu
+  listReceipts: (status) => request(`/receipts${status ? `?status=${status}` : ""}`),
   getLinesProgress: (receiptId) => request(`/receipts/${receiptId}/lines-progress`),
 
   startImport: (receiptLineItemId) =>
