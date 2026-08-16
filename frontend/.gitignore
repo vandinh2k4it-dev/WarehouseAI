@@ -1,0 +1,32 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Không commit .env thật (chỉ commit .env.example) — tránh lộ domain
+# backend production nếu repo public, dù không phải bí mật nhạy cảm,
+# vẫn nên giữ thói quen tách config môi trường ra khỏi mã nguồn.
+.env
+.env.local
+.env.production
+
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

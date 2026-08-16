@@ -1,0 +1,45 @@
+:root {
+  --bg: #12161B;
+  --surface: #1A2028;
+  --surface-raised: #212933;
+  --border: #2B333D;
+  --text: #E7EAEE;
+  --text-muted: #8996A6;
+  --accent: #F5A524;
+  --accent-dim: #3A2E14;
+  --success: #2FAE68;
+  --success-dim: #122A1D;
+  --danger: #FF5C5C;
+  --danger-dim: #341A1A;
+  --info: #5B8DEF;
+  --info-dim: #182338;
+  --radius: 14px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.mono {
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+a {
+  color: inherit;
+}
+
+button {
+  font-family: inherit;
+}

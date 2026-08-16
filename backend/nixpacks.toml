@@ -1,0 +1,19 @@
+# Cấu hình build cho Railway (dùng Nixpacks, tự động phát hiện Python).
+#
+# LÝ DO CẦN FILE NÀY: `ultralytics` (dùng cho camera/count_pipeline.py và
+# endpoint /camera-sessions/{id}/count-video) khai báo phụ thuộc vào gói
+# `opencv-python` — bản này cần các thư viện đồ họa (libGL, libSM...) mà môi
+# trường server headless như Railway KHÔNG có sẵn, dẫn tới lỗi:
+#   ImportError: libGL.so.1: cannot open shared object file
+# Cách sửa chuẩn: cài xong theo requirements.txt như bình thường, sau đó gỡ
+# `opencv-python` (bản GUI) và cài lại bằng `opencv-python-headless` (cùng
+# cung cấp module `cv2`, không cần thư viện đồ họa) — ghi đè lại lần cuối để
+# đảm bảo bản headless là bản thực sự nằm trong site-packages.
+
+[phases.install]
+cmds = [
+  "pip install --upgrade pip",
+  "pip install -r requirements.txt",
+  "pip uninstall -y opencv-python opencv-contrib-python opencv-python-headless",
+  "pip install opencv-python-headless==4.10.0.84",
+]
