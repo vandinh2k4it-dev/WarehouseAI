@@ -152,13 +152,12 @@ def seed_main(wipe: bool = True):
             db.add(receipt)
             db.flush()
 
-            total_qty = 0
+            lines = []
             for i, sku in enumerate(skus, start=1):
                 qty = random.randint(50, 300)
-                total_qty += qty
                 batch_code = f"L{random.randint(100,999)}{chr(64 + i)}"
                 exp = today + timedelta(days=random.randint(60, 300))
-                db.add(models.ReceiptLineItem(
+                li = models.ReceiptLineItem(
                     receipt_id=receipt.id,
                     line_no=i,
                     product_name_raw=products[sku].name,
@@ -168,43 +167,74 @@ def seed_main(wipe: bool = True):
                     expiry_date=exp,
                     match_score=1.0,
                     field_confidence={"quantity": 1.0, "batch": 1.0, "expiry": 1.0},
-                ))
+                )
+                db.add(li)
+                lines.append(li)
             receipt.status = "ocr_done"
             db.flush()
 
-            camera_qty = total_qty if matched else total_qty - random.randint(15, 40)
-            session = models.CameraCountSession(
-                session_code=f"cam-{code}",
-                camera_id="cam-01",
-                linked_receipt_id=receipt.id,
-                counted_quantity=camera_qty,
-                avg_detection_confidence=0.9,
-                model_version="seed-manual",
-                started_at=receipt.received_at,
-                ended_at=receipt.received_at + timedelta(minutes=5),
-            )
-            db.add(session)
-            db.flush()
+            # ---- Tạo phiên đếm THEO TỪNG DÒNG HÀNG (đúng kiến trúc đối chiếu
+            # mới — start-import/stop — thay cho kiểu tính tổng cả phiếu cũ.
+            # Nếu không làm vậy, phiếu sẽ hiện "đã xong hết" nhưng mở ra từng
+            # dòng vẫn "chưa đếm", gây khó hiểu như đã gặp phải khi demo). ----
+            # receipt "flagged": dòng CUỐI CÙNG cố tình lệch để demo cảnh báo,
+            # các dòng còn lại khớp bình thường — mô phỏng đúng tình huống
+            # thực tế "đa số OK, có 1 loại cần kiểm tra lại".
+            flagged_line_idx = len(lines) - 1 if not matched else None
 
-            difference = camera_qty - total_qty
-            diff_pct = abs(difference) / total_qty if total_qty else 0
-            status = "matched" if matched else "flagged"
-            recon = models.Reconciliation(
-                receipt_id=receipt.id,
-                session_id=session.id,
-                receipt_total=total_qty,
-                camera_total=camera_qty,
-                difference=difference,
-                threshold_used=0.02,
-                status=status,
-            )
-            db.add(recon)
-            db.flush()
-            receipt.status = "reconciled" if matched else "flagged"
+            for idx, li in enumerate(lines):
+                is_flagged_line = idx == flagged_line_idx
+                counted_qty = (
+                    li.quantity - random.randint(15, 40) if is_flagged_line else li.quantity
+                )
+                started = receipt.received_at
+                ended = started + timedelta(minutes=2 + idx)
 
-            if matched:
-                # Cộng vào tồn kho đúng như logic reconciliation.py thật
-                for li in receipt.line_items:
+                session = models.CameraCountSession(
+                    session_code=f"cam-{code}-L{idx+1}",
+                    camera_id="cam-01",
+                    direction="import",
+                    linked_receipt_id=receipt.id,
+                    receipt_line_item_id=li.id,
+                    product_id=li.product_id,
+                    expected_quantity=li.quantity,
+                    counted_quantity=counted_qty,
+                    avg_detection_confidence=0.9,
+                    model_version="seed-manual",
+                    status="needs_review" if is_flagged_line else "completed",
+                    started_at=started,
+                    ended_at=ended,
+                )
+                db.add(session)
+                db.flush()
+
+                difference = counted_qty - float(li.quantity)
+                diff_pct = abs(difference) / float(li.quantity) if li.quantity else 0
+                recon = models.Reconciliation(
+                    receipt_id=receipt.id,
+                    receipt_line_item_id=li.id,
+                    product_id=li.product_id,
+                    session_id=session.id,
+                    receipt_total=li.quantity,
+                    camera_total=counted_qty,
+                    difference=difference,
+                    threshold_used=0.02,
+                    status="flagged" if is_flagged_line else "matched",
+                )
+                db.add(recon)
+                db.flush()
+
+                if is_flagged_line:
+                    db.add(models.Alert(
+                        alert_type="discrepancy", severity="high", reconciliation_id=recon.id,
+                        message=(
+                            f"[NHẬP] Lệch {difference:+.0f} khi đếm '{products[skus[idx]].name}' — "
+                            f"camera đếm {counted_qty}, cần {li.quantity} (vượt ngưỡng 2.0%). "
+                            f"Chưa cập nhật tồn kho cho dòng này — cần kiểm tra lại (phiên #{session.id})."
+                        ),
+                    ))
+                else:
+                    # Khớp -> cộng tồn kho đúng như logic apply_line_import() thật
                     inv = (
                         db.query(models.Inventory)
                         .filter(models.Inventory.product_id == li.product_id, models.Inventory.batch_code == li.batch_code)
@@ -221,18 +251,15 @@ def seed_main(wipe: bool = True):
                     inv.last_updated = datetime.now(timezone.utc)
                     db.add(models.InventoryTransaction(
                         inventory_id=inv.id, change_qty=float(li.quantity),
-                        transaction_type="import", reference_type="receipt", reference_id=receipt.id,
+                        transaction_type="import", reference_type="receipt_line", reference_id=li.id,
                     ))
-            else:
-                db.add(models.Alert(
-                    alert_type="discrepancy", severity="high", reconciliation_id=recon.id,
-                    message=(
-                        f"Chênh lệch {difference:+.0f} thùng giữa camera ({camera_qty}) và "
-                        f"phiếu nhập #{receipt.id} ({total_qty:.0f}) — vượt ngưỡng 2.0%. Cần kiểm tra thủ công."
-                    ),
-                ))
+
+            # Phiếu chỉ "reconciled" khi TẤT CẢ dòng đã xong (đúng logic
+            # _maybe_complete_receipt thật) — phiếu có dòng needs_review vẫn
+            # dừng ở "ocr_done", đúng để badge trên giao diện không nói dối.
+            receipt.status = "reconciled" if matched else "ocr_done"
         db.commit()
-        print(f"Đã tạo {len(receipt_specs)} phiếu nhập (đã đối chiếu xong).")
+        print(f"Đã tạo {len(receipt_specs)} phiếu nhập (đối chiếu theo từng dòng hàng).")
 
         # ---------------- 4. Cảnh báo low_stock / expiring_soon tự sinh theo data tồn kho vừa tạo ----------------
         n_alerts = 0
