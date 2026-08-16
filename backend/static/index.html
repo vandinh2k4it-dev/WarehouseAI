@@ -1,0 +1,909 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Bảng điều khiển Kho hàng</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#12161B;
+    --surface:#1A2028;
+    --surface-raised:#212933;
+    --surface-hover:#252E39;
+    --border:#2B333D;
+    --text:#E7EAEE;
+    --text-muted:#8996A6;
+    --accent:#F5A524;
+    --accent-dim:#3A2E14;
+    --success:#2FAE68;
+    --success-dim:#122A1D;
+    --danger:#FF5C5C;
+    --danger-dim:#341A1A;
+    --info:#5B8DEF;
+    --info-dim:#182338;
+    --radius:10px;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:'Inter',sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  h1,h2,h3{font-family:'Space Grotesk',sans-serif; margin:0;}
+  code, .mono{font-family:'IBM Plex Mono',monospace;}
+  a{color:var(--accent);}
+  :focus-visible{outline:2px solid var(--accent); outline-offset:2px;}
+
+  /* ---------- Header ---------- */
+  .topbar{
+    border-bottom:1px solid var(--border);
+    padding:18px 28px;
+    display:flex;
+    flex-wrap:wrap;
+    gap:16px;
+    align-items:center;
+    justify-content:space-between;
+    position:sticky; top:0; background:var(--bg); z-index:20;
+  }
+  .brand{display:flex; align-items:center; gap:12px;}
+  .brand .mark{
+    width:36px;height:36px;border-radius:9px;
+    background:var(--accent);
+    display:flex;align-items:center;justify-content:center;
+    color:#1A1200;font-weight:700;font-family:'Space Grotesk',sans-serif;
+    font-size:16px; flex:none;
+  }
+  .brand h1{font-size:17px; letter-spacing:.2px;}
+  .brand p{margin:2px 0 0; font-size:12px; color:var(--text-muted);}
+
+  .conn{
+    display:flex; align-items:center; gap:10px;
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:999px; padding:6px 8px 6px 14px;
+  }
+  .conn input{
+    background:transparent; border:none; outline:none;
+    color:var(--text); font-family:'IBM Plex Mono',monospace; font-size:12px;
+    width:190px;
+  }
+  .dot{width:8px;height:8px;border-radius:50%; background:var(--text-muted); flex:none;}
+  .dot.ok{background:var(--success); box-shadow:0 0 0 3px var(--success-dim);}
+  .dot.bad{background:var(--danger); box-shadow:0 0 0 3px var(--danger-dim);}
+  .conn button{
+    border:none; background:var(--surface-raised); color:var(--text);
+    padding:6px 12px; border-radius:999px; font-size:12px; cursor:pointer;
+    border:1px solid var(--border);
+  }
+  .conn button:hover{border-color:var(--accent); color:var(--accent);}
+
+  /* ---------- Tab navigation ---------- */
+  .navbar{
+    display:flex; gap:4px; padding:0 28px; border-bottom:1px solid var(--border);
+    position:sticky; top:73px; background:var(--bg); z-index:19; overflow-x:auto;
+  }
+  .navbtn{
+    display:flex; align-items:center; gap:8px;
+    padding:13px 18px; font-size:13.5px; font-weight:500; color:var(--text-muted);
+    background:none; border:none; border-bottom:2px solid transparent; cursor:pointer;
+    white-space:nowrap; font-family:inherit;
+  }
+  .navbtn:hover{color:var(--text);}
+  .navbtn.active{color:var(--accent); border-bottom-color:var(--accent);}
+  .navbtn .count{
+    background:var(--surface-raised); border-radius:999px; padding:1px 7px;
+    font-size:11px; color:var(--text-muted); font-family:'IBM Plex Mono',monospace;
+  }
+  .navbtn.active .count{background:var(--accent-dim); color:var(--accent);}
+
+  /* ---------- Pipeline strip (thu gọn, chỉ hiện ở tab Nhập/Xuất) ---------- */
+  .pipeline{
+    display:grid; grid-template-columns:repeat(4,1fr);
+    gap:0; margin:0 0 22px; padding:16px 0 0; position:relative;
+  }
+  .pipeline::before{
+    content:"";
+    position:absolute; top:29px; left:6%; right:6%; height:1px;
+    background:linear-gradient(90deg,var(--border),var(--accent),var(--border));
+    opacity:.5;
+  }
+  .stage{display:flex; flex-direction:column; align-items:center; text-align:center; gap:7px; position:relative;}
+  .stage .num{
+    width:24px;height:24px;border-radius:50%;
+    background:var(--surface-raised); border:1px solid var(--border);
+    display:flex;align-items:center;justify-content:center;
+    font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:var(--text-muted);
+    z-index:1;
+  }
+  .stage.active .num{background:var(--accent); border-color:var(--accent); color:#1A1200; font-weight:600;}
+  .stage b{font-size:12px;}
+  .stage span{font-size:10.5px; color:var(--text-muted); max-width:150px;}
+
+  main{padding:24px 28px 48px; max-width:1320px; margin:0 auto;}
+  .view{display:none;}
+  .view.active{display:block;}
+
+  .grid2{display:grid; grid-template-columns:1.15fr 1fr; gap:18px;}
+  @media (max-width:920px){ .grid2{grid-template-columns:1fr;} }
+
+  .card{
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:var(--radius); padding:20px; margin-bottom:18px;
+  }
+  .card h2{font-size:13.5px; letter-spacing:.3px; text-transform:uppercase; color:var(--text-muted); font-weight:600;}
+  .card h2 b{color:var(--text); font-weight:600;}
+  .card-sub{font-size:12.5px; color:var(--text-muted); margin:4px 0 16px; line-height:1.5;}
+
+  /* ---------- Stat cards (Tổng quan) ---------- */
+  .stats{display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:18px;}
+  @media (max-width:800px){ .stats{grid-template-columns:1fr 1fr;} }
+  .stat{
+    background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
+    padding:18px 20px;
+  }
+  .stat .num{font-family:'Space Grotesk',sans-serif; font-size:28px; font-weight:700; line-height:1;}
+  .stat .num.accent{color:var(--accent);}
+  .stat .num.danger{color:var(--danger);}
+  .stat .label{font-size:12px; color:var(--text-muted); margin-top:8px;}
+
+  .field{margin-bottom:14px;}
+  .field label{display:block; font-size:12.5px; color:var(--text-muted); margin-bottom:6px;}
+  .field input[type=text], .field input[type=number], .field input[type=file], select{
+    width:100%; background:var(--surface-raised); border:1px solid var(--border);
+    color:var(--text); padding:10px 11px; border-radius:7px; font-size:13.5px; font-family:inherit;
+  }
+  .field input:focus, select:focus{border-color:var(--accent);}
+  .row2{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
+  .row3{display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px;}
+
+  button.primary{
+    background:var(--accent); color:#1A1200; border:none;
+    padding:11px 18px; border-radius:7px; font-weight:600; font-size:13.5px;
+    cursor:pointer; margin-top:2px; font-family:inherit;
+  }
+  button.primary:hover{filter:brightness(1.08);}
+  button.primary:disabled{opacity:.5; cursor:default;}
+  button.ghost{
+    background:transparent; border:1px solid var(--border); color:var(--text);
+    padding:7px 13px; border-radius:7px; font-size:12px; cursor:pointer; font-family:inherit;
+  }
+  button.ghost:hover{border-color:var(--accent); color:var(--accent);}
+
+  .chips{display:flex; gap:6px; margin-bottom:16px; flex-wrap:wrap;}
+  .chip{
+    font-size:12.5px; padding:7px 14px; border-radius:999px; cursor:pointer;
+    border:1px solid var(--border); color:var(--text-muted); background:none; font-family:inherit;
+  }
+  .chip:hover{color:var(--text);}
+  .chip.active{background:var(--accent-dim); border-color:var(--accent); color:var(--accent);}
+
+  .search{position:relative; margin-bottom:16px;}
+  .search input{
+    width:100%; background:var(--surface-raised); border:1px solid var(--border);
+    color:var(--text); padding:11px 14px 11px 38px; border-radius:8px; font-size:13.5px; font-family:inherit;
+  }
+  .search input:focus{border-color:var(--accent);}
+  .search::before{
+    content:"⌕"; position:absolute; left:13px; top:50%; transform:translateY(-50%);
+    color:var(--text-muted); font-size:16px;
+  }
+
+  table{width:100%; border-collapse:collapse; font-size:13px;}
+  th{text-align:left; color:var(--text-muted); font-weight:500; font-size:11px; text-transform:uppercase; letter-spacing:.3px; padding:8px; border-bottom:1px solid var(--border);}
+  td{padding:10px 8px; border-bottom:1px solid var(--border); vertical-align:middle;}
+  tr:last-child td{border-bottom:none;}
+  tr.clickable{cursor:pointer;}
+  tr.clickable:hover td{background:var(--surface-hover);}
+  .chevron{display:inline-block; transition:transform .15s; color:var(--text-muted); width:12px;}
+  .chevron.open{transform:rotate(90deg);}
+  .batch-row td{background:var(--surface-raised); padding:0;}
+  .batch-inner{padding:10px 8px 14px 30px;}
+  .batch-inner table{font-size:12px;}
+  .batch-inner th, .batch-inner td{padding:6px 8px;}
+
+  .badge{font-size:11px; padding:2px 9px; border-radius:999px; font-weight:600; display:inline-block; white-space:nowrap;}
+  .badge.matched, .badge.ocr_done, .badge.resolved, .badge.stock-ok{background:var(--success-dim); color:var(--success);}
+  .badge.flagged, .badge.discrepancy, .badge.stock-out{background:var(--danger-dim); color:var(--danger);}
+  .badge.pending_ocr, .badge.open{background:var(--info-dim); color:var(--info);}
+  .badge.reconciled, .badge.low_stock, .badge.stock-low, .badge.expiring_soon{background:var(--accent-dim); color:var(--accent);}
+
+  .empty{color:var(--text-muted); font-size:12.5px; padding:22px 4px; text-align:center; border:1px dashed var(--border); border-radius:8px;}
+  .muted{color:var(--text-muted);}
+  .result-box{
+    background:var(--surface-raised); border:1px solid var(--border); border-radius:8px;
+    padding:12px; margin-top:12px; font-size:12.5px; max-height:280px; overflow:auto;
+  }
+  .toast{
+    position:fixed; bottom:20px; right:20px; background:var(--surface-raised);
+    border:1px solid var(--border); padding:12px 16px; border-radius:8px;
+    font-size:13px; max-width:340px; opacity:0; transform:translateY(8px);
+    transition:.25s; pointer-events:none; z-index:50;
+  }
+  .toast.show{opacity:1; transform:translateY(0);}
+  .toast.err{border-color:var(--danger); color:var(--danger);}
+  .toast.ok{border-color:var(--success); color:var(--success);}
+  footer{text-align:center; color:var(--text-muted); font-size:11px; padding:24px; opacity:.7;}
+
+  .alert-item{padding:12px 0; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; gap:12px; align-items:flex-start;}
+  .alert-item:last-child{border-bottom:none;}
+  .alert-item .msg{font-size:12.5px; margin-top:6px; line-height:1.5;}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">
+    <div class="mark">K</div>
+    <div>
+      <h1>Bảng điều khiển Kho hàng</h1>
+      <p>Nhân viên kho — tra cứu sản phẩm, nhập/xuất hàng, đối chiếu, cảnh báo</p>
+    </div>
+  </div>
+  <div class="conn">
+    <span class="dot" id="connDot"></span>
+    <input id="apiBase" type="text" value="" placeholder="http://localhost:8000" />
+    <button onclick="checkHealth()">Kiểm tra</button>
+  </div>
+</div>
+
+<div class="navbar">
+  <button class="navbtn active" data-view="overview" onclick="switchView('overview')">Tổng quan</button>
+  <button class="navbtn" data-view="products" onclick="switchView('products')">Sản phẩm</button>
+  <button class="navbtn" data-view="io" onclick="switchView('io')">Nhập / Xuất kho</button>
+  <button class="navbtn" data-view="alerts" onclick="switchView('alerts')">Cảnh báo <span class="count" id="alertCount">0</span></button>
+</div>
+
+<main>
+
+  <!-- ============ VIEW: TỔNG QUAN ============ -->
+  <div class="view active" id="view-overview">
+    <div class="stats">
+      <div class="stat"><div class="num" id="statProducts">—</div><div class="label">Tổng sản phẩm</div></div>
+      <div class="stat"><div class="num" id="statStock">—</div><div class="label">Tổng tồn kho (đơn vị)</div></div>
+      <div class="stat"><div class="num accent" id="statAlerts">—</div><div class="label">Cảnh báo đang mở</div></div>
+      <div class="stat"><div class="num danger" id="statPending">—</div><div class="label">Phiếu chờ xử lý OCR</div></div>
+    </div>
+    <div class="grid2">
+      <div class="card">
+        <h2>Cảnh báo gần đây</h2>
+        <p class="card-sub">5 cảnh báo mới nhất — xem đầy đủ ở tab "Cảnh báo".</p>
+        <div id="overviewAlerts"><div class="empty">Đang tải…</div></div>
+      </div>
+      <div class="card">
+        <h2>Phiếu nhập gần đây</h2>
+        <p class="card-sub">5 phiếu mới nhất.</p>
+        <div id="overviewReceipts"><div class="empty">Đang tải…</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ VIEW: SẢN PHẨM ============ -->
+  <div class="view" id="view-products">
+    <div class="card">
+      <h2>Danh mục sản phẩm</h2>
+      <p class="card-sub">Bấm vào 1 dòng để xem chi tiết từng lô (mã lô, số lượng, hạn sử dụng).</p>
+      <div class="search">
+        <input type="text" id="productSearch" placeholder="Tìm theo tên hoặc mã SKU…" oninput="renderProductsTable()" />
+      </div>
+      <div class="chips">
+        <button class="chip active" data-filter="all" onclick="setProductFilter('all')">Tất cả</button>
+        <button class="chip" data-filter="low" onclick="setProductFilter('low')">Sắp hết hàng</button>
+        <button class="chip" data-filter="out" onclick="setProductFilter('out')">Hết hàng</button>
+      </div>
+      <div id="productsTable"><div class="empty">Bấm "Kiểm tra" ở góc trên để tải danh sách</div></div>
+    </div>
+  </div>
+
+  <!-- ============ VIEW: NHẬP / XUẤT KHO ============ -->
+  <div class="view" id="view-io">
+    <div class="pipeline" id="pipeline">
+      <div class="stage" data-stage="1"><div class="num">1</div><b>Thu nhận</b><span>Camera + ảnh phiếu nhập</span></div>
+      <div class="stage" data-stage="2"><div class="num">2</div><b>Xử lý AI</b><span>YOLOv8+ByteTrack đếm · OCR đọc phiếu</span></div>
+      <div class="stage" data-stage="3"><div class="num">3</div><b>Quản lý</b><span>Đối chiếu · cập nhật tồn kho</span></div>
+      <div class="stage" data-stage="4"><div class="num">4</div><b>Giao tiếp</b><span>Cảnh báo · chatbot tra cứu</span></div>
+    </div>
+
+    <div class="grid2">
+      <div>
+        <div class="card">
+          <h2>1 · Upload <b>Phiếu nhập hàng</b> — chạy OCR</h2>
+          <p class="card-sub">Chọn ảnh chụp phiếu, hệ thống gọi <code>/receipts/upload</code>, chạy OCR ngay, tự động khớp sản phẩm đã có trong danh mục.</p>
+          <div class="field">
+            <label>Ảnh phiếu nhập hàng</label>
+            <input type="file" id="receiptFile" accept="image/*" />
+          </div>
+          <div class="field">
+            <label>Địa điểm (tuỳ chọn)</label>
+            <input type="text" id="storeLocation" placeholder="VD: Tạp hoá Cô Ba, Q.Tân Bình" />
+          </div>
+          <button class="primary" id="uploadBtn" onclick="uploadReceipt()">Upload &amp; chạy OCR</button>
+          <div id="uploadResult"></div>
+        </div>
+
+        <div class="card">
+          <h2>2 · Nhập hàng qua camera — <b>theo từng loại</b></h2>
+          <p class="card-sub">Chọn đúng loại hàng đang đi qua băng chuyền, camera đếm, khớp thì tự cập nhật tồn kho. Lệch chỉ <b>cảnh báo</b>, không chặn — có thể chọn loại khác rồi quay lại xử lý sau.</p>
+          <div class="field">
+            <label>Receipt ID (phiếu vừa OCR ở trên, hoặc nhập tay)</label>
+            <div class="row2">
+              <input type="number" id="countReceiptId" placeholder="VD: 47" />
+              <button class="ghost" onclick="loadLinesProgress()">Tải danh sách dòng hàng</button>
+            </div>
+          </div>
+          <div id="linesProgressList"><div class="empty">Nhập Receipt ID rồi bấm "Tải danh sách dòng hàng"</div></div>
+          <div id="countingWidget"></div>
+        </div>
+
+      </div>
+
+      <div>
+        <div class="card">
+          <h2>3 · Xuất kho</h2>
+          <p class="card-sub">Trừ tồn kho theo nguyên tắc FEFO (hết hạn sớm nhất trừ trước) nếu không chỉ định lô cụ thể.</p>
+          <div class="chips">
+            <button class="chip active" data-exportmode="camera" onclick="setExportMode('camera')">Xuất qua camera</button>
+            <button class="chip" data-exportmode="manual" onclick="setExportMode('manual')">Xuất tay (nhập số, trừ ngay)</button>
+          </div>
+
+          <div id="exportCameraPanel">
+            <div class="field">
+              <label>Sản phẩm</label>
+              <select id="exportCamProductId" onchange="updateExportStockInfo('camera')"><option value="">— Chọn sản phẩm —</option></select>
+              <div id="exportCamStockInfo" class="card-sub" style="margin-top:6px"></div>
+            </div>
+            <div class="field"><label>Số lượng dự kiến xuất (gõ tay, để camera đối chiếu)</label><input type="number" id="exportCamExpectedQty" placeholder="20" /></div>
+            <button class="primary" onclick="startExportSegment()">Bắt đầu đếm xuất</button>
+            <div id="exportCountingWidget"></div>
+          </div>
+
+          <div id="exportManualPanel" style="display:none">
+            <div class="field">
+              <label>Sản phẩm</label>
+              <select id="exportProductId" onchange="updateExportStockInfo('manual')"><option value="">— Chọn sản phẩm —</option></select>
+              <div id="exportStockInfo" class="card-sub" style="margin-top:6px"></div>
+            </div>
+            <div class="row2">
+              <div class="field"><label>Số lượng xuất</label><input type="number" id="exportQty" placeholder="10" /></div>
+              <div class="field"><label>Mã lô (để trống = tự động FEFO)</label><input type="text" id="exportBatch" placeholder="VD: LOT001" /></div>
+            </div>
+            <div class="field"><label>Ghi chú (tuỳ chọn)</label><input type="text" id="exportNote" placeholder="VD: Bán lẻ" /></div>
+            <button class="primary" onclick="exportInventory()">Xuất kho</button>
+            <div id="exportResult"></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Phiếu nhập gần đây</h2>
+          <div id="receiptsList"><div class="empty">Chưa có dữ liệu</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ VIEW: CẢNH BÁO ============ -->
+  <div class="view" id="view-alerts">
+    <div class="card">
+      <h2>Tất cả cảnh báo đang mở</h2>
+      <p class="card-sub">Bấm "Đã xử lý" sau khi kiểm tra thực tế xong — cảnh báo sẽ biến mất khỏi danh sách này.</p>
+      <div id="fullAlertsList"><div class="empty">Chưa có dữ liệu</div></div>
+    </div>
+  </div>
+
+</main>
+
+<footer>Demo nội bộ — khóa luận Quản lý Kho hàng Thông minh · gọi trực tiếp API FastAPI, không lưu dữ liệu ở trình duyệt</footer>
+<div class="toast" id="toast"></div>
+
+<script>
+let API = "";
+let productsCache = [];
+let inventoryCache = [];
+let productFilter = "all";
+let openBatchRows = new Set();
+
+function setDefaultApiBase(){
+  const guess = (location.protocol.startsWith("http")) ? location.origin : "http://localhost:8000";
+  document.getElementById("apiBase").value = guess;
+  API = guess;
+}
+setDefaultApiBase();
+
+function toast(msg, kind){
+  const el = document.getElementById("toast");
+  el.textContent = msg;
+  el.className = "toast show" + (kind ? " " + kind : "");
+  clearTimeout(el._t);
+  el._t = setTimeout(()=> el.classList.remove("show"), 3200);
+}
+
+function setStage(n){
+  document.querySelectorAll(".stage").forEach(s=>{
+    s.classList.toggle("active", parseInt(s.dataset.stage) === n);
+  });
+}
+
+async function api(path, opts={}){
+  API = document.getElementById("apiBase").value.replace(/\/$/, "");
+  const res = await fetch(API + path, opts);
+  if(!res.ok){
+    let detail = res.statusText;
+    try{ detail = (await res.json()).detail || detail; }catch(e){}
+    throw new Error(detail);
+  }
+  return res.json();
+}
+
+// ---------- Điều hướng tab ----------
+function switchView(name){
+  document.querySelectorAll(".view").forEach(v => v.classList.toggle("active", v.id === "view-" + name));
+  document.querySelectorAll(".navbtn").forEach(b => b.classList.toggle("active", b.dataset.view === name));
+  if(name === "products" && productsCache.length === 0) loadProducts();
+}
+
+// ---------- Kết nối + tải toàn bộ dữ liệu ----------
+async function checkHealth(){
+  const dot = document.getElementById("connDot");
+  try{
+    await api("/health");
+    dot.className = "dot ok";
+    toast("Đã kết nối API", "ok");
+    loadOverview();
+    loadProducts();
+    loadReceipts();
+    loadFullAlerts();
+  }catch(e){
+    dot.className = "dot bad";
+    toast("Không kết nối được: " + e.message, "err");
+  }
+}
+
+// ---------- TỔNG QUAN ----------
+async function loadOverview(){
+  try{
+    const [products, inventory, alerts, receipts] = await Promise.all([
+      api("/products"), api("/inventory"), api("/alerts?status=open"), api("/receipts")
+    ]);
+    document.getElementById("statProducts").textContent = products.length;
+    const totalStock = inventory.reduce((s,i)=>s+parseFloat(i.quantity),0);
+    document.getElementById("statStock").textContent = totalStock.toLocaleString("vi-VN");
+    document.getElementById("statAlerts").textContent = alerts.length;
+    document.getElementById("alertCount").textContent = alerts.length;
+    const pending = receipts.filter(r => r.status === "pending_ocr").length;
+    document.getElementById("statPending").textContent = pending;
+
+    const alertsBox = document.getElementById("overviewAlerts");
+    alertsBox.innerHTML = alerts.length ? alerts.slice(0,5).map(renderAlertItem).join("") : `<div class="empty">Không có cảnh báo nào đang mở 🎉</div>`;
+
+    const receiptsBox = document.getElementById("overviewReceipts");
+    receiptsBox.innerHTML = receipts.length ? renderReceiptsTable(receipts.slice(0,5)) : `<div class="empty">Chưa có phiếu nào</div>`;
+  }catch(e){
+    toast("Không tải được tổng quan: " + e.message, "err");
+  }
+}
+
+// ---------- SẢN PHẨM ----------
+async function loadProducts(){
+  const box = document.getElementById("productsTable");
+  box.innerHTML = `<div class="empty">Đang tải…</div>`;
+  try{
+    const [products, inventory] = await Promise.all([api("/products"), api("/inventory")]);
+    productsCache = products;
+    inventoryCache = inventory;
+    populateExportProductSelect();
+    renderProductsTable();
+  }catch(e){
+    box.innerHTML = `<div class="empty">Chưa kết nối được API (${e.message})</div>`;
+  }
+}
+
+function setProductFilter(f){
+  productFilter = f;
+  document.querySelectorAll(".chip").forEach(c => c.classList.toggle("active", c.dataset.filter === f));
+  renderProductsTable();
+}
+
+function renderProductsTable(){
+  const box = document.getElementById("productsTable");
+  if(productsCache.length === 0){ box.innerHTML = `<div class="empty">Chưa có sản phẩm nào trong danh mục</div>`; return; }
+
+  const search = (document.getElementById("productSearch").value || "").toLowerCase().trim();
+  const rows = productsCache.map(p => {
+    const batches = inventoryCache.filter(i => i.product_id === p.id);
+    const total = batches.reduce((s,b)=>s+parseFloat(b.quantity),0);
+    return { ...p, total, batches };
+  }).filter(p => {
+    if(search && !(p.name.toLowerCase().includes(search) || (p.sku||"").toLowerCase().includes(search))) return false;
+    if(productFilter === "low" && !(p.total > 0 && p.total <= p.low_stock_threshold)) return false;
+    if(productFilter === "out" && p.total > 0) return false;
+    return true;
+  });
+
+  if(rows.length === 0){ box.innerHTML = `<div class="empty">Không tìm thấy sản phẩm phù hợp</div>`; return; }
+
+  const trs = rows.map(p => {
+    const statusInfo = p.total === 0
+      ? { cls:"stock-out", label:"Hết hàng" }
+      : p.total <= p.low_stock_threshold
+        ? { cls:"stock-low", label:"Sắp hết hàng" }
+        : { cls:"stock-ok", label:"Đủ hàng" };
+    const isOpen = openBatchRows.has(p.id);
+    const batchRows = p.batches.length ? p.batches.map(b => `
+        <tr><td class="mono">${b.batch_code}</td><td class="mono">${b.quantity}</td><td class="mono">${b.expiry_date || "—"}</td></tr>
+      `).join("") : `<tr><td colspan="3" class="muted">Chưa có lô nào trong tồn kho</td></tr>`;
+    return `
+      <tr class="clickable" onclick="toggleBatches(${p.id})">
+        <td><span class="chevron ${isOpen ? "open" : ""}">▸</span></td>
+        <td class="mono">${p.sku || "—"}</td>
+        <td><b>${p.name}</b></td>
+        <td>${p.category || "—"}</td>
+        <td class="mono">${p.total} ${p.unit}</td>
+        <td><span class="badge ${statusInfo.cls}">${statusInfo.label}</span></td>
+      </tr>
+      <tr class="batch-row" style="display:${isOpen ? "table-row" : "none"}">
+        <td colspan="6">
+          <div class="batch-inner">
+            <table>
+              <thead><tr><th>Mã lô</th><th>Số lượng</th><th>Hạn sử dụng</th></tr></thead>
+              <tbody>${batchRows}</tbody>
+            </table>
+          </div>
+        </td>
+      </tr>`;
+  }).join("");
+
+  box.innerHTML = `
+    <table>
+      <thead><tr><th></th><th>SKU</th><th>Tên sản phẩm</th><th>Danh mục</th><th>Tổng tồn kho</th><th>Trạng thái</th></tr></thead>
+      <tbody>${trs}</tbody>
+    </table>`;
+}
+
+function toggleBatches(productId){
+  if(openBatchRows.has(productId)) openBatchRows.delete(productId);
+  else openBatchRows.add(productId);
+  renderProductsTable();
+}
+
+function populateExportProductSelect(){
+  const options = `<option value="">— Chọn sản phẩm —</option>` +
+    productsCache.map(p => `<option value="${p.id}">${p.name}${p.sku ? " (" + p.sku + ")" : ""}</option>`).join("");
+  for(const id of ["exportProductId", "exportCamProductId"]){
+    const sel = document.getElementById(id);
+    if(!sel) continue;
+    const current = sel.value;
+    sel.innerHTML = options;
+    if(current) sel.value = current;
+  }
+}
+
+function setExportMode(mode){
+  document.querySelectorAll("[data-exportmode]").forEach(c => c.classList.toggle("active", c.dataset.exportmode === mode));
+  document.getElementById("exportCameraPanel").style.display = mode === "camera" ? "" : "none";
+  document.getElementById("exportManualPanel").style.display = mode === "manual" ? "" : "none";
+}
+
+// ---------- Hiện tồn kho hiện có khi chọn sản phẩm để xuất ----------
+function updateExportStockInfo(panel){
+  const selectId = panel === "camera" ? "exportCamProductId" : "exportProductId";
+  const infoId = panel === "camera" ? "exportCamStockInfo" : "exportStockInfo";
+  const productId = parseInt(document.getElementById(selectId).value);
+  const info = document.getElementById(infoId);
+  if(!productId){ info.innerHTML = ""; return; }
+
+  const product = productsCache.find(p => p.id === productId);
+  const batches = inventoryCache.filter(i => i.product_id === productId && parseFloat(i.quantity) > 0);
+  const total = batches.reduce((s, b) => s + parseFloat(b.quantity), 0);
+  const unit = product ? product.unit : "";
+
+  if(!batches.length){
+    info.innerHTML = `<span style="color:var(--danger)">⚠ Sản phẩm này hiện KHÔNG còn tồn kho</span>`;
+    return;
+  }
+
+  const batchLines = batches
+    .slice().sort((a,b) => (a.expiry_date || "9999").localeCompare(b.expiry_date || "9999"))
+    .map(b => `lô <span class="mono">${b.batch_code}</span>: ${b.quantity} ${unit}${b.expiry_date ? " (HSD " + b.expiry_date + ")" : ""}`)
+    .join(" · ");
+
+  info.innerHTML = `Tồn kho hiện có: <b style="color:var(--text)">${total.toLocaleString("vi-VN")} ${unit}</b><br>${batchLines}`;
+}
+
+// ---------- Đếm theo từng loại hàng (NHẬP) ----------
+const COUNTING_STATUS_LABEL = {
+  not_started: "chưa bắt đầu",
+  counting: "đang đếm",
+  matched: "đã khớp",
+  needs_review: "lệch — cần kiểm tra sau",
+  resolved_override: "đã xử lý (ghi đè)",
+};
+const COUNTING_STATUS_BADGE = {
+  not_started: "pending_ocr",
+  counting: "reconciled",
+  matched: "matched",
+  needs_review: "flagged",
+  resolved_override: "matched",
+};
+
+async function loadLinesProgress(){
+  const receiptId = parseInt(document.getElementById("countReceiptId").value);
+  const box = document.getElementById("linesProgressList");
+  if(!receiptId){ toast("Nhập Receipt ID trước", "err"); return; }
+  box.innerHTML = `<div class="empty">Đang tải…</div>`;
+  document.getElementById("countingWidget").innerHTML = "";
+  try{
+    const lines = await api(`/receipts/${receiptId}/lines-progress`);
+    if(!lines.length){ box.innerHTML = `<div class="empty">Phiếu này không có dòng hàng nào.</div>`; return; }
+    box.innerHTML = `
+      <table>
+        <thead><tr><th>Sản phẩm (OCR)</th><th>SL phiếu</th><th>SL camera đếm</th><th>Trạng thái</th><th></th></tr></thead>
+        <tbody>${lines.map(renderLineProgressRow).join("")}</tbody>
+      </table>`;
+  }catch(e){
+    box.innerHTML = `<div class="empty" style="border-color:var(--danger);color:var(--danger)">Lỗi: ${e.message}</div>`;
+  }
+}
+
+function renderLineProgressRow(line){
+  const badge = COUNTING_STATUS_BADGE[line.counting_status] || "pending_ocr";
+  const label = COUNTING_STATUS_LABEL[line.counting_status] || line.counting_status;
+  const canStart = line.counting_status === "not_started" || line.counting_status === "needs_review";
+  const btnLabel = line.counting_status === "needs_review" ? "Đếm lại loại này" : "Bắt đầu đếm";
+  return `
+    <tr>
+      <td>${line.product_name_raw}</td>
+      <td class="mono">${line.declared_quantity}</td>
+      <td class="mono">${line.counted_quantity ?? "—"}</td>
+      <td><span class="badge ${badge}">${label}</span></td>
+      <td>${canStart ? `<button class="ghost" onclick='beginImportSegment(${JSON.stringify(line)})'>${btnLabel}</button>` : ""}</td>
+    </tr>`;
+}
+
+async function beginImportSegment(line){
+  const widget = document.getElementById("countingWidget");
+  widget.innerHTML = `<div class="empty">Đang bắt đầu đếm "${line.product_name_raw}"…</div>`;
+  try{
+    const session = await api("/camera-sessions/start-import", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ receipt_line_item_id: line.line_id })
+    });
+    renderCountingWidget(session, line.declared_quantity, line.product_name_raw, "import");
+  }catch(e){
+    widget.innerHTML = `<div class="empty" style="border-color:var(--danger);color:var(--danger)">Lỗi: ${e.message}</div>`;
+  }
+}
+
+// ---------- Đếm theo từng loại hàng (XUẤT) ----------
+async function startExportSegment(){
+  const productId = parseInt(document.getElementById("exportCamProductId").value);
+  const expectedQty = parseFloat(document.getElementById("exportCamExpectedQty").value);
+  const widget = document.getElementById("exportCountingWidget");
+  if(!productId || !expectedQty){ toast("Chọn sản phẩm và nhập số lượng dự kiến xuất", "err"); return; }
+  const productName = document.getElementById("exportCamProductId").selectedOptions[0].textContent;
+  widget.innerHTML = `<div class="empty">Đang bắt đầu đếm…</div>`;
+  try{
+    const session = await api("/camera-sessions/start-export", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ product_id: productId, expected_quantity: expectedQty })
+    });
+    renderCountingWidget(session, expectedQty, productName, "export");
+  }catch(e){
+    widget.innerHTML = `<div class="empty" style="border-color:var(--danger);color:var(--danger)">Lỗi: ${e.message}</div>`;
+  }
+}
+
+// ---------- Widget đếm dùng chung cho cả nhập & xuất ----------
+// GHI CHÚ: chưa có camera thật (đang chờ model YOLOv8 của Luân) — số đếm ở đây
+// là MÔ PHỎNG để demo luồng, bấm "+1" giả lập mỗi lần camera phát hiện 1 thùng,
+// hoặc bật "Tự động" để tự tăng dần. Khi có model thật, phần này thay bằng số
+// nhận trực tiếp từ camera/count_pipeline.py qua WebSocket.
+function renderCountingWidget(session, expectedQty, productName, direction){
+  let count = 0;
+  let autoTimer = null;
+  const targetBox = direction === "import" ? "countingWidget" : "exportCountingWidget";
+  const box = document.getElementById(targetBox);
+
+  function draw(){
+    box.innerHTML = `
+      <div class="result-box">
+        <div style="margin-bottom:10px">Đang đếm <b>${productName}</b> — phiên #${session.id} · cần khớp <span class="mono">${expectedQty}</span></div>
+        <div style="font-size:36px;font-family:'IBM Plex Mono',monospace;font-weight:600;margin-bottom:12px">${count}</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <button class="ghost" onclick="window._countStep()">+1 (mô phỏng đếm)</button>
+          <button class="ghost" onclick="window._countAuto()" id="autoBtn">▶ Tự động đếm</button>
+          <button class="primary" onclick="window._countStop()">Xong loại này</button>
+        </div>
+      </div>`;
+  }
+
+  window._countStep = () => { count++; draw(); };
+  window._countAuto = () => {
+    if(autoTimer){ clearInterval(autoTimer); autoTimer = null; draw(); return; }
+    autoTimer = setInterval(() => {
+      count++;
+      draw();
+      if(count >= expectedQty) { clearInterval(autoTimer); autoTimer = null; }
+    }, 400);
+    draw();
+    document.getElementById("autoBtn").textContent = "⏸ Đang tự động…";
+  };
+  window._countStop = async () => {
+    if(autoTimer) clearInterval(autoTimer);
+    box.innerHTML = `<div class="empty">Đang gửi kết quả & đối chiếu…</div>`;
+    try{
+      const result = await api(`/camera-sessions/${session.id}/stop`, {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ counted_quantity: count })
+      });
+      const ok = result.session.status === "completed";
+      box.innerHTML = `
+        <div class="result-box">
+          <span class="badge ${ok ? "matched" : "flagged"}">${ok ? "Khớp" : "Lệch — cần kiểm tra sau"}</span>
+          <div style="margin-top:8px">${result.message}</div>
+        </div>`;
+      toast(result.message, ok ? "ok" : "err");
+      if(direction === "import") loadLinesProgress();
+      loadProducts(); loadOverview(); loadFullAlerts();
+    }catch(e){
+      box.innerHTML = `<div class="empty" style="border-color:var(--danger);color:var(--danger)">Lỗi: ${e.message}</div>`;
+    }
+  };
+
+  draw();
+}
+
+// ---------- Upload phiếu + OCR ----------
+async function uploadReceipt(){
+  const fileInput = document.getElementById("receiptFile");
+  const btn = document.getElementById("uploadBtn");
+  const box = document.getElementById("uploadResult");
+  if(!fileInput.files.length){ toast("Chọn ảnh phiếu trước đã", "err"); return; }
+
+  setStage(2);
+  btn.disabled = true; btn.textContent = "Đang chạy OCR…";
+  box.innerHTML = "";
+
+  const fd = new FormData();
+  fd.append("file", fileInput.files[0]);
+  const loc = document.getElementById("storeLocation").value;
+  if(loc) fd.append("store_location", loc);
+
+  try{
+    API = document.getElementById("apiBase").value.replace(/\/$/, "");
+    const res = await fetch(API + "/receipts/upload?" + (loc ? "store_location=" + encodeURIComponent(loc) : ""), {
+      method:"POST", body: fd
+    });
+    if(!res.ok){
+      const err = await res.json().catch(()=>({detail:res.statusText}));
+      throw new Error(err.detail);
+    }
+    const receipt = await res.json();
+    setStage(3);
+    renderReceiptResult(receipt, box);
+    toast(`OCR xong — trích được ${receipt.line_items.length} dòng hàng`, "ok");
+    loadReceipts();
+    loadOverview();
+  }catch(e){
+    box.innerHTML = `<div class="empty" style="border-color:var(--danger);color:var(--danger)">Lỗi: ${e.message}</div>`;
+    toast("OCR thất bại: " + e.message, "err");
+  }finally{
+    btn.disabled = false; btn.textContent = "Upload & chạy OCR";
+    setTimeout(()=>setStage(0), 1500);
+  }
+}
+
+function renderReceiptResult(receipt, box){
+  const rows = receipt.line_items.map(li => `
+    <tr>
+      <td>${li.line_no}</td>
+      <td>${li.product_name_raw || "—"}</td>
+      <td>${li.product_id ? `<span class="badge stock-ok">đã khớp #${li.product_id}</span>` : `<span class="badge low_stock">chưa khớp</span>`}</td>
+      <td class="mono">${li.quantity ?? "—"}</td>
+      <td class="mono">${li.batch_code || "—"}</td>
+      <td class="mono">${li.expiry_date || "—"}</td>
+    </tr>`).join("");
+  box.innerHTML = `
+    <div class="result-box">
+      <div style="margin-bottom:8px">
+        Phiếu #${receipt.id} · <span class="badge ${receipt.status}">${receipt.status}</span>
+        · độ tin cậy OCR: ${receipt.ocr_confidence != null ? (receipt.ocr_confidence*100).toFixed(1)+"%" : "—"}
+      </div>
+      ${receipt.line_items.length ? `
+      <table>
+        <thead><tr><th>#</th><th>Sản phẩm (OCR)</th><th>Danh mục</th><th>SL</th><th>Mã lô</th><th>HSD</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>` : `<div class="muted">Không trích được dòng hàng nào — thử ảnh rõ nét/có khung bảng hơn.</div>`}
+    </div>`;
+}
+
+// ---------- Xuất kho ----------
+async function exportInventory(){
+  const productId = parseInt(document.getElementById("exportProductId").value);
+  const quantity = parseFloat(document.getElementById("exportQty").value);
+  const batchCode = document.getElementById("exportBatch").value.trim();
+  const note = document.getElementById("exportNote").value.trim();
+  const box = document.getElementById("exportResult");
+
+  if(!productId || !quantity){ toast("Chọn sản phẩm và nhập số lượng", "err"); return; }
+  box.innerHTML = `<div class="empty">Đang xử lý…</div>`;
+
+  try{
+    const payload = { product_id: productId, quantity };
+    if(batchCode) payload.batch_code = batchCode;
+    if(note) payload.note = note;
+    const result = await api("/inventory/export", {
+      method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(payload)
+    });
+    box.innerHTML = `
+      <div class="result-box">
+        <div>Đã xuất <b class="mono">${result.total_exported}</b> — trừ qua ${result.details.length} lô:</div>
+        <table style="margin-top:8px">
+          <thead><tr><th>Mã lô</th><th>Đã trừ</th><th>Còn lại</th></tr></thead>
+          <tbody>${result.details.map(d => `<tr><td class="mono">${d.batch_code}</td><td class="mono">${d.quantity_deducted}</td><td class="mono">${d.remaining_in_batch}</td></tr>`).join("")}</tbody>
+        </table>
+      </div>`;
+    toast("Xuất kho thành công", "ok");
+    document.getElementById("exportQty").value = "";
+    document.getElementById("exportBatch").value = "";
+    document.getElementById("exportNote").value = "";
+    loadProducts(); loadOverview(); loadFullAlerts();
+  }catch(e){
+    box.innerHTML = `<div class="empty" style="border-color:var(--danger);color:var(--danger)">Lỗi: ${e.message}</div>`;
+    toast("Xuất kho thất bại: " + e.message, "err");
+  }
+}
+
+// ---------- Cảnh báo ----------
+function renderAlertItem(a){
+  return `
+    <div class="alert-item">
+      <div>
+        <span class="badge ${a.alert_type}">${a.alert_type}</span>
+        <div class="msg">${a.message}</div>
+      </div>
+      <button class="ghost" onclick="acknowledgeAlert(${a.id})" style="flex:none">Đã xử lý</button>
+    </div>`;
+}
+
+async function loadFullAlerts(){
+  const box = document.getElementById("fullAlertsList");
+  try{
+    const items = await api("/alerts?status=open");
+    document.getElementById("alertCount").textContent = items.length;
+    box.innerHTML = items.length ? items.map(renderAlertItem).join("") : `<div class="empty">Không có cảnh báo nào đang mở 🎉</div>`;
+  }catch(e){
+    box.innerHTML = `<div class="empty">Chưa kết nối được API</div>`;
+  }
+}
+
+async function acknowledgeAlert(id){
+  try{
+    await api(`/alerts/${id}/acknowledge`, { method:"POST" });
+    toast("Đã đánh dấu xử lý", "ok");
+    loadFullAlerts(); loadOverview();
+  }catch(e){
+    toast("Không xử lý được: " + e.message, "err");
+  }
+}
+
+// ---------- Phiếu nhập gần đây ----------
+function renderReceiptsTable(items){
+  return `<table><thead><tr><th>ID</th><th>Địa điểm</th><th>Trạng thái</th></tr></thead><tbody>
+    ${items.map(r=>`<tr><td>#${r.id}</td><td>${r.store_location||"—"}</td><td><span class="badge ${r.status}">${r.status}</span></td></tr>`).join("")}
+  </tbody></table>`;
+}
+
+async function loadReceipts(){
+  const box = document.getElementById("receiptsList");
+  try{
+    const items = await api("/receipts");
+    box.innerHTML = items.length ? renderReceiptsTable(items) : `<div class="empty">Chưa có phiếu nào</div>`;
+  }catch(e){
+    box.innerHTML = `<div class="empty">Chưa kết nối được API</div>`;
+  }
+}
+</script>
+</body>
+</html>

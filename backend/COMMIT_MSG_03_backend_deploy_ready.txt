@@ -1,0 +1,46 @@
+fix(backend): bổ sung toàn bộ project bị thiếu — build Railway fail do thiếu requirements.txt
+
+Bối cảnh lỗi:
+Lần deploy Railway đầu tiên FAILED ngay ở bước "Build > Build image"
+(00:04s). Log lỗi cho thấy cây thư mục Railway nhận được chỉ có:
+  ./
+  ├─ app/
+  ├─ .env.example
+  ├─ Procfile
+  └─ nixpacks.toml
+Thiếu hẳn requirements.txt và các thư mục camera/, db/, ocr/, static/,
+models/ — nguyên nhân là commit trước chỉ add đúng 4 file trong bản vá
+(patch) gửi qua, chưa gộp với toàn bộ project gốc.
+
+Thay đổi trong commit này:
+- Thêm requirements.txt (danh sách đầy đủ thư viện: fastapi, sqlalchemy,
+  paddleocr, vietocr, ultralytics, anthropic...).
+- Thêm thư mục camera/ (pipeline đếm YOLOv8+ByteTrack, count_pipeline.py).
+- Thêm thư mục db/ (schema, seed data, script migration).
+- Thêm thư mục ocr/ (OCR engine đọc Phiếu nhập hàng).
+- Thêm thư mục static/ (giao diện admin desktop index.html).
+- Thêm thư mục models/ (rỗng, kèm README.md ghi chú — cần tự tải
+  carton_counter_best.pt từ Kaggle Output rồi copy vào đây, xem README).
+- Giữ nguyên app/, .env.example, Procfile, nixpacks.toml đã có từ
+  commit trước — không đổi gì thêm ở các file này.
+
+Phát hiện thêm trong lúc xử lý lỗi (CHƯA cần sửa code, chỉ cần cấu
+hình trên Railway Dashboard):
+Railway hiện dùng builder mặc định "Railpack" (thay thế Nixpacks từ
+3/2026) — Railpack KHÔNG đọc file nixpacks.toml (khác định dạng config
+hoàn toàn với Nixpacks cũ). File nixpacks.toml vẫn giữ trong repo
+(không hại gì, phòng khi sau này đổi builder về Nixpacks cổ điển), 
+nhưng để bước ép cài opencv-python-headless (né lỗi thiếu libGL trên
+môi trường headless) thực sự có tác dụng, PHẢI đặt biến môi trường
+RAILPACK_INSTALL_CMD trực tiếp trên Railway Dashboard > Variables:
+
+  RAILPACK_INSTALL_CMD=pip install -r requirements.txt && pip uninstall -y opencv-python opencv-contrib-python opencv-python-headless && pip install opencv-python-headless==4.10.0.84
+
+Việc này KHÔNG nằm trong code/commit — là bước cấu hình thủ công trên
+Railway, ghi lại đây để nhóm nhớ đã làm gì và vì sao.
+
+Việc cần làm sau khi push commit này:
+1. Tải carton_counter_best.pt từ Kaggle, đặt vào backend/models/,
+   commit riêng (không nằm trong commit này vì file lấy từ máy khác).
+2. Đặt RAILPACK_INSTALL_CMD trên Railway Dashboard như trên.
+3. Theo dõi lại tab Deployments — build sẽ chạy lại tự động sau push.

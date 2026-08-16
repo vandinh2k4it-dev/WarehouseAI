@@ -1,0 +1,44 @@
+fastapi==0.115.*
+uvicorn[standard]==0.32.*
+sqlalchemy==2.0.*
+psycopg2-binary==2.9.*
+pydantic==2.9.*
+python-multipart==0.0.*
+python-dotenv==1.0.*
+
+# OCR — PaddleOCR chỉ dùng để DÒ VỊ TRÍ dòng chữ (detection)
+paddlepaddle==2.6.*
+paddleocr==2.9.*
+rapidfuzz==3.10.*
+
+# OCR — VietOCR dùng để ĐỌC CHỮ (recognition), model riêng cho tiếng Việt,
+# đọc dấu chính xác hơn hẳn PaddleOCR lang='vi' (thực chất dùng chung bộ ký
+# tự 'latin' với Pháp/Đức, thiếu nhiều tổ hợp dấu Việt)
+vietocr==0.3.*
+# vietocr DÙNG torch (qua vietocr/tool/translate.py) nhưng KHÔNG khai báo
+# torch là dependency trong package metadata của chính nó (lỗi đóng gói của
+# vietocr) -> nếu không có dòng này, torch chỉ vô tình được cài nhờ
+# ultralytics (dùng cho camera/count_pipeline.py) kéo theo. Ghim tường minh
+# để không phụ thuộc ngầm vào thứ tự cài đặt của package khác.
+torch
+# vietocr -> gdown==4.4.0 (bản cũ) vẫn dùng `import pkg_resources` kiểu cũ,
+# trong khi setuptools>=82 đã GỠ HẲN pkg_resources (xem changelog setuptools
+# v82.0.0) -> ImportError "No module named 'pkg_resources'" khi khởi tạo
+# VietOCR Predictor. Ghim setuptools dưới bản gỡ tính năng này:
+setuptools<82
+# LƯU Ý: vietocr ghim albumentations==1.4.2, paddleocr cần ==1.4.10 -> pip sẽ
+# cảnh báo dependency conflict (không chặn cài). Sau khi `pip install -r
+# requirements.txt` xong, chạy thêm 1 lệnh để ép về bản paddleocr cần:
+#   pip install albumentations==1.4.10 --no-deps
+# (an toàn vì cả 2 thư viện chỉ dùng albumentations lúc TRAIN, không dùng
+# lúc suy luận — ở đây ta chỉ inference, không train)
+
+# dùng khi chuyển sang migration thật thay vì create_all()
+alembic==1.13.*
+
+# Chatbot Claude API (mục 6.6 đề cương) — function-calling truy vấn DB thật
+anthropic==0.40.*
+
+# Camera counting pipeline (camera/count_pipeline.py) — YOLOv8 + ByteTrack thật
+ultralytics==8.3.*
+requests==2.32.*
