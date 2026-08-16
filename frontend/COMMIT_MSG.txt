@@ -1,74 +1,26 @@
-feat(frontend): 4 tính năng nhỏ — quét ảnh 2 cách, nhập tay, gợi ý tồn kho, sắp xếp sản phẩm
+fix(frontend): gửi bù App.jsx + ImportFlow.jsx — sót từ commit trước
 
-============================================================
-1. Quét phiếu — thêm "Chọn ảnh có sẵn" bên cạnh "Chụp ảnh"
-============================================================
-- src/pages/ScanReceipt.jsx: trước chỉ có 1 nút chụp ảnh
-  (capture="environment" ép mở camera). Giờ có 2 nút riêng: "📷 Chụp
-  ảnh" (vẫn ép mở camera) và "🖼 Chọn ảnh có sẵn" (input không có
-  capture, mở trình duyệt file/thư viện ảnh bình thường) — dùng khi
-  phiếu đã chụp sẵn từ trước hoặc nhận qua Zalo/tin nhắn.
+Bối cảnh lỗi:
+Bạn báo không thấy nút "+ Quét phiếu mới" trên trang danh sách phiếu
+nhập, dù mình đã báo tính năng quét phiếu (ScanReceipt.jsx) đã xong.
 
-============================================================
-2. Nhập tay số lượng đã đếm (thay vì bắt buộc quay video)
-============================================================
-- src/api.js: thêm stopManualCount(sessionId, countedQuantity) — gọi
-  thẳng POST /camera-sessions/{id}/stop (JSON, không upload file),
-  dùng chung 1 endpoint đã có sẵn trên backend, không cần thêm gì mới
-  phía server.
-- src/components/CountingScreen.jsx: thêm toggle "🎥 Quay video" /
-  "✍️ Nhập tay" ở đầu màn hình đếm. Chọn "Nhập tay" hiện ô số + nút
-  "Xác nhận số đã đếm", gọi stopManualCount() — cùng luồng đối chiếu
-  khớp/lệch như quay video, chỉ khác nguồn số liệu đầu vào. Dùng cho
-  cả Nhập lẫn Xuất (component dùng chung).
+Nguyên nhân thật (lỗi đóng gói của mình, không phải lỗi code):
+Khi xây tính năng quét phiếu, mình có sửa 3 file: ScanReceipt.jsx
+(trang mới), App.jsx (đăng ký route /import/scan), và ImportFlow.jsx
+(thêm nút "+ Quét phiếu mới" dẫn tới route đó). Nhưng lúc đó bạn yêu
+cầu tạm dừng tính năng này để làm việc khác, nên mình CHƯA đóng gói
+gửi cả 3 file — chỉ có ScanReceipt.jsx được gửi sau này (lẫn trong
+đợt "4 tính năng nhỏ"), còn App.jsx và ImportFlow.jsx bị BỎ SÓT hoàn
+toàn, chưa từng gửi cho bạn ở bất kỳ lần nào trước đó.
 
-============================================================
-3. Xuất kho — hiện tồn kho ngay khi chọn sản phẩm
-============================================================
-- src/pages/ExportFlow.jsx: gọi thêm api.listInventory() song song lúc
-  tải trang. Dropdown chọn sản phẩm giờ hiện số tồn kho NGAY TRONG
-  từng dòng lựa chọn (vd "Bánh Cosy quy bơ (SP-012) — còn 28 thùng").
-  Chọn xong hiện thêm khung chi tiết bên dưới: tổng tồn kho, từng lô
-  kèm HSD (sắp theo HSD tăng dần — lô sắp hết hạn hiện trước, đúng ưu
-  tiên FEFO), cảnh báo đỏ nếu dưới ngưỡng cảnh báo hoặc hết sạch tồn
-  kho — giúp nhân viên biết ngay có đủ hàng để xuất hay không TRƯỚC
-  khi gõ số lượng, tránh xuất vượt quá tồn kho thực tế.
+Kết quả: ScanReceipt.jsx nằm sẵn trong code bạn, nhưng KHÔNG CÓ ROUTE
+nào trỏ tới nó (App.jsx chưa đăng ký) và KHÔNG CÓ NÚT nào để vào trang
+đó (ImportFlow.jsx chưa có nút) — nên hoàn toàn không thể truy cập
+được dù code đã có sẵn.
 
-============================================================
-4. Sản phẩm — sắp xếp theo ngày nhập / HSD tăng-giảm dần
-============================================================
-- src/pages/Products.jsx: thêm dropdown "Sắp xếp theo" với 5 lựa
-  chọn: Mặc định (theo tên) / HSD sắp hết trước / HSD còn xa trước /
-  Nhập gần đây trước / Nhập lâu rồi trước.
-  - "Ngày nhập" tính từ last_updated mới nhất trong các lô tồn kho
-    của sản phẩm đó (không có cột "ngày nhập" riêng ở cấp sản phẩm,
-    dùng lô cập nhật gần nhất làm đại diện hợp lý).
-  - "HSD" tính từ hạn sử dụng GẦN NHẤT trong các lô còn hàng (đúng ý
-    nghĩa "cần chú ý sớm nhất", không phải trung bình).
-  - Sản phẩm hết tồn kho (không có lô nào) luôn bị đẩy xuống cuối danh
-    sách khi sắp theo HSD/ngày nhập, không có giá trị hợp lệ để so.
-  - Dùng useMemo tính sẵn giá trị enrich (tổng tồn, HSD gần nhất, ngày
-    nhập gần nhất) 1 lần, tránh tính toán lại mỗi lần re-render.
+File trong lần gửi bù này:
+- src/App.jsx — đăng ký route "/import/scan" -> ScanReceipt
+- src/pages/ImportFlow.jsx — thêm nút "+ Quét phiếu mới" ở đầu danh
+  sách phiếu, dẫn tới /import/scan
 
-============================================================
-ĐÃ TỰ KIỂM TRA (Playwright + backend thật, seed data đầy đủ)
-============================================================
-- Quét phiếu: 2 nút hiện đúng, tách biệt rõ ràng.
-- Xuất kho: dropdown hiện đúng "còn 28 thùng" trong option, khung chi
-  tiết bên dưới hiện đúng lô + HSD sau khi chọn "Bánh Cosy quy bơ".
-- Sản phẩm: sắp xếp "HSD sắp hết trước" đổi ĐÚNG thứ tự thật (Omo 3kg
-  lên đầu vì có lô HSD 2026-08-21, sớm nhất trong toàn bộ danh mục).
-- Màn hình đếm: chuyển qua lại 2 chế độ đúng, và QUAN TRỌNG NHẤT — đã
-  test "Nhập tay" gọi API THẬT, nhập số 5 khớp đúng với "cần 5", nhận
-  đúng thông báo "Khớp số — đã cập nhật kho", không phải chỉ giao diện
-  đổi trạng thái suông mà không có tác dụng thật.
-- npm run build thành công, không lỗi.
-
-Việc còn thiếu (đã thống nhất với người dùng — làm sau, không nằm
-trong phạm vi lần sửa này):
-- Đếm cộng dồn theo thời gian thực khi đang quay (cần đổi kiến trúc
-  lớn — chạy model ngay trên trình duyệt hoặc streaming khung hình
-  liên tục lên server, không phải chỉnh nhỏ).
-- Cảnh báo đẩy thông báo ra điện thoại (Web Push — cần hạ tầng mới
-  hoàn toàn: VAPID key, service worker xử lý push, backend chủ động
-  gửi khi có Alert mới).
+Đã build lại (npm run build) xác nhận không lỗi trước khi gửi.

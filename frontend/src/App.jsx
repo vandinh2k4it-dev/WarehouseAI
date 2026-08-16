@@ -6,6 +6,7 @@ import Alerts from "./pages/Alerts";
 import InOutChoice from "./pages/InOutChoice";
 import ImportFlow from "./pages/ImportFlow";
 import ExportFlow from "./pages/ExportFlow";
+import ScanReceipt from "./pages/ScanReceipt";
 import "./styles/app.css";
 
 // Dùng HashRouter (URL dạng /#/import) thay vì BrowserRouter — tránh cần
@@ -31,6 +32,7 @@ export default function App() {
           <Route path="/alerts" element={<Alerts />} />
           <Route path="/inout" element={<InOutChoice />} />
           <Route path="/import" element={<ImportFlow />} />
+          <Route path="/import/scan" element={<ScanReceipt />} />
           <Route path="/export" element={<ExportFlow />} />
         </Route>
       </Routes>

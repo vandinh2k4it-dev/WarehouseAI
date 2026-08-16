@@ -154,7 +154,12 @@ export default function ImportFlow() {
         ← Chọn Nhập / Xuất kho
       </Link>
       <div className="card">
-        <h2>Chọn phiếu nhập</h2>
+        <div className="card-headRow">
+          <h2>Chọn phiếu nhập</h2>
+          <Link to="/import/scan" className="tapbtn">
+            + Quét phiếu mới
+          </Link>
+        </div>
 
         {loadingReceipts && <div className="empty">Đang tải danh sách phiếu…</div>}
         {errorMsg && <div className="empty" style={{ color: "var(--danger)" }}>{errorMsg}</div>}
