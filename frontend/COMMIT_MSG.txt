@@ -1,26 +1,56 @@
-fix(frontend): gửi bù App.jsx + ImportFlow.jsx — sót từ commit trước
+feat(frontend): Web Push — bật thông báo đẩy trên trang Cảnh báo
 
-Bối cảnh lỗi:
-Bạn báo không thấy nút "+ Quét phiếu mới" trên trang danh sách phiếu
-nhập, dù mình đã báo tính năng quét phiếu (ScanReceipt.jsx) đã xong.
+Nối vào backend đã có sẵn (xem COMMIT_MSG.txt bên backend cùng đợt).
 
-Nguyên nhân thật (lỗi đóng gói của mình, không phải lỗi code):
-Khi xây tính năng quét phiếu, mình có sửa 3 file: ScanReceipt.jsx
-(trang mới), App.jsx (đăng ký route /import/scan), và ImportFlow.jsx
-(thêm nút "+ Quét phiếu mới" dẫn tới route đó). Nhưng lúc đó bạn yêu
-cầu tạm dừng tính năng này để làm việc khác, nên mình CHƯA đóng gói
-gửi cả 3 file — chỉ có ScanReceipt.jsx được gửi sau này (lẫn trong
-đợt "4 tính năng nhỏ"), còn App.jsx và ImportFlow.jsx bị BỎ SÓT hoàn
-toàn, chưa từng gửi cho bạn ở bất kỳ lần nào trước đó.
+File mới:
+- src/sw.js
+  Service worker TỰ VIẾT (thay cho service worker tự sinh của Workbox
+  trước đây) — xử lý sự kiện 'push' (hiện thông báo hệ thống) và
+  'notificationclick' (bấm vào thông báo mở đúng trang, focus tab có
+  sẵn thay vì mở tab mới nếu app đã đang mở).
+- src/pushNotifications.js
+  Các hàm tiện ích: subscribeToPush(), unsubscribeFromPush(),
+  getCurrentSubscription(), kiểm tra hỗ trợ/quyền — tách riêng khỏi
+  UI component để dùng lại được nếu sau này cần ở trang khác.
 
-Kết quả: ScanReceipt.jsx nằm sẵn trong code bạn, nhưng KHÔNG CÓ ROUTE
-nào trỏ tới nó (App.jsx chưa đăng ký) và KHÔNG CÓ NÚT nào để vào trang
-đó (ImportFlow.jsx chưa có nút) — nên hoàn toàn không thể truy cập
-được dù code đã có sẵn.
+File sửa:
+- vite.config.js
+  Đổi chiến lược VitePWA từ 'generateSW' (Workbox tự sinh, không tuỳ
+  biến được) sang 'injectManifest' (dùng src/sw.js tự viết) — bắt
+  buộc phải đổi vì generateSW không hỗ trợ thêm code xử lý sự kiện
+  push tuỳ ý.
+- src/api.js — thêm getVapidPublicKey(), subscribePush(),
+  unsubscribePush(), testPush().
+- src/pages/Alerts.jsx — thêm banner "Bật thông báo" ở đầu trang, tự
+  nhận diện trạng thái hiện tại (chưa hỗ trợ / đã chặn / đã bật / có
+  thể bật), có nút "Gửi thử" khi đã bật để tự kiểm tra mà không cần
+  đợi có cảnh báo thật xảy ra.
+- src/styles/app.css — style .pushBanner.
+- package.json — thêm 2 gói workbox-precaching, workbox-core (cần
+  cho service worker tự viết dùng đúng cơ chế precache của Workbox).
 
-File trong lần gửi bù này:
-- src/App.jsx — đăng ký route "/import/scan" -> ScanReceipt
-- src/pages/ImportFlow.jsx — thêm nút "+ Quét phiếu mới" ở đầu danh
-  sách phiếu, dẫn tới /import/scan
+ĐÃ TỰ KIỂM TRA (Playwright, BẢN BUILD PRODUCTION THẬT — quan trọng vì
+service worker CHỈ hoạt động ở bản build, không chạy trong `npm run
+dev`, đã tự phát hiện và sửa cách test cho đúng):
+- Build production: sw.js sinh ra đúng, chứa đủ code push/
+  notificationclick (xác nhận bằng cách đọc trực tiếp file đã build,
+  không chỉ tin log build).
+- Serve bản dist/ thật (không phải dev server) qua http.server: xác
+  nhận service worker ĐĂNG KÝ THÀNH CÔNG (1 registration) — chứng tỏ
+  script registerSW.js tự inject vào index.html hoạt động đúng.
+- Banner nhận diện đúng trạng thái quyền thông báo và hiện đúng
+  thông báo tương ứng (trong sandbox này mặc định "denied" do đặc
+  thù Chromium headless không có màn hình thật — KHÔNG PHẢI lỗi code,
+  đã xác nhận qua Notification.permission đọc trực tiếp từ trình
+  duyệt, không phải do logic ứng dụng).
+- npm run build thành công cả 2 lần build (client + service worker),
+  không lỗi.
 
-Đã build lại (npm run build) xác nhận không lỗi trước khi gửi.
+CHƯA test được (cần chính bạn tự thử trên điện thoại thật — sandbox
+không có màn hình/thiết bị thật để cấp quyền thông báo hay nhận push
+thật sự):
+- Bấm "Bật thông báo" → xem có hiện đúng hộp thoại xin quyền của
+  trình duyệt không.
+- Bấm "Gửi thử" → xem điện thoại có NHẬN ĐƯỢC thông báo thật không.
+- Test 1 cảnh báo thật phát sinh (vd đếm lệch số) → xem có tự động
+  nhận được thông báo không cần mở sẵn app.

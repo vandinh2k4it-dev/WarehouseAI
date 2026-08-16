@@ -7,6 +7,19 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
+      // Đổi từ 'generateSW' (Workbox tự sinh service worker, không tuỳ biến
+      // được) sang 'injectManifest' — dùng file src/sw.js TỰ VIẾT, cho phép
+      // thêm code xử lý sự kiện 'push' (thông báo đẩy) mà generateSW không
+      // hỗ trợ. vite-plugin-pwa vẫn tự lo phần cache asset tĩnh như trước
+      // (tiêm sẵn danh sách file vào biến self.__WB_MANIFEST trong sw.js).
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.js',
+      injectManifest: {
+        // Không cache API call (dữ liệu tồn kho/phiên đếm phải luôn mới) —
+        // chỉ cache asset tĩnh (JS/CSS/font).
+        globPatterns: ['**/*.{js,css,html,png,svg,ico}'],
+      },
       registerType: 'autoUpdate',
       manifest: {
         name: 'Đếm hàng — Kho thông minh',
@@ -22,11 +35,6 @@ export default defineConfig({
           { src: 'icon-512.png', sizes: '512x512', type: 'image/png' },
           { src: 'icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
-      },
-      // Không cache API call (dữ liệu tồn kho/phiên đếm phải luôn mới) —
-      // chỉ cache asset tĩnh (JS/CSS/font) để mở app nhanh hơn lần sau.
-      workbox: {
-        navigateFallbackDenylist: [/^\/camera-sessions/, /^\/receipts/, /^\/products/],
       },
     }),
   ],

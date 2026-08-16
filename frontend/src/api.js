@@ -24,6 +24,32 @@ export const api = {
 
   listProducts: () => request("/products"),
   listInventory: () => request("/inventory"),
+  listUnmappedLines: () => request("/products/unmapped-lines"),
+  mapLineToProduct: (lineId, productId) =>
+    request(`/products/lines/${lineId}/map`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ product_id: productId }),
+    }),
+  createProductAndMap: (lineId) =>
+    request(`/products/lines/${lineId}/create-and-map`, { method: "POST" }),
+
+  // Push notification (thông báo đẩy) — xem src/pushNotifications.js để biết
+  // cách các hàm này được gọi (đăng ký quyền, subscribe PushManager...).
+  getVapidPublicKey: () => request("/push/vapid-public-key"),
+  subscribePush: (subscriptionJson, label) =>
+    request("/push/subscribe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...subscriptionJson, label }),
+    }),
+  unsubscribePush: (endpoint) =>
+    request("/push/unsubscribe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ endpoint }),
+    }),
+  testPush: () => request("/push/test", { method: "POST" }),
   listAlerts: (status) => request(`/alerts?status=${status ?? "open"}`),
   acknowledgeAlert: async (alertId) => {
     const result = await request(`/alerts/${alertId}/acknowledge`, { method: "POST" });

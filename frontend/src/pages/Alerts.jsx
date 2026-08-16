@@ -1,5 +1,12 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
+import {
+  isPushSupported,
+  getPermissionState,
+  getCurrentSubscription,
+  subscribeToPush,
+  unsubscribeFromPush,
+} from "../pushNotifications";
 
 const ALERT_TYPE_LABEL = {
   discrepancy: "Chênh lệch",
@@ -39,6 +46,8 @@ export default function Alerts() {
 
   return (
     <main className="page-main">
+      <PushNotificationBanner />
+
       <div className="card">
         <h2>Cảnh báo</h2>
         <div className="chips">
@@ -76,5 +85,115 @@ export default function Alerts() {
         </div>
       </div>
     </main>
+  );
+}
+
+// Banner bật/tắt thông báo đẩy — tách riêng để Alerts.jsx không phình to,
+// tự kiểm tra trạng thái đăng ký hiện tại lúc mount (đã bật từ trước, hay
+// trình duyệt không hỗ trợ, hay người dùng đã từ chối quyền trước đó).
+function PushNotificationBanner() {
+  const [state, setState] = useState("checking"); // checking | unsupported | denied | off | on
+  const [busy, setBusy] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
+  const [testMsg, setTestMsg] = useState("");
+
+  useEffect(() => {
+    checkState();
+  }, []);
+
+  async function checkState() {
+    if (!isPushSupported()) {
+      setState("unsupported");
+      return;
+    }
+    const perm = getPermissionState();
+    if (perm === "denied") {
+      setState("denied");
+      return;
+    }
+    const sub = await getCurrentSubscription();
+    setState(sub ? "on" : "off");
+  }
+
+  async function handleEnable() {
+    setBusy(true);
+    setErrorMsg("");
+    try {
+      await subscribeToPush(navigator.userAgent.slice(0, 60));
+      setState("on");
+    } catch (err) {
+      setErrorMsg(err.message || String(err));
+      await checkState();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleDisable() {
+    setBusy(true);
+    setErrorMsg("");
+    try {
+      await unsubscribeFromPush();
+      setState("off");
+    } catch (err) {
+      setErrorMsg(err.message || String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleTest() {
+    setTestMsg("Đang gửi…");
+    try {
+      const result = await api.testPush();
+      setTestMsg(`Đã gửi tới ${result.sent} thiết bị (${result.failed} lỗi, ${result.removed} hết hạn đã dọn).`);
+    } catch (err) {
+      setTestMsg("Lỗi: " + (err.message || String(err)));
+    }
+  }
+
+  if (state === "checking") return null;
+
+  if (state === "unsupported") {
+    return (
+      <div className="pushBanner">
+        <span>🔕 Trình duyệt này không hỗ trợ thông báo đẩy.</span>
+      </div>
+    );
+  }
+
+  if (state === "denied") {
+    return (
+      <div className="pushBanner warn">
+        <span>🔕 Bạn đã chặn thông báo trước đó — vào cài đặt trình duyệt (biểu tượng ổ khoá cạnh URL) để bật lại.</span>
+      </div>
+    );
+  }
+
+  if (state === "on") {
+    return (
+      <div className="pushBanner ok">
+        <span>🔔 Đã bật thông báo đẩy cho thiết bị này.</span>
+        <div className="pushBanner-actions">
+          <button className="ghost" onClick={handleTest} style={{ marginTop: 0 }}>
+            Gửi thử
+          </button>
+          <button className="ghost" disabled={busy} onClick={handleDisable} style={{ marginTop: 0 }}>
+            Tắt
+          </button>
+        </div>
+        {testMsg && <div className="pushBanner-msg">{testMsg}</div>}
+      </div>
+    );
+  }
+
+  return (
+    <div className="pushBanner">
+      <span>🔔 Bật thông báo để nhận cảnh báo ngay trên điện thoại, kể cả khi không mở sẵn app.</span>
+      <button className="primary" disabled={busy} onClick={handleEnable} style={{ marginTop: 10 }}>
+        {busy ? "Đang bật…" : "Bật thông báo"}
+      </button>
+      {errorMsg && <div className="pushBanner-msg" style={{ color: "var(--danger)" }}>{errorMsg}</div>}
+    </div>
   );
 }
