@@ -1,52 +1,37 @@
-fix(frontend): hiện lỗi thật khi đếm trực tiếp thất bại liên tục — trước đây im lặng đứng số 0
+feat(frontend): thêm thanh trượt chỉnh độ nhạy phát hiện khi đếm trực tiếp
 
-Bối cảnh lỗi (báo cáo thật từ người dùng):
-Test đếm trực tiếp trên video/camera từng chạy đúng trước đây (thời
-CLI count_pipeline.py, chưa deploy) — nhưng qua PWA mới lại ra đúng
-0, không nhích lên chút nào.
+Nối vào backend đã có sẵn tham số conf/iou trên /live-frame (xem
+COMMIT_MSG.txt bên backend cùng đợt) — trả lời trực tiếp vấn đề đếm
+thiếu nghiêm trọng phát hiện lúc test thật trên điện thoại (ảnh có
+~15 thùng, chỉ đếm ra 2).
 
-Nguyên nhân của việc KHÔNG THẤY LỖI (bug do chính mình gây ra khi
-viết LiveCountingScreen.jsx lần trước):
-Code cũ xử lý lỗi mỗi khung hình theo kiểu "im lặng bỏ qua hoàn
-toàn" (catch rỗng, không set state gì) — chủ đích là để 1 lần lỗi
-thoáng qua do mạng chập chờn không làm phiền người dùng. Nhưng hậu
-quả phụ: nếu MỌI khung hình đều lỗi liên tục (vd sai đường dẫn
-model, thiếu thư viện, model chưa load được trên server) thì người
-dùng KHÔNG BAO GIỜ biết được — chỉ thấy số đếm đứng yên ở 0 mãi,
-trông như model không nhận diện được gì trong khi thật ra server
-đang trả lỗi 500 liên tục ở phía sau, chưa từng chạy được 1 khung
-nào thành công.
+File sửa:
+- src/components/LiveCountingScreen.jsx
+  + Thêm state `conf` (mặc định 0.35, khớp default mới bên backend)
+    + thanh trượt UI kéo từ 0.15 đến 0.7, hiện ngay dưới video lúc
+    đang đếm — kèm chú thích ngắn hướng dẫn kéo bên nào khi nào.
+  + Gắn `?conf=...` vào URL gọi /live-frame — người dùng chỉnh xong
+    có tác dụng NGAY, không cần dừng rồi bắt đầu lại phiên đếm.
 
-Cách sửa (src/components/LiveCountingScreen.jsx):
-- Đếm số lần lỗi LIÊN TIẾP (consecutiveFailsRef). Lỗi 1-2 lần liên
-  tiếp vẫn im lặng bỏ qua như cũ (mạng chập chờn thoáng qua, không
-  đáng báo động). Từ lần thứ 3 liên tiếp trở lên -> hiện hẳn banner
-  đỏ đè lên góc dưới video, với ĐÚNG nội dung lỗi thật lấy từ
-  response.detail của backend (không phải câu chung chung).
-- Lỗi tự RESET về 0 ngay khi có 1 khung xử lý thành công — nếu chỉ
-  là lỗi thoáng qua rồi tự phục hồi, banner tự biến mất, không cần
-  người dùng bấm tắt gì.
-- Bắt cả 2 loại lỗi: response không phải 200 (đọc .detail từ JSON
-  trả về) VÀ lỗi mạng/exception khi gọi fetch (mất kết nối hẳn).
+LỖI THẬT ĐÃ PHÁT HIỆN VÀ TỰ SỬA (không phải viết code suông):
+Ban đầu dùng thẳng state `conf` bên trong hàm captureAndSend() — hàm
+này được gọi lặp lại qua setInterval() thiết lập MỘT LẦN lúc bắt đầu
+camera. Theo cách closure của JavaScript, setInterval "đóng gói" giá
+trị conf tại THỜI ĐIỂM khởi tạo, nên nếu người dùng kéo thanh trượt
+SAU KHI đã bắt đầu đếm, giá trị gửi lên server vẫn mãi là giá trị CŨ
+lúc mới bắt đầu — thanh trượt trông như hoạt động (kéo được, số hiện
+đúng trên UI) nhưng THỰC RA KHÔNG CÓ TÁC DỤNG GÌ tới request thật gửi
+đi. Đã tự phát hiện lỗi này TRƯỚC KHI giao (không đợi người dùng báo
+lại lỗi lần 2) bằng cách nhớ lại đúng lỗi tương tự (sendingRef) đã
+từng gặp trước đó trong chính component này, chủ động rà lại và sửa
+bằng kỹ thuật giống hệt: dùng thêm 1 ref (confRef) đồng bộ theo state
+conf mỗi lần render, đọc confRef.current bên trong hàm chạy trong
+interval thay vì đọc thẳng state.
 
-ĐÃ TỰ KIỂM TRA (Playwright + camera ảo thật, KHÔNG chặn giả lập
-request lần này — để nó tự gọi thật vào backend thật đang thiếu
-ultralytics/opencv trong sandbox, đúng mô phỏng tình huống "mọi khung
-đều lỗi" người dùng gặp phải):
-- Sau ~3.5 giây (5 lần thử, mỗi 700ms), banner đỏ hiện đúng nội dung
-  lỗi thật: "Server lỗi khi xử lý khung hình: Xử lý khung hình thất
-  bại: ModuleNotFoundError('No module named cv2')" — xác nhận cơ chế
-  hiện lỗi hoạt động đúng, người dùng giờ THẤY ĐƯỢC nguyên nhân thật
-  thay vì đoán mò tại sao số cứ đứng ở 0.
+ĐÃ TỰ KIỂM TRA (Playwright, chặn request /live-frame để đọc được
+CHÍNH XÁC giá trị conf thật sự có trong URL mỗi lần gửi — không chỉ
+tin giao diện hiển thị đúng số):
+- Bắt đầu đếm, kéo thanh trượt sang 0.6 SAU KHI đã đang chạy vòng lặp
+  gửi khung hình — xác nhận CẢ 3 lần gửi tiếp theo đều mang đúng
+  "conf=0.6" trong URL, không còn dính giá trị mặc định cũ nữa.
 - npm run build thành công, không lỗi.
-
-Gợi ý chẩn đoán cho người dùng (không phải sửa trong code này — ghi
-lại để nhớ hướng debug tiếp nếu banner lỗi hiện ra khi test thật trên
-Railway):
-- Nếu lỗi là "No module named cv2"/"ultralytics" -> deploy Railway
-  thiếu thư viện, kiểm tra lại requirements.txt đã có ultralytics
-  chưa, và RAILPACK_BUILD_APT_PACKAGES/RAILPACK_DEPLOY_APT_PACKAGES
-  đã đặt đúng (libgl1...) chưa.
-- Nếu lỗi liên quan tới đường dẫn file model (FileNotFoundError...)
-  -> kiểm tra lại CARTON_MODEL_PATH trên Railway Variables có trỏ
-  đúng file models/carton_counter_best.pt đã commit vào repo chưa.

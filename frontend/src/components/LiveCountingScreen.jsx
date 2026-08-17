@@ -25,6 +25,9 @@ export default function LiveCountingScreen({ session, expectedQuantity, label, o
   const [boxCount, setBoxCount] = useState(0); // số khung hộp đang thấy ở khung hình hiện tại
   const [frameErrorMsg, setFrameErrorMsg] = useState(""); // lỗi từ /live-frame (khác lỗi mở camera)
   const consecutiveFailsRef = useRef(0);
+  const [conf, setConf] = useState(0.35); // độ nhạy phát hiện — thấp hơn = bắt được nhiều thùng hơn nhưng dễ nhận nhầm vật khác
+  const confRef = useRef(conf); // setInterval đóng gói giá trị lúc khởi tạo — dùng ref để luôn đọc đúng giá trị MỚI NHẤT của thanh trượt, không bị "đông cứng" giá trị cũ
+  confRef.current = conf;
 
   useEffect(() => {
     startCamera();
@@ -88,7 +91,7 @@ export default function LiveCountingScreen({ session, expectedQuantity, label, o
         try {
           const form = new FormData();
           form.append("file", blob, "frame.jpg");
-          const res = await fetch(`${API_BASE}/camera-sessions/${session.id}/live-frame`, {
+          const res = await fetch(`${API_BASE}/camera-sessions/${session.id}/live-frame?conf=${confRef.current}`, {
             method: "POST",
             body: form,
           });
@@ -203,6 +206,27 @@ export default function LiveCountingScreen({ session, expectedQuantity, label, o
         )}
       </div>
       <canvas ref={captureCanvasRef} style={{ display: "none" }} />
+
+      {(status === "live" || status === "finishing") && (
+        <div className="confSlider">
+          <div className="confSlider-row">
+            <span>Độ nhạy phát hiện</span>
+            <span className="mono">{conf.toFixed(2)}</span>
+          </div>
+          <input
+            type="range"
+            min="0.15"
+            max="0.7"
+            step="0.05"
+            value={conf}
+            onChange={(e) => setConf(parseFloat(e.target.value))}
+          />
+          <div className="confSlider-hint">
+            Kéo trái nếu model đang BỎ SÓT nhiều thùng (nhận diện được ít hơn thực tế) — kéo phải nếu
+            đang NHẬN NHẦM vật khác thành thùng.
+          </div>
+        </div>
+      )}
 
       {(status === "live" || status === "finishing") && (
         <>
