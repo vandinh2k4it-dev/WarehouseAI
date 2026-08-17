@@ -1,37 +1,28 @@
-feat(frontend): thêm thanh trượt chỉnh độ nhạy phát hiện khi đếm trực tiếp
+fix(frontend): chế độ "Quay video" — thêm nút chọn video có sẵn, không ép mở camera
 
-Nối vào backend đã có sẵn tham số conf/iou trên /live-frame (xem
-COMMIT_MSG.txt bên backend cùng đợt) — trả lời trực tiếp vấn đề đếm
-thiếu nghiêm trọng phát hiện lúc test thật trên điện thoại (ảnh có
-~15 thùng, chỉ đếm ra 2).
+Bối cảnh:
+Người dùng có sẵn video test đã quay từ trước (dùng để test CLI
+count_pipeline.py trước khi có PWA), muốn dùng lại video đó để test
+qua giao diện web — nhưng chế độ "Quay video" chỉ có ĐÚNG 1 nút, dùng
+capture="environment" ép mở thẳng camera quay video MỚI, không có
+cách nào chọn file video đã có sẵn trong máy/thư viện ảnh. Đúng lỗi
+tương tự đã từng gặp và sửa ở tính năng quét phiếu (ScanReceipt.jsx)
+trước đó — lần này chưa áp dụng cùng cách sửa cho phần đếm hàng.
 
-File sửa:
-- src/components/LiveCountingScreen.jsx
-  + Thêm state `conf` (mặc định 0.35, khớp default mới bên backend)
-    + thanh trượt UI kéo từ 0.15 đến 0.7, hiện ngay dưới video lúc
-    đang đếm — kèm chú thích ngắn hướng dẫn kéo bên nào khi nào.
-  + Gắn `?conf=...` vào URL gọi /live-frame — người dùng chỉnh xong
-    có tác dụng NGAY, không cần dừng rồi bắt đầu lại phiên đếm.
+Cách sửa (src/components/CountingScreen.jsx):
+Tách 1 nút thành 2, giống hệt cách đã làm ở ScanReceipt.jsx:
+- "🎥 Quay video mới" — vẫn giữ capture="environment", ép mở camera.
+- "📁 Chọn video có sẵn" — input KHÔNG có capture, mở trình duyệt
+  file/thư viện video bình thường, chọn được video đã quay từ trước.
+Cả 2 nút dùng chung 1 hàm xử lý (handleFileSelected) — không cần
+thêm logic mới, chỉ thêm đường vào khác cho cùng 1 luồng xử lý.
 
-LỖI THẬT ĐÃ PHÁT HIỆN VÀ TỰ SỬA (không phải viết code suông):
-Ban đầu dùng thẳng state `conf` bên trong hàm captureAndSend() — hàm
-này được gọi lặp lại qua setInterval() thiết lập MỘT LẦN lúc bắt đầu
-camera. Theo cách closure của JavaScript, setInterval "đóng gói" giá
-trị conf tại THỜI ĐIỂM khởi tạo, nên nếu người dùng kéo thanh trượt
-SAU KHI đã bắt đầu đếm, giá trị gửi lên server vẫn mãi là giá trị CŨ
-lúc mới bắt đầu — thanh trượt trông như hoạt động (kéo được, số hiện
-đúng trên UI) nhưng THỰC RA KHÔNG CÓ TÁC DỤNG GÌ tới request thật gửi
-đi. Đã tự phát hiện lỗi này TRƯỚC KHI giao (không đợi người dùng báo
-lại lỗi lần 2) bằng cách nhớ lại đúng lỗi tương tự (sendingRef) đã
-từng gặp trước đó trong chính component này, chủ động rà lại và sửa
-bằng kỹ thuật giống hệt: dùng thêm 1 ref (confRef) đồng bộ theo state
-conf mỗi lần render, đọc confRef.current bên trong hàm chạy trong
-interval thay vì đọc thẳng state.
-
-ĐÃ TỰ KIỂM TRA (Playwright, chặn request /live-frame để đọc được
-CHÍNH XÁC giá trị conf thật sự có trong URL mỗi lần gửi — không chỉ
-tin giao diện hiển thị đúng số):
-- Bắt đầu đếm, kéo thanh trượt sang 0.6 SAU KHI đã đang chạy vòng lặp
-  gửi khung hình — xác nhận CẢ 3 lần gửi tiếp theo đều mang đúng
-  "conf=0.6" trong URL, không còn dính giá trị mặc định cũ nữa.
+ĐÃ TỰ KIỂM TRA (Playwright thật, không phải đoán):
+- Xác nhận đúng 2 input[type=file][accept="video/*"] tồn tại trên
+  trang (count=2).
+- Chọn file qua ĐÚNG input không có capture (mô phỏng "chọn video có
+  sẵn") — file được nhận, gửi lên backend thật, backend xử lý đúng
+  (lỗi cuối chỉ do sandbox thiếu torch/ultralytics — đúng graceful
+  degradation đã thiết kế, KHÔNG phải lỗi wiring — xác nhận toàn bộ
+  đường đi từ nút bấm -> chọn file -> gửi API đều đúng).
 - npm run build thành công, không lỗi.

@@ -114,17 +114,28 @@ export default function CountingScreen({ session, expectedQuantity, label, onDon
           </div>
 
           {mode === "video" ? (
-            <label className="camBtn">
-              🎥 Chạm để quay video đếm hàng
-              <input
-                ref={inputRef}
-                type="file"
-                accept="video/*"
-                capture="environment"
-                onChange={handleFileSelected}
-                style={{ display: "none" }}
-              />
-            </label>
+            <div className="scanBtnRow">
+              <label className="camBtn">
+                🎥 Quay video mới
+                <input
+                  type="file"
+                  accept="video/*"
+                  capture="environment"
+                  onChange={handleFileSelected}
+                  style={{ display: "none" }}
+                />
+              </label>
+              <label className="camBtn secondary">
+                📁 Chọn video có sẵn
+                <input
+                  ref={inputRef}
+                  type="file"
+                  accept="video/*"
+                  onChange={handleFileSelected}
+                  style={{ display: "none" }}
+                />
+              </label>
+            </div>
           ) : (
             <>
               <input
