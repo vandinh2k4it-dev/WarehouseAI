@@ -160,6 +160,14 @@ def _finalize_stop(
             detail=f"Phiên đếm #{session.id} đang ở trạng thái '{session.status}', không thể /stop lại.",
         )
 
+    # Dọn trạng thái đếm trực tiếp (nếu phiên này có dùng /live-frame) — an
+    # toàn để gọi kể cả khi phiên chưa từng dùng chế độ trực tiếp (no-op).
+    try:
+        from app import live_tracking
+        live_tracking.close_session(session.id)
+    except ImportError:
+        pass
+
     session.counted_quantity = counted_quantity
     session.avg_detection_confidence = avg_detection_confidence
     session.model_version = model_version
@@ -233,6 +241,44 @@ def _finalize_stop(
                 f"sau qua POST /camera-sessions/{session.id}/resolve (đếm lại hoặc xác nhận ghi đè)."
             ),
         )
+
+
+@router.post("/{session_id}/live-frame")
+async def live_frame(session_id: int, file: UploadFile = File(...), db: Session = Depends(get_db)):
+    """Đếm TRỰC TIẾP theo thời gian thực — điện thoại gửi liên tục từng
+    khung hình rời rạc (không phải nguyên video như /count-video), backend
+    chạy YOLOv8+ByteTrack ngay trên khung đó, trả về toạ độ khung hộp (để
+    frontend tự vẽ đè lên video đang xem) + tổng số đã đếm luỹ kế tới thời
+    điểm hiện tại trong phiên này.
+
+    KHÔNG cập nhật tồn kho ở đây — chỉ trả số để hiển thị trực tiếp. Khi
+    nhân viên bấm "Xong", frontend gọi /stop (JSON, đúng endpoint có sẵn)
+    với số đếm cuối cùng để thực sự đối chiếu + cập nhật kho."""
+    session = db.get(models.CameraCountSession, session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Không tìm thấy phiên đếm")
+    if session.status != "counting":
+        raise HTTPException(
+            status_code=409,
+            detail=f"Phiên đếm #{session_id} đang ở trạng thái '{session.status}', không thể đếm trực tiếp.",
+        )
+
+    try:
+        from app import live_tracking
+    except ImportError as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Chưa cài đủ thư viện đếm trực tiếp trên server: {e!r}. Chạy: pip install ultralytics opencv-python-headless.",
+        )
+
+    model_path = os.getenv("CARTON_MODEL_PATH", "yolov8s.pt")
+    frame_bytes = await file.read()
+    try:
+        result = live_tracking.process_frame(session_id, model_path, frame_bytes)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Xử lý khung hình thất bại: {e!r}")
+
+    return result
 
 
 @router.post("/{session_id}/count-video", response_model=schemas.CameraSegmentStopResult)

@@ -1,62 +1,51 @@
-feat(backend): Web Push — đẩy cảnh báo ra điện thoại
+feat(backend): đếm trực tiếp thời gian thực — vẽ khung hộp nhận diện đè lên video
 
 Bối cảnh:
-Việc lớn thứ 2 trong 2 việc đã gác lại trước đó ("cảnh báo thông báo
-về điện thoại"). Dùng chuẩn Web Push (không cần app native, hoạt động
-qua trình duyệt/PWA), free hoàn toàn (không qua dịch vụ trả phí như
-Firebase Cloud Messaging).
+Việc lớn cuối cùng trong 2 việc đã gác lại từ đầu ("mở camera đếm cộng
+dồn theo thời gian thực, hiện khung hộp giống camera detection") —
+khác hẳn cơ chế /count-video hiện có (quay xong 1 đoạn video rồi mới
+gửi lên xử lý 1 lần, không có phản hồi trực quan lúc đang quay).
+
+Kiến trúc chọn: điện thoại liên tục chụp TỪNG KHUNG HÌNH rời rạc (mỗi
+~700ms) gửi lên backend qua HTTP POST thường (KHÔNG dùng WebSocket) —
+đơn giản hơn nhiều để làm đúng và dễ debug so với streaming 2 chiều
+liên tục, đánh đổi lại có độ trễ nhỏ (~0.5-1s) giữa lúc thùng đi qua
+và lúc khung hộp hiện lên — chấp nhận được với tốc độ băng chuyền
+thông thường.
 
 File mới:
-- app/push_service.py
-  Hàm send_push_to_all(db, title, body, url) gửi push tới TẤT CẢ thiết
-  bị đã đăng ký (bảng push_subscriptions). Tự tắt an toàn (không lỗi,
-  chỉ log) nếu chưa cấu hình đủ 3 biến VAPID_* — không phá vỡ luồng
-  tạo Alert bình thường khi push chưa setup xong.
-
-- app/routers/push.py (router mới, prefix /push)
-  - GET /push/vapid-public-key — frontend lấy khoá công khai lúc
-    đăng ký PushManager, không hardcode trong code frontend.
-  - POST /push/subscribe, /push/unsubscribe — lưu/xoá thiết bị.
-  - POST /push/test — gửi thử tới mọi thiết bị đã đăng ký, dùng để
-    xác nhận setup đúng trước khi tin cảnh báo thật.
+- app/live_tracking.py
+  Module quản lý trạng thái đếm trực tiếp theo từng phiên (session_id).
+  MỖI PHIÊN GIỮ 1 MODEL YOLO RIÊNG trong bộ nhớ (không dùng chung 1
+  model cho nhiều phiên cùng lúc) — để ByteTrack (persist=True) duy
+  trì đúng track ID xuyên suốt nhiều khung hình liên tiếp của ĐÚNG
+  phiên đó, tránh lẫn track ID giữa các phiên khác nhau nếu 2 nhân
+  viên đếm cùng lúc. Có cơ chế tự dọn phiên bỏ dở quá 10 phút không
+  hoạt động (nhân viên thoát app giữa chừng, không bấm Xong/Huỷ).
 
 File sửa:
-- app/models.py — thêm bảng push_subscriptions (endpoint, p256dh,
-  auth, label). Tự tạo khi app khởi động (Base.metadata.create_all
-  trong lifespan đã có sẵn), không cần chạy migration tay.
-- app/main.py — đăng ký router push.
-- app/routers/camera.py, inventory.py, reconciliation.py — gắn
-  send_push_to_all() vào ĐÚNG 3 nơi tạo Alert (lệch số khi đếm,
-  sắp hết hàng, đối chiếu lệch — luồng cũ).
-- requirements.txt — thêm pywebpush, py-vapid.
-- .env.example — thêm VAPID_PRIVATE_KEY, VAPID_PUBLIC_KEY,
-  VAPID_CLAIM_EMAIL.
+- app/routers/camera.py
+  + Endpoint mới POST /camera-sessions/{id}/live-frame — nhận 1 khung
+    hình JPEG rời, chạy YOLOv8+ByteTrack, trả về danh sách khung hộp
+    (toạ độ x1,y1,x2,y2 + track_id + độ tin cậy) + số đếm luỹ kế tới
+    thời điểm hiện tại. KHÔNG cập nhật tồn kho ở bước này — chỉ để
+    hiển thị trực quan; khi xong, frontend gọi ĐÚNG /stop đã có sẵn
+    (JSON, không phải endpoint mới) với số đếm cuối để đối chiếu +
+    cập nhật kho thật, tái dùng toàn bộ logic đã test kỹ trước đó.
+  + Gắn live_tracking.close_session() vào _finalize_stop() — dọn model
+    khỏi bộ nhớ ngay khi phiên hoàn tất (khớp hoặc lệch), tránh rò rỉ
+    bộ nhớ nếu không dọn.
 
-LỖI THẬT ĐÃ PHÁT HIỆN VÀ SỬA TRONG LÚC LÀM (không phải chỉ viết code
-suông, đã tự test bắt lỗi):
-1. Định dạng VAPID_PRIVATE_KEY sai lúc đầu — pywebpush cần dạng RAW
-   32-byte base64url, KHÔNG PHẢI định dạng PEM đầy đủ
-   ("-----BEGIN PRIVATE KEY-----..."). Đã tự phát hiện qua traceback
-   thật (ValueError: Could not deserialize key data) và sửa đúng.
-2. inventory.py — hàm _check_low_stock_alert() ban đầu tự commit() +
-   gửi push NGAY BÊN TRONG 1 vòng lặp xử lý nhiều lô hàng — nếu 1 lô
-   sau đó lỗi, các lô trước đã lỡ commit dở dang, phá vỡ tính toàn
-   vẹn giao dịch của cả lượt xuất kho. Đã sửa: hàm chỉ add() + trả về
-   message, gom lại thành list, chỉ commit + gửi push MỘT LẦN sau khi
-   toàn bộ vòng lặp xong.
+ĐÃ TỰ KIỂM TRA:
+- Wiring API: gọi /live-frame khi backend chưa cài ultralytics/opencv
+  -> trả lỗi 500 rõ ràng, KHÔNG crash toàn bộ app (đúng pattern lazy-
+  import đã dùng nhất quán trong dự án — xác nhận qua traceback thật:
+  ModuleNotFoundError cv2, không phải lỗi logic).
+- Model path dùng chung biến CARTON_MODEL_PATH đã có sẵn — không cần
+  thêm biến môi trường mới trên Railway.
 
-ĐÃ TỰ KIỂM TRA (TestClient thật, không phải đoán):
-- Lấy public key, đăng ký thiết bị giả lập, gửi thử: request thật sự
-  chạm tới fcm.googleapis.com (chỉ bị chặn bởi tường lửa SANDBOX,
-  không phải lỗi code — trên Railway thật sẽ gửi thành công).
-- Test riêng trường hợp CHƯA cấu hình VAPID: tạo Alert (xuất kho dưới
-  ngưỡng) vẫn chạy đúng 200, không hề crash — xác nhận graceful
-  degradation hoạt động đúng.
-
-Việc cần làm sau khi deploy:
-Trên Railway Dashboard > Variables của service backend, thêm:
-  VAPID_PRIVATE_KEY=yxQtkWw_nXTMZHvTFxBb1rte0QOSrtuMx0bnRWfc7G0
-  VAPID_PUBLIC_KEY=BG9fiahLHHsjbG0EbUcO37CefjvNHXoFAf-zS3D-oIA_U2DH8vL_cyf84vCEu2ly9rj74U1nal7IVE3gwEacWrc
-  VAPID_CLAIM_EMAIL=<email thật của bạn>
-(Khoá trên đã sinh sẵn và test qua — dùng ngay được, hoặc tự sinh lại
-khoá riêng nếu muốn, không bắt buộc dùng đúng khoá này.)
+CHƯA test được trong sandbox này (không có camera/GPU/model thật):
+- Độ chính xác đếm thật với model carton_counter_best.pt trên video
+  camera thật — đã test kỹ phần frontend (xem COMMIT_MSG.txt bên
+  frontend) với dữ liệu giả lập, còn phần backend xử lý model thật
+  cần tự thử trên máy có đủ ultralytics + model đã train.
