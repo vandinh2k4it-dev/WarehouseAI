@@ -1,51 +1,42 @@
-feat(backend): đếm trực tiếp thời gian thực — vẽ khung hộp nhận diện đè lên video
+fix(backend): cho phép chỉnh ngưỡng confidence khi đếm trực tiếp — sửa đếm thiếu nghiêm trọng
 
-Bối cảnh:
-Việc lớn cuối cùng trong 2 việc đã gác lại từ đầu ("mở camera đếm cộng
-dồn theo thời gian thực, hiện khung hộp giống camera detection") —
-khác hẳn cơ chế /count-video hiện có (quay xong 1 đoạn video rồi mới
-gửi lên xử lý 1 lần, không có phản hồi trực quan lúc đang quay).
+Bối cảnh (báo cáo thật từ test trên điện thoại thật):
+Đếm trực tiếp ra số quá thấp so với thực tế (ảnh có ~15 thùng nhìn
+thấy được, chỉ đếm ra 2) — camera CỐ ĐỊNH (không phải lỗi rung tay
+gây nhầm track ID như nghi ngờ ban đầu), vậy nhiều khả năng là do
+ngưỡng độ tin cậy (confidence threshold) mặc định quá cao, khiến
+model bỏ sót nhiều thùng bị che khuất/xếp chồng/góc chụp khó.
 
-Kiến trúc chọn: điện thoại liên tục chụp TỪNG KHUNG HÌNH rời rạc (mỗi
-~700ms) gửi lên backend qua HTTP POST thường (KHÔNG dùng WebSocket) —
-đơn giản hơn nhiều để làm đúng và dễ debug so với streaming 2 chiều
-liên tục, đánh đổi lại có độ trễ nhỏ (~0.5-1s) giữa lúc thùng đi qua
-và lúc khung hộp hiện lên — chấp nhận được với tốc độ băng chuyền
-thông thường.
+Thay đổi:
+- app/live_tracking.py — hạ DEFAULT_CONF từ 0.5 xuống 0.35 (dễ bắt
+  được thùng khó hơn, đánh đổi có thể tăng nhận nhầm vật khác).
+- app/routers/camera.py — endpoint /live-frame giờ nhận thêm tham số
+  query conf/iou (mặc định 0.35/0.45) — cho phép CHỈNH NGƯỠNG NGAY
+  TRÊN URL, không cần sửa code/deploy lại mỗi lần muốn thử ngưỡng
+  khác nhau. Ví dụ: /live-frame?conf=0.25
 
-File mới:
-- app/live_tracking.py
-  Module quản lý trạng thái đếm trực tiếp theo từng phiên (session_id).
-  MỖI PHIÊN GIỮ 1 MODEL YOLO RIÊNG trong bộ nhớ (không dùng chung 1
-  model cho nhiều phiên cùng lúc) — để ByteTrack (persist=True) duy
-  trì đúng track ID xuyên suốt nhiều khung hình liên tiếp của ĐÚNG
-  phiên đó, tránh lẫn track ID giữa các phiên khác nhau nếu 2 nhân
-  viên đếm cùng lúc. Có cơ chế tự dọn phiên bỏ dở quá 10 phút không
-  hoạt động (nhân viên thoát app giữa chừng, không bấm Xong/Huỷ).
-
-File sửa:
-- app/routers/camera.py
-  + Endpoint mới POST /camera-sessions/{id}/live-frame — nhận 1 khung
-    hình JPEG rời, chạy YOLOv8+ByteTrack, trả về danh sách khung hộp
-    (toạ độ x1,y1,x2,y2 + track_id + độ tin cậy) + số đếm luỹ kế tới
-    thời điểm hiện tại. KHÔNG cập nhật tồn kho ở bước này — chỉ để
-    hiển thị trực quan; khi xong, frontend gọi ĐÚNG /stop đã có sẵn
-    (JSON, không phải endpoint mới) với số đếm cuối để đối chiếu +
-    cập nhật kho thật, tái dùng toàn bộ logic đã test kỹ trước đó.
-  + Gắn live_tracking.close_session() vào _finalize_stop() — dọn model
-    khỏi bộ nhớ ngay khi phiên hoàn tất (khớp hoặc lệch), tránh rò rỉ
-    bộ nhớ nếu không dọn.
+LỖI THẬT ĐÃ PHÁT HIỆN VÀ SỬA TRONG LÚC LÀM:
+Lúc đầu viết default value của tham số conf là
+`conf: float = live_tracking.DEFAULT_CONF` — SAI, vì live_tracking
+chỉ được import TRỄ (lazy import) bên trong thân hàm (để không bắt
+buộc cài ultralytics lúc app khởi động), nhưng Python đánh giá giá
+trị mặc định của tham số NGAY LÚC ĐỊNH NGHĨA HÀM (lúc app khởi động,
+trước khi phần import trễ kịp chạy) — gây NameError, app sẽ crash
+ngay lúc khởi động. Đã tự phát hiện qua kiểm tra lại thay vì đợi lỗi
+xảy ra thật, sửa bằng cách ghi thẳng số 0.35/0.45 vào chữ ký hàm thay
+vì tham chiếu qua module import trễ.
 
 ĐÃ TỰ KIỂM TRA:
-- Wiring API: gọi /live-frame khi backend chưa cài ultralytics/opencv
-  -> trả lỗi 500 rõ ràng, KHÔNG crash toàn bộ app (đúng pattern lazy-
-  import đã dùng nhất quán trong dự án — xác nhận qua traceback thật:
-  ModuleNotFoundError cv2, không phải lỗi logic).
-- Model path dùng chung biến CARTON_MODEL_PATH đã có sẵn — không cần
-  thêm biến môi trường mới trên Railway.
+- App khởi động thành công (không crash) — xác nhận qua
+  TestClient thật, KHÔNG chỉ đọc code bằng mắt.
+- Endpoint /live-frame có đúng 2 tham số conf, iou (kiểm tra qua
+  OpenAPI schema thật sinh ra từ app).
 
-CHƯA test được trong sandbox này (không có camera/GPU/model thật):
-- Độ chính xác đếm thật với model carton_counter_best.pt trên video
-  camera thật — đã test kỹ phần frontend (xem COMMIT_MSG.txt bên
-  frontend) với dữ liệu giả lập, còn phần backend xử lý model thật
-  cần tự thử trên máy có đủ ultralytics + model đã train.
+Việc cần làm sau khi deploy — thử lại trên điện thoại:
+Vào chế độ "Trực tiếp", kéo thanh trượt "Độ nhạy phát hiện" (đã thêm
+ở frontend cùng đợt) sang trái nếu vẫn đếm thiếu nhiều so với thực
+tế. Nếu hạ tới ~0.2 vẫn không cải thiện đáng kể, nhiều khả năng đây
+không còn là vấn đề ngưỡng nữa mà là GIỚI HẠN CỦA MODEL với điều kiện
+ảnh này (góc chụp/ánh sáng/kiểu xếp thùng khác nhiều so với 300 ảnh
+train) — cần xem lại có nên bổ sung thêm ảnh train ở điều kiện tương
+tự hay không, đây là hướng cần bàn thêm với Luân.

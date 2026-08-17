@@ -20,7 +20,12 @@ logger = logging.getLogger(__name__)
 _sessions: dict[int, dict] = {}
 _lock = Lock()
 
-DEFAULT_CONF = 0.5
+DEFAULT_CONF = 0.35  # hạ từ 0.5 -> 0.35: model dễ bỏ sót thùng bị che khuất/
+# xếp chồng/góc chụp khó nếu ngưỡng quá cao — đổi thấp hơn để bắt được nhiều
+# hơn, đánh đổi lại có thể tăng nhận nhầm vật khác thành thùng. Có thể chỉnh
+# qua tham số ?conf=... trên endpoint /live-frame nếu 0.35 vẫn chưa phù hợp
+# với điều kiện ánh sáng/góc camera thực tế — không cần sửa code, đổi số
+# ngay trên URL để thử nghiệm nhanh.
 DEFAULT_IOU = 0.45
 STALE_SECONDS = 600  # phiên không hoạt động quá 10 phút -> tự dọn
 

@@ -244,12 +244,26 @@ def _finalize_stop(
 
 
 @router.post("/{session_id}/live-frame")
-async def live_frame(session_id: int, file: UploadFile = File(...), db: Session = Depends(get_db)):
+async def live_frame(
+    session_id: int, file: UploadFile = File(...),
+    conf: float = 0.35,  # trùng DEFAULT_CONF trong live_tracking.py — không
+    # tham chiếu trực tiếp live_tracking.DEFAULT_CONF ở đây được vì module
+    # đó chỉ import TRỄ bên trong hàm (bên dưới), Python sẽ đánh giá giá trị
+    # mặc định của tham số NGAY LÚC ĐỊNH NGHĨA HÀM (lúc app khởi động) —
+    # trước khi phần import trễ kịp chạy, gây lỗi NameError khi khởi động.
+    iou: float = 0.45,
+    db: Session = Depends(get_db),
+):
     """Đếm TRỰC TIẾP theo thời gian thực — điện thoại gửi liên tục từng
     khung hình rời rạc (không phải nguyên video như /count-video), backend
     chạy YOLOv8+ByteTrack ngay trên khung đó, trả về toạ độ khung hộp (để
     frontend tự vẽ đè lên video đang xem) + tổng số đã đếm luỹ kế tới thời
     điểm hiện tại trong phiên này.
+
+    Tham số conf/iou cho phép CHỈNH NGƯỠNG THỬ NGHIỆM ngay trên URL, không
+    cần sửa code/deploy lại — hữu ích khi cần tinh chỉnh theo điều kiện ánh
+    sáng/góc camera thực tế. Ví dụ hạ ngưỡng xuống 0.25 nếu model đang bỏ
+    sót nhiều thùng: /live-frame?conf=0.25
 
     KHÔNG cập nhật tồn kho ở đây — chỉ trả số để hiển thị trực tiếp. Khi
     nhân viên bấm "Xong", frontend gọi /stop (JSON, đúng endpoint có sẵn)
@@ -274,7 +288,7 @@ async def live_frame(session_id: int, file: UploadFile = File(...), db: Session 
     model_path = os.getenv("CARTON_MODEL_PATH", "yolov8s.pt")
     frame_bytes = await file.read()
     try:
-        result = live_tracking.process_frame(session_id, model_path, frame_bytes)
+        result = live_tracking.process_frame(session_id, model_path, frame_bytes, conf=conf, iou=iou)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Xử lý khung hình thất bại: {e!r}")
 
