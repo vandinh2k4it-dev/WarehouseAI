@@ -70,18 +70,26 @@ def start_import_segment(payload: schemas.CameraSegmentStartImport, db: Session 
             detail=f"Dòng hàng '{line.product_name_raw}' đã đếm xong rồi (phiên #{already_done.id}).",
         )
 
-    # Đang có phiên lệch chưa xử lý cho ĐÚNG dòng này -> coi như đếm lại,
-    # tự động đóng phiên cũ (không cần gọi /resolve action=recount riêng).
+    # Đang có phiên LỆCH chưa xử lý, HOẶC phiên "đang đếm" bị BỎ DỞ (nhân
+    # viên thoát app/trình duyệt giữa chừng, chưa bao giờ bấm Xong/Huỷ) cho
+    # ĐÚNG dòng này -> coi như đếm lại, tự động đóng phiên cũ. Không xử lý
+    # trường hợp này thì dòng sẽ bị kẹt vĩnh viễn ở trạng thái "đang đếm",
+    # không có cách nào bấm lại được từ giao diện (đã xảy ra thật khi test).
     pending = (
         db.query(models.CameraCountSession)
         .filter(
             models.CameraCountSession.receipt_line_item_id == line.id,
-            models.CameraCountSession.status == "needs_review",
+            models.CameraCountSession.status.in_(["needs_review", "counting"]),
         )
         .first()
     )
     if pending:
         pending.status = "superseded"
+        try:
+            from app import live_tracking
+            live_tracking.close_session(pending.id)
+        except ImportError:
+            pass
 
     session = models.CameraCountSession(
         direction="import",

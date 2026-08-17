@@ -1,42 +1,36 @@
-fix(backend): cho phép chỉnh ngưỡng confidence khi đếm trực tiếp — sửa đếm thiếu nghiêm trọng
+fix(backend): sửa dòng hàng bị KẸT VĨNH VIỄN ở trạng thái "đang đếm" nếu thoát app giữa chừng
 
-Bối cảnh (báo cáo thật từ test trên điện thoại thật):
-Đếm trực tiếp ra số quá thấp so với thực tế (ảnh có ~15 thùng nhìn
-thấy được, chỉ đếm ra 2) — camera CỐ ĐỊNH (không phải lỗi rung tay
-gây nhầm track ID như nghi ngờ ban đầu), vậy nhiều khả năng là do
-ngưỡng độ tin cậy (confidence threshold) mặc định quá cao, khiến
-model bỏ sót nhiều thùng bị che khuất/xếp chồng/góc chụp khó.
+Bối cảnh lỗi (báo cáo thật, kèm ảnh chụp màn hình):
+Bắt đầu đếm 1 dòng hàng, lỡ thoát app/trình duyệt giữa chừng (không
+bấm Xong cũng không bấm Huỷ) — quay lại thì dòng đó hiện mãi "đang
+đếm", KHÔNG CÓ NÚT NÀO để bấm lại, kẹt vĩnh viễn.
 
-Thay đổi:
-- app/live_tracking.py — hạ DEFAULT_CONF từ 0.5 xuống 0.35 (dễ bắt
-  được thùng khó hơn, đánh đổi có thể tăng nhận nhầm vật khác).
-- app/routers/camera.py — endpoint /live-frame giờ nhận thêm tham số
-  query conf/iou (mặc định 0.35/0.45) — cho phép CHỈNH NGƯỠNG NGAY
-  TRÊN URL, không cần sửa code/deploy lại mỗi lần muốn thử ngưỡng
-  khác nhau. Ví dụ: /live-frame?conf=0.25
+Nguyên nhân thật:
+start_import_segment() chỉ tự động "đếm lại" (đóng phiên cũ, mở phiên
+mới) khi phiên trước đó có status='needs_review' (lệch số) — KHÔNG hề
+xử lý trường hợp phiên trước bị bỏ dở ở status='counting' (chưa từng
+gọi /stop hay bất kỳ endpoint nào để đóng lại). Do đó gọi lại
+start-import cho đúng dòng này không có cơ chế nào tự đóng phiên cũ,
+và PHÍA FRONTEND (xem COMMIT_MSG.txt bên frontend cùng đợt) cũng
+không hiện nút "Đếm" nào khi trạng thái là "counting" — 2 lỗi cộng
+lại khiến người dùng hoàn toàn bế tắc.
 
-LỖI THẬT ĐÃ PHÁT HIỆN VÀ SỬA TRONG LÚC LÀM:
-Lúc đầu viết default value của tham số conf là
-`conf: float = live_tracking.DEFAULT_CONF` — SAI, vì live_tracking
-chỉ được import TRỄ (lazy import) bên trong thân hàm (để không bắt
-buộc cài ultralytics lúc app khởi động), nhưng Python đánh giá giá
-trị mặc định của tham số NGAY LÚC ĐỊNH NGHĨA HÀM (lúc app khởi động,
-trước khi phần import trễ kịp chạy) — gây NameError, app sẽ crash
-ngay lúc khởi động. Đã tự phát hiện qua kiểm tra lại thay vì đợi lỗi
-xảy ra thật, sửa bằng cách ghi thẳng số 0.35/0.45 vào chữ ký hàm thay
-vì tham chiếu qua module import trễ.
+Cách sửa (app/routers/camera.py, start_import_segment):
+- Mở rộng điều kiện tự động "đếm lại" — không chỉ 'needs_review' mà
+  cả 'counting' cũng được coi là phiên bỏ dở, tự đóng (status =
+  'superseded') khi có yêu cầu đếm lại đúng dòng đó.
+- Nếu phiên bị đóng đang dùng chế độ "Trực tiếp" (model YOLO có thể
+  vẫn đang load trong RAM qua app/live_tracking.py), gọi thêm
+  live_tracking.close_session() để giải phóng bộ nhớ luôn, tránh rò
+  rỉ dần theo thời gian nếu nhiều dòng bị bỏ dở kiểu này.
 
-ĐÃ TỰ KIỂM TRA:
-- App khởi động thành công (không crash) — xác nhận qua
-  TestClient thật, KHÔNG chỉ đọc code bằng mắt.
-- Endpoint /live-frame có đúng 2 tham số conf, iou (kiểm tra qua
-  OpenAPI schema thật sinh ra từ app).
-
-Việc cần làm sau khi deploy — thử lại trên điện thoại:
-Vào chế độ "Trực tiếp", kéo thanh trượt "Độ nhạy phát hiện" (đã thêm
-ở frontend cùng đợt) sang trái nếu vẫn đếm thiếu nhiều so với thực
-tế. Nếu hạ tới ~0.2 vẫn không cải thiện đáng kể, nhiều khả năng đây
-không còn là vấn đề ngưỡng nữa mà là GIỚI HẠN CỦA MODEL với điều kiện
-ảnh này (góc chụp/ánh sáng/kiểu xếp thùng khác nhiều so với 300 ảnh
-train) — cần xem lại có nên bổ sung thêm ảnh train ở điều kiện tương
-tự hay không, đây là hướng cần bàn thêm với Luân.
+ĐÃ TỰ KIỂM TRA (TestClient thật, mô phỏng ĐÚNG kịch bản lỗi):
+1. start-import lần 1 -> status='counting'.
+2. Gọi lines-progress -> xác nhận đúng hiện tượng lỗi: hiện 'counting'
+   (mô phỏng đúng ảnh chụp màn hình người dùng gửi).
+3. Gọi lại start-import CHO ĐÚNG DÒNG ĐÓ (mô phỏng bấm "Đếm lại") ->
+   200 OK, tạo phiên MỚI thành công (trước đây sẽ vẫn kẹt vì frontend
+   không có nút, nhưng xác nhận PHÍA BACKEND giờ chấp nhận đúng).
+4. Kiểm tra trực tiếp trong DB: phiên CŨ (#1) đã tự chuyển đúng
+   status='superseded', phiên MỚI (#2) đang 'counting' — xác nhận
+   không để lại rác "counting" mồ côi trong database.
