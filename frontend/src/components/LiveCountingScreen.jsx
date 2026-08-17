@@ -23,6 +23,8 @@ export default function LiveCountingScreen({ session, expectedQuantity, label, o
   const [status, setStatus] = useState("starting"); // starting | live | error | finishing
   const [errorMsg, setErrorMsg] = useState("");
   const [boxCount, setBoxCount] = useState(0); // số khung hộp đang thấy ở khung hình hiện tại
+  const [frameErrorMsg, setFrameErrorMsg] = useState(""); // lỗi từ /live-frame (khác lỗi mở camera)
+  const consecutiveFailsRef = useRef(0);
 
   useEffect(() => {
     startCamera();
@@ -92,14 +94,36 @@ export default function LiveCountingScreen({ session, expectedQuantity, label, o
           });
           if (res.ok) {
             const data = await res.json();
+            consecutiveFailsRef.current = 0;
+            setFrameErrorMsg("");
             setCount(data.count);
             setBoxCount(data.boxes.length);
             drawBoxes(data);
+          } else {
+            // QUAN TRỌNG: trước đây lỗi từng khung bị bỏ qua ÂM THẦM hoàn
+            // toàn — hậu quả là nếu MỌI khung đều lỗi (vd sai đường dẫn
+            // model, model chưa load được), người dùng chỉ thấy số đếm
+            // đứng yên ở 0 mãi mà KHÔNG BIẾT vì sao, tưởng nhầm là model
+            // không nhận diện được gì trong khi thật ra server đang lỗi.
+            // Giờ: sau 3 lần lỗi liên tiếp mới hiện cảnh báo (bỏ qua lỗi
+            // đơn lẻ thoáng qua do mạng chập chờn), kèm ĐÚNG nội dung lỗi
+            // thật từ backend để biết chính xác nguyên nhân.
+            consecutiveFailsRef.current += 1;
+            if (consecutiveFailsRef.current >= 3) {
+              let detail = `Lỗi ${res.status}`;
+              try {
+                detail = (await res.json()).detail || detail;
+              } catch {
+                // ignore
+              }
+              setFrameErrorMsg(detail);
+            }
           }
-          // Lỗi 1 khung (mạng chập chờn...) -> bỏ qua, thử tiếp khung sau,
-          // không dừng cả phiên đếm chỉ vì 1 lần gửi thất bại.
-        } catch {
-          // ignore — thử lại ở khung kế tiếp
+        } catch (err) {
+          consecutiveFailsRef.current += 1;
+          if (consecutiveFailsRef.current >= 3) {
+            setFrameErrorMsg("Mất kết nối tới server: " + (err.message || String(err)));
+          }
         } finally {
           sendingRef.current = false;
         }
@@ -166,6 +190,11 @@ export default function LiveCountingScreen({ session, expectedQuantity, label, o
           <span className="mono">{count}</span>
           {boxCount > 0 && <span className="liveCount-sub">{boxCount} đang thấy</span>}
         </div>
+        {frameErrorMsg && (
+          <div className="liveFrame-error">
+            ⚠ Server lỗi khi xử lý khung hình: {frameErrorMsg}
+          </div>
+        )}
         {status === "starting" && (
           <div className="liveVideo-loading">
             <div className="spinner" />

@@ -706,6 +706,21 @@ button.ghost {
   font-size: 13px;
 }
 
+.liveFrame-error {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 10px;
+  background: rgba(52, 26, 26, 0.95);
+  border: 1px solid var(--danger);
+  color: var(--danger);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 12px;
+  text-align: left;
+  line-height: 1.5;
+}
+
 
 /* ==========================================================
    RESPONSIVE — màn hình rộng (PC/tablet, từ 768px trở lên)

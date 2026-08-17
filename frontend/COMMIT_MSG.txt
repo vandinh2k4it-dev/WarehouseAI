@@ -1,59 +1,52 @@
-feat(frontend): đếm trực tiếp — vẽ khung hộp nhận diện đè lên video camera
+fix(frontend): hiện lỗi thật khi đếm trực tiếp thất bại liên tục — trước đây im lặng đứng số 0
 
-Nối vào backend đã có sẵn (xem COMMIT_MSG.txt bên backend cùng đợt).
+Bối cảnh lỗi (báo cáo thật từ người dùng):
+Test đếm trực tiếp trên video/camera từng chạy đúng trước đây (thời
+CLI count_pipeline.py, chưa deploy) — nhưng qua PWA mới lại ra đúng
+0, không nhích lên chút nào.
 
-File mới:
-- src/components/LiveCountingScreen.jsx
-  Component chính: mở camera thật (getUserMedia, facingMode
-  "environment" — camera sau), hiện <video> sống + <canvas> vẽ đè
-  (overlay) khung hộp nhận diện. Mỗi ~700ms: chụp 1 khung hình từ
-  video vào canvas ẩn, chuyển thành JPEG, gửi lên
-  POST /camera-sessions/{id}/live-frame, nhận về toạ độ khung hộp +
-  số đếm luỹ kế, vẽ NGAY lên canvas overlay + cập nhật số hiện trên
-  màn hình. Có cờ chống gửi chồng khung (nếu khung trước chưa xử lý
-  xong thì bỏ qua khung hiện tại, đợi khung kế tiếp — tránh dồn ứ
-  request nếu mạng chậm hơn tốc độ chụp).
-  Bấm "Xong" -> DỪNG CAMERA HẲN (giải phóng track, không để chạy
-  ngầm tốn pin) -> gọi api.stopManualCount() [ĐÃ CÓ SẴN, tái dùng,
-  không phải endpoint mới] với số đếm cuối cùng để đối chiếu thật.
+Nguyên nhân của việc KHÔNG THẤY LỖI (bug do chính mình gây ra khi
+viết LiveCountingScreen.jsx lần trước):
+Code cũ xử lý lỗi mỗi khung hình theo kiểu "im lặng bỏ qua hoàn
+toàn" (catch rỗng, không set state gì) — chủ đích là để 1 lần lỗi
+thoáng qua do mạng chập chờn không làm phiền người dùng. Nhưng hậu
+quả phụ: nếu MỌI khung hình đều lỗi liên tục (vd sai đường dẫn
+model, thiếu thư viện, model chưa load được trên server) thì người
+dùng KHÔNG BAO GIỜ biết được — chỉ thấy số đếm đứng yên ở 0 mãi,
+trông như model không nhận diện được gì trong khi thật ra server
+đang trả lỗi 500 liên tục ở phía sau, chưa từng chạy được 1 khung
+nào thành công.
 
-File sửa:
-- src/components/CountingScreen.jsx
-  Thêm "🔴 Trực tiếp" làm lựa chọn THỨ 3 (mặc định) bên cạnh "🎥 Quay
-  video" và "✍️ Nhập tay" đã có — chọn Trực tiếp thì render
-  LiveCountingScreen thay vì luồng quay-video-rồi-gửi cũ.
-- src/styles/app.css — style cho .liveStage, .liveVideo-wrap (khung
-  video tỉ lệ 4:3, bo góc), .liveOverlay (canvas vẽ đè, pointer-events
-  none để không chặn tương tác), .liveCount-badge (số đếm nổi góc
-  trên-trái, có nền mờ dễ đọc trên mọi nền video).
+Cách sửa (src/components/LiveCountingScreen.jsx):
+- Đếm số lần lỗi LIÊN TIẾP (consecutiveFailsRef). Lỗi 1-2 lần liên
+  tiếp vẫn im lặng bỏ qua như cũ (mạng chập chờn thoáng qua, không
+  đáng báo động). Từ lần thứ 3 liên tiếp trở lên -> hiện hẳn banner
+  đỏ đè lên góc dưới video, với ĐÚNG nội dung lỗi thật lấy từ
+  response.detail của backend (không phải câu chung chung).
+- Lỗi tự RESET về 0 ngay khi có 1 khung xử lý thành công — nếu chỉ
+  là lỗi thoáng qua rồi tự phục hồi, banner tự biến mất, không cần
+  người dùng bấm tắt gì.
+- Bắt cả 2 loại lỗi: response không phải 200 (đọc .detail từ JSON
+  trả về) VÀ lỗi mạng/exception khi gọi fetch (mất kết nối hẳn).
 
-ĐÃ TỰ KIỂM TRA KỸ (Playwright + camera ẢO thật của Chromium
---use-fake-device-for-media-stream, KHÔNG phải giả lập DOM suông —
-đây là cách duy nhất kiểm tra được luồng camera thật khi không có
-thiết bị vật lý trong sandbox):
+ĐÃ TỰ KIỂM TRA (Playwright + camera ảo thật, KHÔNG chặn giả lập
+request lần này — để nó tự gọi thật vào backend thật đang thiếu
+ultralytics/opencv trong sandbox, đúng mô phỏng tình huống "mọi khung
+đều lỗi" người dùng gặp phải):
+- Sau ~3.5 giây (5 lần thử, mỗi 700ms), banner đỏ hiện đúng nội dung
+  lỗi thật: "Server lỗi khi xử lý khung hình: Xử lý khung hình thất
+  bại: ModuleNotFoundError('No module named cv2')" — xác nhận cơ chế
+  hiện lỗi hoạt động đúng, người dùng giờ THẤY ĐƯỢC nguyên nhân thật
+  thay vì đoán mò tại sao số cứ đứng ở 0.
+- npm run build thành công, không lỗi.
 
-1. Camera thật mở đúng: video element xác nhận videoWidth=1280,
-   videoHeight=720, paused=False, readyState=4 (đang phát thật).
-2. Chặn request /live-frame bằng Playwright route interception, trả
-   về dữ liệu khung hộp giả lập (3 box) — xác nhận:
-   - Số đếm hiện đúng "3" trên UI.
-   - Canvas overlay THẬT SỰ VẼ (kiểm tra bằng cách đọc trực tiếp
-     ImageData của canvas: 22.886 pixel không trong suốt — không
-     phải chỉ tin ảnh chụp màn hình, mà đọc dữ liệu pixel thật).
-   - Ảnh chụp màn hình xác nhận trực quan: 3 khung hộp cam viền rõ,
-     có nhãn #1/#2/#3, đúng hệt hiệu ứng "camera detection" yêu cầu.
-3. Bấm "Xong" với count=5: xác nhận gọi ĐÚNG /stop thật, backend đối
-   chiếu đúng (5=5 → khớp), cập nhật tồn kho thật, VÀ camera dừng
-   hoàn toàn (0 track còn "live" sau khi bấm Xong — kiểm tra bằng
-   MediaStreamTrack.readyState, không phải suy đoán).
-4. npm run build thành công (cả client + service worker), không lỗi.
-
-CHƯA test được (cần chính bạn tự thử trên điện thoại thật với model
-carton_counter_best.pt thật — sandbox không có model/GPU để xác nhận
-độ chính xác đếm thật, chỉ xác nhận được luồng kỹ thuật đúng):
-- Độ trễ thực tế giữa lúc thùng đi qua và lúc khung hộp/số đếm cập
-  nhật trên màn hình — có thể cần tinh chỉnh lại khoảng cách 700ms
-  giữa các lần chụp nếu quá nhanh/chậm so với tốc độ băng chuyền thật.
-- Độ chính xác đếm khi so với /count-video (quay hết video rồi mới
-  xử lý) — về lý thuyết cùng dùng YOLOv8+ByteTrack nên kết quả nên
-  tương đương, nhưng cần tự đối chiếu số liệu thật để chắc chắn.
+Gợi ý chẩn đoán cho người dùng (không phải sửa trong code này — ghi
+lại để nhớ hướng debug tiếp nếu banner lỗi hiện ra khi test thật trên
+Railway):
+- Nếu lỗi là "No module named cv2"/"ultralytics" -> deploy Railway
+  thiếu thư viện, kiểm tra lại requirements.txt đã có ultralytics
+  chưa, và RAILPACK_BUILD_APT_PACKAGES/RAILPACK_DEPLOY_APT_PACKAGES
+  đã đặt đúng (libgl1...) chưa.
+- Nếu lỗi liên quan tới đường dẫn file model (FileNotFoundError...)
+  -> kiểm tra lại CARTON_MODEL_PATH trên Railway Variables có trỏ
+  đúng file models/carton_counter_best.pt đã commit vào repo chưa.
