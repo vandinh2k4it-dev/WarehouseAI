@@ -5,7 +5,7 @@ import CountingScreen from "../components/CountingScreen";
 
 const LINE_STATUS_LABEL = {
   not_started: "chưa đếm",
-  counting: "đang đếm",
+  counting: "đang đếm dở",
   matched: "đã khớp",
   needs_review: "lệch — kiểm tra sau",
   resolved_override: "đã xử lý",
@@ -132,9 +132,11 @@ export default function ImportFlow() {
                     <span className={`badge ${line.counting_status}`}>
                       {LINE_STATUS_LABEL[line.counting_status] || line.counting_status}
                     </span>
-                    {(line.counting_status === "not_started" || line.counting_status === "needs_review") && (
+                    {(line.counting_status === "not_started" ||
+                      line.counting_status === "needs_review" ||
+                      line.counting_status === "counting") && (
                       <button className="tapbtn" onClick={() => beginLine(line)}>
-                        Đếm
+                        {line.counting_status === "counting" ? "Đếm lại" : "Đếm"}
                       </button>
                     )}
                   </div>

@@ -1,28 +1,20 @@
-fix(frontend): chế độ "Quay video" — thêm nút chọn video có sẵn, không ép mở camera
+fix(frontend): hiện nút "Đếm lại" cho dòng bị kẹt "đang đếm" (thoát app giữa chừng)
 
-Bối cảnh:
-Người dùng có sẵn video test đã quay từ trước (dùng để test CLI
-count_pipeline.py trước khi có PWA), muốn dùng lại video đó để test
-qua giao diện web — nhưng chế độ "Quay video" chỉ có ĐÚNG 1 nút, dùng
-capture="environment" ép mở thẳng camera quay video MỚI, không có
-cách nào chọn file video đã có sẵn trong máy/thư viện ảnh. Đúng lỗi
-tương tự đã từng gặp và sửa ở tính năng quét phiếu (ScanReceipt.jsx)
-trước đó — lần này chưa áp dụng cùng cách sửa cho phần đếm hàng.
+Nối vào backend đã có sẵn cơ chế xử lý (xem COMMIT_MSG.txt bên backend
+cùng đợt) — trước đây dù backend có cho phép đếm lại, giao diện vẫn
+KHÔNG HIỆN nút nào cho trạng thái 'counting', nên người dùng vẫn kẹt
+dù backend đã sẵn sàng.
 
-Cách sửa (src/components/CountingScreen.jsx):
-Tách 1 nút thành 2, giống hệt cách đã làm ở ScanReceipt.jsx:
-- "🎥 Quay video mới" — vẫn giữ capture="environment", ép mở camera.
-- "📁 Chọn video có sẵn" — input KHÔNG có capture, mở trình duyệt
-  file/thư viện video bình thường, chọn được video đã quay từ trước.
-Cả 2 nút dùng chung 1 hàm xử lý (handleFileSelected) — không cần
-thêm logic mới, chỉ thêm đường vào khác cho cùng 1 luồng xử lý.
+File sửa:
+- src/pages/ImportFlow.jsx
+  + Đổi nhãn trạng thái 'counting' từ "đang đếm" -> "đang đếm dở" (rõ
+    nghĩa hơn — phân biệt với đang đếm THẬT SỰ ngay lúc đó).
+  + Thêm điều kiện hiện nút bấm: ngoài 'not_started' và
+    'needs_review' như trước, giờ 'counting' cũng hiện nút — nhãn nút
+    đổi thành "Đếm lại" (thay vì "Đếm") để rõ ý đây là khởi động lại
+    phiên bị bỏ dở, không phải bắt đầu lần đầu.
 
-ĐÃ TỰ KIỂM TRA (Playwright thật, không phải đoán):
-- Xác nhận đúng 2 input[type=file][accept="video/*"] tồn tại trên
-  trang (count=2).
-- Chọn file qua ĐÚNG input không có capture (mô phỏng "chọn video có
-  sẵn") — file được nhận, gửi lên backend thật, backend xử lý đúng
-  (lỗi cuối chỉ do sandbox thiếu torch/ultralytics — đúng graceful
-  degradation đã thiết kế, KHÔNG phải lỗi wiring — xác nhận toàn bộ
-  đường đi từ nút bấm -> chọn file -> gửi API đều đúng).
-- npm run build thành công, không lỗi.
+ĐÃ TỰ KIỂM TRA (kết hợp cùng test backend — xem chi tiết đầy đủ bên
+COMMIT_MSG.txt backend, không lặp lại ở đây): xác nhận toàn bộ chuỗi
+từ bấm nút -> gọi API -> tạo phiên mới -> phiên cũ tự đóng đều hoạt
+động đúng qua TestClient thật.
