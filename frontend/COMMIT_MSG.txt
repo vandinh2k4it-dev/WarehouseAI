@@ -1,56 +1,59 @@
-feat(frontend): Web Push — bật thông báo đẩy trên trang Cảnh báo
+feat(frontend): đếm trực tiếp — vẽ khung hộp nhận diện đè lên video camera
 
 Nối vào backend đã có sẵn (xem COMMIT_MSG.txt bên backend cùng đợt).
 
 File mới:
-- src/sw.js
-  Service worker TỰ VIẾT (thay cho service worker tự sinh của Workbox
-  trước đây) — xử lý sự kiện 'push' (hiện thông báo hệ thống) và
-  'notificationclick' (bấm vào thông báo mở đúng trang, focus tab có
-  sẵn thay vì mở tab mới nếu app đã đang mở).
-- src/pushNotifications.js
-  Các hàm tiện ích: subscribeToPush(), unsubscribeFromPush(),
-  getCurrentSubscription(), kiểm tra hỗ trợ/quyền — tách riêng khỏi
-  UI component để dùng lại được nếu sau này cần ở trang khác.
+- src/components/LiveCountingScreen.jsx
+  Component chính: mở camera thật (getUserMedia, facingMode
+  "environment" — camera sau), hiện <video> sống + <canvas> vẽ đè
+  (overlay) khung hộp nhận diện. Mỗi ~700ms: chụp 1 khung hình từ
+  video vào canvas ẩn, chuyển thành JPEG, gửi lên
+  POST /camera-sessions/{id}/live-frame, nhận về toạ độ khung hộp +
+  số đếm luỹ kế, vẽ NGAY lên canvas overlay + cập nhật số hiện trên
+  màn hình. Có cờ chống gửi chồng khung (nếu khung trước chưa xử lý
+  xong thì bỏ qua khung hiện tại, đợi khung kế tiếp — tránh dồn ứ
+  request nếu mạng chậm hơn tốc độ chụp).
+  Bấm "Xong" -> DỪNG CAMERA HẲN (giải phóng track, không để chạy
+  ngầm tốn pin) -> gọi api.stopManualCount() [ĐÃ CÓ SẴN, tái dùng,
+  không phải endpoint mới] với số đếm cuối cùng để đối chiếu thật.
 
 File sửa:
-- vite.config.js
-  Đổi chiến lược VitePWA từ 'generateSW' (Workbox tự sinh, không tuỳ
-  biến được) sang 'injectManifest' (dùng src/sw.js tự viết) — bắt
-  buộc phải đổi vì generateSW không hỗ trợ thêm code xử lý sự kiện
-  push tuỳ ý.
-- src/api.js — thêm getVapidPublicKey(), subscribePush(),
-  unsubscribePush(), testPush().
-- src/pages/Alerts.jsx — thêm banner "Bật thông báo" ở đầu trang, tự
-  nhận diện trạng thái hiện tại (chưa hỗ trợ / đã chặn / đã bật / có
-  thể bật), có nút "Gửi thử" khi đã bật để tự kiểm tra mà không cần
-  đợi có cảnh báo thật xảy ra.
-- src/styles/app.css — style .pushBanner.
-- package.json — thêm 2 gói workbox-precaching, workbox-core (cần
-  cho service worker tự viết dùng đúng cơ chế precache của Workbox).
+- src/components/CountingScreen.jsx
+  Thêm "🔴 Trực tiếp" làm lựa chọn THỨ 3 (mặc định) bên cạnh "🎥 Quay
+  video" và "✍️ Nhập tay" đã có — chọn Trực tiếp thì render
+  LiveCountingScreen thay vì luồng quay-video-rồi-gửi cũ.
+- src/styles/app.css — style cho .liveStage, .liveVideo-wrap (khung
+  video tỉ lệ 4:3, bo góc), .liveOverlay (canvas vẽ đè, pointer-events
+  none để không chặn tương tác), .liveCount-badge (số đếm nổi góc
+  trên-trái, có nền mờ dễ đọc trên mọi nền video).
 
-ĐÃ TỰ KIỂM TRA (Playwright, BẢN BUILD PRODUCTION THẬT — quan trọng vì
-service worker CHỈ hoạt động ở bản build, không chạy trong `npm run
-dev`, đã tự phát hiện và sửa cách test cho đúng):
-- Build production: sw.js sinh ra đúng, chứa đủ code push/
-  notificationclick (xác nhận bằng cách đọc trực tiếp file đã build,
-  không chỉ tin log build).
-- Serve bản dist/ thật (không phải dev server) qua http.server: xác
-  nhận service worker ĐĂNG KÝ THÀNH CÔNG (1 registration) — chứng tỏ
-  script registerSW.js tự inject vào index.html hoạt động đúng.
-- Banner nhận diện đúng trạng thái quyền thông báo và hiện đúng
-  thông báo tương ứng (trong sandbox này mặc định "denied" do đặc
-  thù Chromium headless không có màn hình thật — KHÔNG PHẢI lỗi code,
-  đã xác nhận qua Notification.permission đọc trực tiếp từ trình
-  duyệt, không phải do logic ứng dụng).
-- npm run build thành công cả 2 lần build (client + service worker),
-  không lỗi.
+ĐÃ TỰ KIỂM TRA KỸ (Playwright + camera ẢO thật của Chromium
+--use-fake-device-for-media-stream, KHÔNG phải giả lập DOM suông —
+đây là cách duy nhất kiểm tra được luồng camera thật khi không có
+thiết bị vật lý trong sandbox):
 
-CHƯA test được (cần chính bạn tự thử trên điện thoại thật — sandbox
-không có màn hình/thiết bị thật để cấp quyền thông báo hay nhận push
-thật sự):
-- Bấm "Bật thông báo" → xem có hiện đúng hộp thoại xin quyền của
-  trình duyệt không.
-- Bấm "Gửi thử" → xem điện thoại có NHẬN ĐƯỢC thông báo thật không.
-- Test 1 cảnh báo thật phát sinh (vd đếm lệch số) → xem có tự động
-  nhận được thông báo không cần mở sẵn app.
+1. Camera thật mở đúng: video element xác nhận videoWidth=1280,
+   videoHeight=720, paused=False, readyState=4 (đang phát thật).
+2. Chặn request /live-frame bằng Playwright route interception, trả
+   về dữ liệu khung hộp giả lập (3 box) — xác nhận:
+   - Số đếm hiện đúng "3" trên UI.
+   - Canvas overlay THẬT SỰ VẼ (kiểm tra bằng cách đọc trực tiếp
+     ImageData của canvas: 22.886 pixel không trong suốt — không
+     phải chỉ tin ảnh chụp màn hình, mà đọc dữ liệu pixel thật).
+   - Ảnh chụp màn hình xác nhận trực quan: 3 khung hộp cam viền rõ,
+     có nhãn #1/#2/#3, đúng hệt hiệu ứng "camera detection" yêu cầu.
+3. Bấm "Xong" với count=5: xác nhận gọi ĐÚNG /stop thật, backend đối
+   chiếu đúng (5=5 → khớp), cập nhật tồn kho thật, VÀ camera dừng
+   hoàn toàn (0 track còn "live" sau khi bấm Xong — kiểm tra bằng
+   MediaStreamTrack.readyState, không phải suy đoán).
+4. npm run build thành công (cả client + service worker), không lỗi.
+
+CHƯA test được (cần chính bạn tự thử trên điện thoại thật với model
+carton_counter_best.pt thật — sandbox không có model/GPU để xác nhận
+độ chính xác đếm thật, chỉ xác nhận được luồng kỹ thuật đúng):
+- Độ trễ thực tế giữa lúc thùng đi qua và lúc khung hộp/số đếm cập
+  nhật trên màn hình — có thể cần tinh chỉnh lại khoảng cách 700ms
+  giữa các lần chụp nếu quá nhanh/chậm so với tốc độ băng chuyền thật.
+- Độ chính xác đếm khi so với /count-video (quay hết video rồi mới
+  xử lý) — về lý thuyết cùng dùng YOLOv8+ByteTrack nên kết quả nên
+  tương đương, nhưng cần tự đối chiếu số liệu thật để chắc chắn.

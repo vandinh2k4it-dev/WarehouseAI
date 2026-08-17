@@ -1,19 +1,17 @@
 import { useState, useRef } from "react";
 import { api } from "../api";
+import LiveCountingScreen from "./LiveCountingScreen";
 
 // Màn hình đếm dùng chung cho cả nhập và xuất — nhận session đã tạo sẵn
-// (từ start-import hoặc start-export). Có 2 cách đối chiếu:
-// (1) Quay video — backend tự đếm bằng YOLOv8+ByteTrack (chính xác hơn,
-//     phù hợp số lượng nhiều/khó đếm tay).
-// (2) Nhập tay — gõ thẳng số đã đếm được, dùng khi số lượng ít, không
-//     đáng để quay video (nhanh hơn nhiều cho vài thùng lẻ).
-//
-// GHI CHÚ quay video: dùng <input type="file" accept="video/*"
-// capture="environment"> thay vì getUserMedia + MediaRecorder tự ghép —
-// cách này đơn giản hơn, đáng tin cậy hơn trên nhiều trình duyệt di động
-// (đặc biệt Safari/Chrome iOS), đã test kỹ ở bản mobile.html trước đó.
+// (từ start-import hoặc start-export). Có 3 cách đối chiếu:
+// (1) Trực tiếp — mở thẳng camera, vẽ khung hộp nhận diện đè lên video theo
+//     thời gian thực, số đếm tăng dần ngay khi thấy (LiveCountingScreen.jsx).
+// (2) Quay video — quay xong mới gửi lên 1 lần, backend xử lý xong mới ra
+//     số (không có phản hồi trực quan lúc quay, nhưng đáng tin cậy hơn nếu
+//     mạng yếu vì chỉ cần gửi đúng 1 lần).
+// (3) Nhập tay — gõ thẳng số đã đếm được, dùng khi số lượng ít.
 export default function CountingScreen({ session, expectedQuantity, label, onDone, onCancel }) {
-  const [mode, setMode] = useState("video"); // video | manual
+  const [mode, setMode] = useState("live"); // live | video | manual
   const [status, setStatus] = useState("idle"); // idle | uploading | done | error
   const [manualQty, setManualQty] = useState("");
   const [result, setResult] = useState(null);
@@ -61,7 +59,38 @@ export default function CountingScreen({ session, expectedQuantity, label, onDon
     if (inputRef.current) inputRef.current.value = "";
   }
 
+  function handleLiveDone(liveResult) {
+    setResult(liveResult);
+    setStatus("done");
+  }
+
   const matched = result?.session?.status === "completed";
+
+  // Chế độ Trực tiếp có màn hình riêng hoàn toàn (video + overlay full màn
+  // hình) — chỉ hiện khi đang ở bước chọn/đang đếm, chuyển sang khối kết
+  // quả chung phía dưới khi xong (dùng chung UI kết quả với 2 chế độ kia).
+  if (mode === "live" && status === "idle") {
+    return (
+      <div className="countStage">
+        <div className="chips" style={{ justifyContent: "center" }}>
+          <button className="chip active">🔴 Trực tiếp</button>
+          <button className="chip" onClick={() => setMode("video")}>
+            🎥 Quay video
+          </button>
+          <button className="chip" onClick={() => setMode("manual")}>
+            ✍️ Nhập tay
+          </button>
+        </div>
+        <LiveCountingScreen
+          session={session}
+          expectedQuantity={expectedQuantity}
+          label={label}
+          onCancel={onCancel}
+          onDone={handleLiveDone}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="countStage">
@@ -73,6 +102,9 @@ export default function CountingScreen({ session, expectedQuantity, label, onDon
       {status === "idle" && (
         <>
           <div className="chips" style={{ justifyContent: "center" }}>
+            <button className={`chip${mode === "live" ? " active" : ""}`} onClick={() => setMode("live")}>
+              🔴 Trực tiếp
+            </button>
             <button className={`chip${mode === "video" ? " active" : ""}`} onClick={() => setMode("video")}>
               🎥 Quay video
             </button>
