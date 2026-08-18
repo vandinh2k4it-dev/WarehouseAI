@@ -1,20 +1,30 @@
-fix(frontend): hiện nút "Đếm lại" cho dòng bị kẹt "đang đếm" (thoát app giữa chừng)
+feat(frontend): hiện player xem lại video đã vẽ khung hộp nhận diện
 
-Nối vào backend đã có sẵn cơ chế xử lý (xem COMMIT_MSG.txt bên backend
-cùng đợt) — trước đây dù backend có cho phép đếm lại, giao diện vẫn
-KHÔNG HIỆN nút nào cho trạng thái 'counting', nên người dùng vẫn kẹt
-dù backend đã sẵn sàng.
+Nối vào backend đã có sẵn (xem COMMIT_MSG.txt bên backend cùng đợt).
 
 File sửa:
-- src/pages/ImportFlow.jsx
-  + Đổi nhãn trạng thái 'counting' từ "đang đếm" -> "đang đếm dở" (rõ
-    nghĩa hơn — phân biệt với đang đếm THẬT SỰ ngay lúc đó).
-  + Thêm điều kiện hiện nút bấm: ngoài 'not_started' và
-    'needs_review' như trước, giờ 'counting' cũng hiện nút — nhãn nút
-    đổi thành "Đếm lại" (thay vì "Đếm") để rõ ý đây là khởi động lại
-    phiên bị bỏ dở, không phải bắt đầu lần đầu.
+- src/components/CountingScreen.jsx
+  Sau khi đếm xong qua chế độ "Quay video" (không áp dụng cho "Trực
+  tiếp"/"Nhập tay" vì 2 chế độ đó không tạo video đã xử lý), nếu
+  response có annotated_video_url thì hiện thêm 1 khối video player
+  (<video controls>) ngay dưới kết quả khớp/lệch, phát trực tiếp video
+  đã vẽ khung hộp — không cần tải về máy riêng, xem ngay trên trình
+  duyệt.
+- src/styles/app.css — style .annotatedVideo (khối bọc + video player
+  bo góc, nền đen, full-width).
 
-ĐÃ TỰ KIỂM TRA (kết hợp cùng test backend — xem chi tiết đầy đủ bên
-COMMIT_MSG.txt backend, không lặp lại ở đây): xác nhận toàn bộ chuỗi
-từ bấm nút -> gọi API -> tạo phiên mới -> phiên cũ tự đóng đều hoạt
-động đúng qua TestClient thật.
+ĐÃ TỰ KIỂM TRA (Playwright, chặn response /count-video để có
+annotated_video_url giả lập — do sandbox không có ultralytics để tạo
+video thật, xem ghi chú tương ứng bên COMMIT_MSG backend):
+- Xác nhận: khi response CÓ annotated_video_url, video player HIỆN RA
+  đúng, với đúng URL đầy đủ (API_BASE + đường dẫn tương đối trả về từ
+  backend) — kiểm tra bằng cách đọc thẳng thuộc tính src của thẻ
+  <video> đã render, không chỉ nhìn ảnh chụp màn hình.
+- npm run build thành công, không lỗi.
+
+Việc cần tự làm: thử 1 lần thật trên máy có model, xác nhận video
+thật sự phát được (đúng codec trình duyệt hỗ trợ — ultralytics mặc
+định có thể xuất .avi (mp4v) tuỳ phiên bản, một số trình duyệt không
+phát được .avi trực tiếp qua thẻ <video> — nếu gặp trường hợp này,
+cần thêm bước chuyển đổi sang .mp4/h264 trước khi lưu, báo mình biết
+để xử lý tiếp).

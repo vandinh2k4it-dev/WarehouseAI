@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { api } from "../api";
+import { api, API_BASE } from "../api";
 import LiveCountingScreen from "./LiveCountingScreen";
 
 // Màn hình đếm dùng chung cho cả nhập và xuất — nhận session đã tạo sẵn
@@ -189,6 +189,19 @@ export default function CountingScreen({ session, expectedQuantity, label, onDon
             </div>
             <div className="resultBox-msg">{result.message}</div>
           </div>
+
+          {result.annotated_video_url && (
+            <div className="annotatedVideo">
+              <div className="annotatedVideo-label">🎬 Video đã nhận diện — xem lại khung hộp AI vẽ ra</div>
+              <video
+                src={`${API_BASE}${result.annotated_video_url}`}
+                controls
+                playsInline
+                className="annotatedVideo-player"
+              />
+            </div>
+          )}
+
           <button className="primary" onClick={() => onDone(result)}>
             Xong — chọn loại tiếp theo
           </button>
