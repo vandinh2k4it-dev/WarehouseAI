@@ -145,14 +145,34 @@ export default function LiveCountingScreen({ session, expectedQuantity, label, o
     }
     const ctx = overlay.getContext("2d");
     ctx.clearRect(0, 0, overlay.width, overlay.height);
-    ctx.strokeStyle = "#F5A524";
-    ctx.lineWidth = Math.max(3, overlay.width / 260);
-    ctx.font = `${Math.max(18, Math.round(overlay.width / 35))}px sans-serif`;
-    ctx.fillStyle = "#F5A524";
+
+    // Màu xanh cốm/cyan — tương phản mạnh với màu nâu/cam của thùng carton
+    // thật (khác hẳn màu cam accent cũ #F5A524, dễ bị lẫn vào chính thùng).
+    const BOX_COLOR = "#00E676";
+    const lineWidth = Math.max(3, overlay.width / 260);
+    const fontSize = Math.max(16, Math.round(overlay.width / 42));
+    ctx.font = `bold ${fontSize}px sans-serif`;
+    ctx.textBaseline = "top";
+
     for (const box of data.boxes) {
+      // Khung hộp
+      ctx.strokeStyle = BOX_COLOR;
+      ctx.lineWidth = lineWidth;
       ctx.strokeRect(box.x1, box.y1, box.x2 - box.x1, box.y2 - box.y1);
-      const labelY = box.y1 > 24 ? box.y1 - 8 : box.y1 + 20;
-      ctx.fillText(`#${box.track_id}`, box.x1 + 4, labelY);
+
+      // Nền đặc phía sau chữ nhãn — LUÔN đọc được rõ dù nền video sáng/tối/
+      // màu gì, không phụ thuộc màu chữ chỏi với nền như cách cũ.
+      const label = `#${box.track_id}`;
+      const textWidth = ctx.measureText(label).width;
+      const padX = 6, padY = 4;
+      const labelH = fontSize + padY * 2;
+      const labelY = box.y1 > labelH ? box.y1 - labelH : box.y1;
+      ctx.fillStyle = BOX_COLOR;
+      ctx.fillRect(box.x1, labelY, textWidth + padX * 2, labelH);
+
+      // Chữ đen — tương phản tốt trên nền xanh cốm sáng
+      ctx.fillStyle = "#0A1F14";
+      ctx.fillText(label, box.x1 + padX, labelY + padY);
     }
   }
 

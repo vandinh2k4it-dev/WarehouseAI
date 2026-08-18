@@ -1,30 +1,26 @@
-feat(frontend): hiện player xem lại video đã vẽ khung hộp nhận diện
+fix(frontend): đổi màu khung hộp nhận diện — cam cũ khó thấy trên thùng carton (cũng màu cam/nâu)
 
-Nối vào backend đã có sẵn (xem COMMIT_MSG.txt bên backend cùng đợt).
+Bối cảnh (ảnh chụp thật): khung hộp + chữ nhãn dùng màu cam accent
+(#F5A524) của giao diện — nhưng thùng carton THẬT cũng màu nâu/cam,
+khiến khung hộp gần như lẫn vào chính vật thể đang khoanh vùng, rất
+khó nhìn khi demo.
 
-File sửa:
-- src/components/CountingScreen.jsx
-  Sau khi đếm xong qua chế độ "Quay video" (không áp dụng cho "Trực
-  tiếp"/"Nhập tay" vì 2 chế độ đó không tạo video đã xử lý), nếu
-  response có annotated_video_url thì hiện thêm 1 khối video player
-  (<video controls>) ngay dưới kết quả khớp/lệch, phát trực tiếp video
-  đã vẽ khung hộp — không cần tải về máy riêng, xem ngay trên trình
-  duyệt.
-- src/styles/app.css — style .annotatedVideo (khối bọc + video player
-  bo góc, nền đen, full-width).
+Cách sửa (src/components/LiveCountingScreen.jsx, hàm drawBoxes):
+- Đổi màu viền khung + chữ nhãn từ cam (#F5A524) sang xanh lá/cyan
+  (#00E676) — tương phản mạnh với tông màu nâu/cam/be của thùng
+  carton thật, đồng thời cũng là màu phổ biến trong các demo nhận
+  diện vật thể (dễ nhận biết, quen mắt).
+- Thêm NỀN ĐẶC phía sau chữ nhãn (trước đây chữ vẽ trực tiếp lên nền
+  video, dễ bị lẫn nếu nền sáng/trùng màu) — giờ luôn có 1 khối màu
+  xanh lá đặc phía sau, chữ đen phía trên — đọc được rõ ràng bất kể
+  nền video là gì, đúng kiểu nhãn trong ảnh demo COCO tham khảo.
+- Dùng ctx.measureText() để tính đúng độ rộng nền theo đúng độ dài
+  chữ track ID (không cố định cứng, số ID dài/ngắn khác nhau).
 
-ĐÃ TỰ KIỂM TRA (Playwright, chặn response /count-video để có
-annotated_video_url giả lập — do sandbox không có ultralytics để tạo
-video thật, xem ghi chú tương ứng bên COMMIT_MSG backend):
-- Xác nhận: khi response CÓ annotated_video_url, video player HIỆN RA
-  đúng, với đúng URL đầy đủ (API_BASE + đường dẫn tương đối trả về từ
-  backend) — kiểm tra bằng cách đọc thẳng thuộc tính src của thẻ
-  <video> đã render, không chỉ nhìn ảnh chụp màn hình.
+ĐÃ TỰ KIỂM TRA (Playwright + camera ảo thật, chặn response giả lập
+để có toạ độ khung hộp cố định kiểm tra được):
+- Route giả lập /live-frame được gọi đúng (xác nhận qua đếm số lần
+  gọi thật, không phải suy đoán).
+- Ảnh chụp màn hình xác nhận trực quan: khung hộp hiện đúng màu xanh
+  lá/cyan mới, không còn màu cam cũ dễ lẫn vào thùng.
 - npm run build thành công, không lỗi.
-
-Việc cần tự làm: thử 1 lần thật trên máy có model, xác nhận video
-thật sự phát được (đúng codec trình duyệt hỗ trợ — ultralytics mặc
-định có thể xuất .avi (mp4v) tuỳ phiên bản, một số trình duyệt không
-phát được .avi trực tiếp qua thẻ <video> — nếu gặp trường hợp này,
-cần thêm bước chuyển đổi sang .mp4/h264 trước khi lưu, báo mình biết
-để xử lý tiếp).
