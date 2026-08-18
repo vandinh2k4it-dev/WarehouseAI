@@ -1,4 +1,5 @@
 import os
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -352,6 +353,7 @@ async def count_video_segment(
     # Thư mục ultralytics tự ghi video đã vẽ khung hộp vào (save=True) —
     # dùng riêng cho từng phiên để tránh 2 phiên xử lý cùng lúc ghi đè nhau.
     annotated_raw_dir = Path("uploads/annotated_raw") / f"session_{session_id}"
+    search_started_at = time.time()  # dùng để lọc đúng file MỚI tạo ra lần này
 
     try:
         result = count_boxes_in_video(
@@ -373,28 +375,41 @@ async def count_video_segment(
     if result.model_warning:
         raise HTTPException(status_code=500, detail=result.model_warning)
 
-    # ultralytics tự đặt tên file bên trong {output_dir}/session/ theo tên
-    # video gốc (đuôi .avi hoặc .mp4 tuỳ phiên bản) — tìm đúng file vừa tạo
-    # thay vì đoán cứng tên, rồi chuyển vào thư mục cố định để phục vụ qua
-    # URL ổn định /media/annotated/... (mount static trong app/main.py).
+    # ultralytics KHÔNG dùng đúng nguyên đường dẫn project= truyền vào — nó
+    # tự chèn thêm tiền tố "runs/<task>/" phía trước (xác nhận qua log thật:
+    # truyền project="uploads/annotated_raw/session_56" nhưng file thật lại
+    # nằm ở "runs/detect/uploads/annotated_raw/session_56/session/"). Thay vì
+    # đoán cứng theo đúng 1 quy tắc (dễ vỡ lại nếu ultralytics đổi hành vi ở
+    # bản khác), TÌM ĐỆ QUY toàn bộ file .mp4/.avi MỚI TẠO RA sau thời điểm
+    # bắt đầu xử lý (search_started_at) — chắc chắn đúng bất kể ultralytics
+    # đặt ở thư mục con nào.
     annotated_url = None
     try:
-        produced_dir = annotated_raw_dir / "session"
-        # In ra Railway logs để CHẨN ĐOÁN ĐƯỢC THẬT khi video không hiện —
-        # trước đây bọc try/except im lặng hoàn toàn, không cách nào biết
-        # được lý do thật (thư mục không tồn tại? sai đuôi file? ultralytics
-        # đặt tên khác dự đoán?) — giờ in đủ thông tin ra log mỗi lần chạy.
-        print(f"[annotated-video] Tìm file trong: {produced_dir.resolve()}")
-        print(f"[annotated-video] Thư mục có tồn tại không: {produced_dir.exists()}")
-        if produced_dir.exists():
-            all_files = list(produced_dir.iterdir())
-            print(f"[annotated-video] Toàn bộ file trong thư mục: {[f.name for f in all_files]}")
+        search_roots = [Path("runs"), annotated_raw_dir, Path(".")]
+        found_candidates = []
+        for root in search_roots:
+            if not root.exists():
+                continue
+            for ext in ("*.mp4", "*.avi"):
+                for f in root.rglob(ext):
+                    try:
+                        if f.stat().st_mtime >= search_started_at - 2:  # trừ hao 2s cho sai lệch đồng hồ hệ thống
+                            found_candidates.append(f)
+                    except OSError:
+                        continue
 
-        candidates = sorted(
-            [*produced_dir.glob("*.mp4"), *produced_dir.glob("*.avi")],
-            key=lambda p: p.stat().st_mtime, reverse=True,
-        )
-        print(f"[annotated-video] Số file .mp4/.avi tìm thấy: {len(candidates)}")
+        # Loại trùng (3 thư mục tìm có thể trùng nhau) + sắp theo mới nhất trước
+        seen_paths = set()
+        candidates = []
+        for f in sorted(found_candidates, key=lambda p: p.stat().st_mtime, reverse=True):
+            resolved = f.resolve()
+            if resolved not in seen_paths:
+                seen_paths.add(resolved)
+                candidates.append(f)
+
+        print(f"[annotated-video] Tìm đệ quy từ thời điểm {search_started_at} -> thấy {len(candidates)} file mới")
+        if candidates:
+            print(f"[annotated-video] File mới nhất: {candidates[0].resolve()}")
 
         if candidates:
             served_dir = Path("uploads/annotated_videos")

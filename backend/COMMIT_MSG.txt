@@ -1,29 +1,45 @@
-fix(backend): thêm log chẩn đoán cho bước tìm video đã vẽ khung hộp — đang bị nuốt lỗi im lặng
+fix(backend): tìm video đã vẽ khung hộp theo thời gian tạo (đệ quy) — sửa đúng theo log thật
 
-Bối cảnh:
-Đếm video đã ra đúng số (34) sau khi sửa CARTON_MODEL_PATH, nhưng
-KHÔNG thấy khung video nào hiện trên kết quả (tính năng "xem lại video
-đã vẽ khung hộp" thêm ở commit trước). Nguyên nhân thật chưa xác định
-được vì bước tìm/chuyển file được bọc trong try/except NUỐT LỖI HOÀN
-TOÀN (except Exception: pass) — annotated_video_url âm thầm về None,
-không có cách nào biết được lý do thật (thư mục không tồn tại? sai
-tên file ultralytics đặt? quyền ghi?).
+Bối cảnh (có bằng chứng cụ thể từ Railway logs, không phải đoán):
+Log thật cho thấy dòng "Results saved to
+/app/runs/detect/uploads/annotated_raw/session_56/session" — ultralytics
+KHÔNG lưu đúng nguyên đường dẫn project= đã truyền vào
+("uploads/annotated_raw/session_56"), mà tự động chèn thêm tiền tố
+"runs/detect/" phía trước (do cấu hình runs_dir mặc định riêng của
+ultralytics, không phải bug của mình nhưng cần thích ứng theo).
 
-Thay đổi (app/routers/camera.py, endpoint /count-video):
-- In ra Railway logs (xem được qua tab Deployments > Logs, hoặc lệnh
-  `railway logs`) đầy đủ từng bước:
-  + Đường dẫn tuyệt đối thư mục đang tìm.
-  + Thư mục đó có tồn tại không.
-  + TOÀN BỘ tên file thật sự có trong thư mục (nếu thư mục tồn tại) —
-    để biết chính xác ultralytics đặt tên/đuôi file gì, so với giả
-    định *.mp4/*.avi đang tìm.
-  + Số file .mp4/.avi khớp được.
-  + Nếu lỗi exception xảy ra, in ra ĐÚNG nội dung lỗi thật thay vì
-    nuốt hoàn toàn như trước.
+Code cũ tìm CỨNG theo đúng "{project}/session/" nên không bao giờ tìm
+thấy — annotated_video_url luôn về None dù ultralytics đã lưu file
+thành công.
 
-Việc cần làm: chạy lại upload video 1 lần nữa, sau đó vào Railway ->
-tab Deployments -> Logs (hoặc chạy `railway logs` qua CLI đã cài từ
-trước), tìm các dòng bắt đầu bằng "[annotated-video]" — copy gửi lại,
-mình đọc log thật sẽ biết chính xác lý do và sửa đúng chỗ (nhiều khả
-năng ultralytics đặt tên/đuôi file khác giả định, hoặc cấu trúc thư
-mục project/name khác dự đoán khi dùng stream=True).
+Cách sửa (app/routers/camera.py):
+- Bỏ hẳn cách tìm cứng theo 1 đường dẫn giả định. Thay bằng: ghi lại
+  thời điểm BẮT ĐẦU xử lý (search_started_at), sau khi đếm xong TÌM
+  ĐỆ QUY (rglob) trong nhiều thư mục gốc khả nghi (runs/,
+  uploads/annotated_raw/session_{id}/, thư mục hiện tại) toàn bộ file
+  .mp4/.avi có THỜI GIAN SỬA ĐỔI SAU thời điểm bắt đầu (trừ hao 2 giây
+  cho sai lệch đồng hồ hệ thống) — không quan tâm ultralytics đặt ở
+  thư mục con nào, miễn là file MỚI TẠO RA trong lần xử lý này.
+- Lọc trùng (3 thư mục gốc tìm có thể trùng nhau) bằng resolve() so
+  sánh đường dẫn tuyệt đối.
+- Vẫn giữ log chi tiết (số file tìm thấy, đường dẫn file mới nhất) để
+  chẩn đoán tiếp nếu vẫn có vấn đề khác phát sinh.
+
+ƯU ĐIỂM cách làm này so với đoán cứng 1 đường dẫn: không bị vỡ lại
+nếu ultralytics đổi hành vi đặt thư mục ở phiên bản khác — chỉ cần
+đúng nguyên tắc "file mới nhất được tạo ra sau khi bắt đầu xử lý".
+
+ĐÃ TỰ KIỂM TRA (mô phỏng CHÍNH XÁC cấu trúc thư mục lệch từ log thật —
+không phải cấu trúc giả định của mình, mà đúng cấu trúc log Railway
+đã cho thấy):
+- Tạo cấu trúc runs/detect/uploads/annotated_raw/session_56/session/
+  chứa file mới + 1 file RÁC CŨ (giả lập từ phiên trước, tạo cách đây
+  1 giờ) trong thư mục session khác.
+- Chạy logic tìm kiếm: CHỈ tìm thấy đúng 1 file (file mới của session
+  56), KHÔNG nhặt nhầm file rác cũ — xác nhận cả 2 yêu cầu (tìm đúng
+  vị trí lệch + không lấy nhầm file cũ) đều hoạt động chính xác.
+
+Việc cần làm: chạy lại upload video, lần này annotated_video_url phải
+có giá trị thật, video phải hiện trên kết quả. Nếu vẫn không hiện,
+gửi lại log Railway (tìm dòng [annotated-video]) — giờ log đã đủ chi
+tiết để chẩn đoán tiếp ngay lập tức, không cần vòng lặp debug nữa.
