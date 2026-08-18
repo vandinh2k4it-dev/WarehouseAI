@@ -1,36 +1,50 @@
-fix(backend): sửa dòng hàng bị KẸT VĨNH VIỄN ở trạng thái "đang đếm" nếu thoát app giữa chừng
+feat(backend): xem lại video đã vẽ khung hộp nhận diện sau khi đếm qua "Quay video"
 
-Bối cảnh lỗi (báo cáo thật, kèm ảnh chụp màn hình):
-Bắt đầu đếm 1 dòng hàng, lỡ thoát app/trình duyệt giữa chừng (không
-bấm Xong cũng không bấm Huỷ) — quay lại thì dòng đó hiện mãi "đang
-đếm", KHÔNG CÓ NÚT NÀO để bấm lại, kẹt vĩnh viễn.
+Bối cảnh:
+Người dùng muốn sau khi tải video lên đếm xong, xem lại được video có
+vẽ khung hộp nhận diện đè lên (giống demo YOLO/COCO điển hình: khung
+màu + nhãn lớp) — không chỉ nhận về mỗi con số như hiện tại.
 
-Nguyên nhân thật:
-start_import_segment() chỉ tự động "đếm lại" (đóng phiên cũ, mở phiên
-mới) khi phiên trước đó có status='needs_review' (lệch số) — KHÔNG hề
-xử lý trường hợp phiên trước bị bỏ dở ở status='counting' (chưa từng
-gọi /stop hay bất kỳ endpoint nào để đóng lại). Do đó gọi lại
-start-import cho đúng dòng này không có cơ chế nào tự đóng phiên cũ,
-và PHÍA FRONTEND (xem COMMIT_MSG.txt bên frontend cùng đợt) cũng
-không hiện nút "Đếm" nào khi trạng thái là "counting" — 2 lỗi cộng
-lại khiến người dùng hoàn toàn bế tắc.
+Phát hiện: count_boxes_in_video() (camera/count_pipeline.py) đã CÓ SẴN
+tham số save_annotated + output_dir từ trước (dùng save=True có sẵn
+của ultralytics model.track()) — chỉ chưa từng được bật/nối vào API
+web, chỉ dùng nội bộ khi chạy CLI với --save-annotated.
 
-Cách sửa (app/routers/camera.py, start_import_segment):
-- Mở rộng điều kiện tự động "đếm lại" — không chỉ 'needs_review' mà
-  cả 'counting' cũng được coi là phiên bỏ dở, tự đóng (status =
-  'superseded') khi có yêu cầu đếm lại đúng dòng đó.
-- Nếu phiên bị đóng đang dùng chế độ "Trực tiếp" (model YOLO có thể
-  vẫn đang load trong RAM qua app/live_tracking.py), gọi thêm
-  live_tracking.close_session() để giải phóng bộ nhớ luôn, tránh rò
-  rỉ dần theo thời gian nếu nhiều dòng bị bỏ dở kiểu này.
+File sửa:
+- app/schemas.py — thêm annotated_video_url (Optional) vào
+  CameraSegmentStopResult.
+- app/routers/camera.py
+  + _finalize_stop() nhận thêm tham số annotated_video_url, đưa vào
+    response trả về.
+  + Endpoint /count-video: bật save_annotated=True khi gọi
+    count_boxes_in_video(), ghi vào thư mục riêng theo từng phiên
+    (uploads/annotated_raw/session_{id}/) để 2 phiên xử lý cùng lúc
+    không ghi đè nhau. Sau khi xử lý xong, TÌM đúng file video
+    ultralytics vừa tạo ra (glob *.mp4/*.avi — không đoán cứng tên vì
+    tên/đuôi file có thể khác nhau tuỳ phiên bản ultralytics), chuyển
+    vào thư mục cố định uploads/annotated_videos/ với tên ổn định
+    (session_{id}.mp4/.avi), trả về đường dẫn URL /media/annotated/...
+  + Bọc toàn bộ bước tìm/chuyển file trong try/except riêng — nếu lỗi
+    (không tìm thấy file, quyền ghi...) thì annotated_video_url ở lại
+    None, KHÔNG làm hỏng kết quả đếm chính (số đếm vẫn đúng, đây chỉ
+    là tính năng phụ để xem lại).
+- app/main.py — mount thư mục uploads/annotated_videos vào URL
+  /media/annotated/ (StaticFiles), tự tạo thư mục nếu chưa có.
 
-ĐÃ TỰ KIỂM TRA (TestClient thật, mô phỏng ĐÚNG kịch bản lỗi):
-1. start-import lần 1 -> status='counting'.
-2. Gọi lines-progress -> xác nhận đúng hiện tượng lỗi: hiện 'counting'
-   (mô phỏng đúng ảnh chụp màn hình người dùng gửi).
-3. Gọi lại start-import CHO ĐÚNG DÒNG ĐÓ (mô phỏng bấm "Đếm lại") ->
-   200 OK, tạo phiên MỚI thành công (trước đây sẽ vẫn kẹt vì frontend
-   không có nút, nhưng xác nhận PHÍA BACKEND giờ chấp nhận đúng).
-4. Kiểm tra trực tiếp trong DB: phiên CŨ (#1) đã tự chuyển đúng
-   status='superseded', phiên MỚI (#2) đang 'counting' — xác nhận
-   không để lại rác "counting" mồ côi trong database.
+ĐÃ TỰ KIỂM TRA:
+- App khởi động thành công với mount static mới (không crash) — xác
+  nhận qua TestClient thật, không chỉ đọc code bằng mắt.
+- Field annotated_video_url có đúng trong OpenAPI schema thật sinh ra.
+- Gọi /media/annotated/file-khong-ton-tai.mp4 -> trả về 404 gọn gàng
+  (không crash toàn bộ app khi file chưa tồn tại — trường hợp bình
+  thường trước khi có bất kỳ video nào được xử lý).
+
+CHƯA test được (cần model/ultralytics thật, sandbox không có):
+- Việc tìm-và-chuyển file video thật ultralytics tạo ra — logic dùng
+  glob tìm theo đuôi file, ĐÃ THIẾT KẾ để không phụ thuộc tên file cụ
+  thể, nhưng chưa tự chạy được với model thật để xác nhận 100% đúng
+  cấu trúc thư mục ultralytics thật sự tạo ra. Cần bạn tự thử 1 lần
+  trên máy có đủ ultralytics, xem file có xuất hiện đúng chỗ không —
+  nếu annotated_video_url về None hoài dù đếm ra số đúng, gửi mình
+  xem thử cấu trúc thư mục uploads/annotated_raw/ sau khi chạy để
+  chỉnh lại logic tìm file cho khớp.

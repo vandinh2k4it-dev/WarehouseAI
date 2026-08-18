@@ -156,7 +156,7 @@ def stop_segment(session_id: int, payload: schemas.CameraSegmentStopRequest, db:
 def _finalize_stop(
     db: Session, session: models.CameraCountSession, *, counted_quantity: int,
     avg_detection_confidence: float | None, model_version: str | None,
-    video_path: str | None, threshold_pct: float,
+    video_path: str | None, threshold_pct: float, annotated_video_url: str | None = None,
 ) -> schemas.CameraSegmentStopResult:
     """Logic lõi của bước 'Xong loại này' — dùng chung cho cả 2 đường vào:
     (1) /stop — nhập tay số đếm (demo/mô phỏng trên web),
@@ -222,6 +222,7 @@ def _finalize_stop(
         return schemas.CameraSegmentStopResult(
             session=session, reconciliation=recon, can_proceed_to_next=True,
             message=f"Khớp số — đã cập nhật kho cho '{product_name}'. Có thể chuyển sang loại hàng tiếp theo.",
+            annotated_video_url=annotated_video_url,
         )
     else:
         session.status = "needs_review"
@@ -248,6 +249,7 @@ def _finalize_stop(
                 f"Đã ghi cảnh báo, CÓ THỂ chuyển sang loại hàng khác ngay. Quay lại xử lý dòng này "
                 f"sau qua POST /camera-sessions/{session.id}/resolve (đếm lại hoặc xác nhận ghi đè)."
             ),
+            annotated_video_url=annotated_video_url,
         )
 
 
@@ -347,14 +349,44 @@ async def count_video_segment(
     with open(video_path, "wb") as f:
         f.write(await file.read())
 
+    # Thư mục ultralytics tự ghi video đã vẽ khung hộp vào (save=True) —
+    # dùng riêng cho từng phiên để tránh 2 phiên xử lý cùng lúc ghi đè nhau.
+    annotated_raw_dir = Path("uploads/annotated_raw") / f"session_{session_id}"
+
     try:
         result = count_boxes_in_video(
             model_path=model_path,
             video_path=str(video_path),
             target_class_name=CARTON_CLASS_NAME,
+            save_annotated=True,
+            output_dir=str(annotated_raw_dir),
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Đếm video thất bại: {e!r}")
+
+    # ultralytics tự đặt tên file bên trong {output_dir}/session/ theo tên
+    # video gốc (đuôi .avi hoặc .mp4 tuỳ phiên bản) — tìm đúng file vừa tạo
+    # thay vì đoán cứng tên, rồi chuyển vào thư mục cố định để phục vụ qua
+    # URL ổn định /media/annotated/... (mount static trong app/main.py).
+    annotated_url = None
+    try:
+        produced_dir = annotated_raw_dir / "session"
+        candidates = sorted(
+            [*produced_dir.glob("*.mp4"), *produced_dir.glob("*.avi")],
+            key=lambda p: p.stat().st_mtime, reverse=True,
+        )
+        if candidates:
+            served_dir = Path("uploads/annotated_videos")
+            served_dir.mkdir(parents=True, exist_ok=True)
+            final_name = f"session_{session_id}{candidates[0].suffix}"
+            final_path = served_dir / final_name
+            candidates[0].replace(final_path)
+            annotated_url = f"/media/annotated/{final_name}"
+    except Exception:
+        # Không tìm/chuyển được video đã vẽ khung hộp -> KHÔNG làm hỏng cả
+        # kết quả đếm (số đếm vẫn đúng, giá trị chính) — chỉ đơn giản là
+        # không có video xem lại, annotated_url ở lại None.
+        pass
 
     return _finalize_stop(
         db, session,
@@ -363,6 +395,7 @@ async def count_video_segment(
         model_version=model_path,
         video_path=str(video_path),
         threshold_pct=threshold_pct,
+        annotated_video_url=annotated_url,
     )
 
 

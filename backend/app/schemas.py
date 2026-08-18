@@ -104,6 +104,7 @@ class CameraSegmentStopResult(BaseModel):
     reconciliation: "ReconciliationOut"
     can_proceed_to_next: bool
     message: str
+    annotated_video_url: Optional[str] = None  # URL video đã vẽ khung hộp nhận diện, chỉ có khi đếm qua /count-video
 
 
 class CameraSegmentResolveRequest(BaseModel):

@@ -76,3 +76,10 @@ if _static_dir.is_dir():
     app.mount("/app", StaticFiles(directory=str(_static_dir), html=True), name="demo-web")
 else:
     print(f"⚠️  Không tìm thấy thư mục static tại: {_static_dir} — trang demo /app/ sẽ không khả dụng.")
+
+# Phục vụ video đã vẽ khung hộp nhận diện (xem app/routers/camera.py,
+# endpoint /count-video) qua URL /media/annotated/... — tự tạo thư mục nếu
+# chưa có (chưa từng đếm video nào thì thư mục này chưa tồn tại).
+_annotated_dir = Path(__file__).resolve().parent.parent / "uploads" / "annotated_videos"
+_annotated_dir.mkdir(parents=True, exist_ok=True)
+app.mount("/media/annotated", StaticFiles(directory=str(_annotated_dir)), name="annotated-videos")
