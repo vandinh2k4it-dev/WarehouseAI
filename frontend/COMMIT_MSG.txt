@@ -1,26 +1,47 @@
-fix(frontend): đổi màu khung hộp nhận diện — cam cũ khó thấy trên thùng carton (cũng màu cam/nâu)
+feat(frontend): đổi tên app thành "Warehouse" + icon thùng carton mới + tinh chỉnh giao diện
 
-Bối cảnh (ảnh chụp thật): khung hộp + chữ nhãn dùng màu cam accent
-(#F5A524) của giao diện — nhưng thùng carton THẬT cũng màu nâu/cam,
-khiến khung hộp gần như lẫn vào chính vật thể đang khoanh vùng, rất
-khó nhìn khi demo.
+============================================================
+1. Đổi tên "Kho thông minh" -> "Warehouse" (4 chỗ)
+============================================================
+- src/components/TopNav.jsx — tên hiện trên header.
+- src/sw.js — tiêu đề mặc định khi hiện push notification.
+- vite.config.js — tên app PWA (name/short_name trong manifest, hiện
+  khi cài lên màn hình chính điện thoại).
+- index.html — <title> tab trình duyệt.
 
-Cách sửa (src/components/LiveCountingScreen.jsx, hàm drawBoxes):
-- Đổi màu viền khung + chữ nhãn từ cam (#F5A524) sang xanh lá/cyan
-  (#00E676) — tương phản mạnh với tông màu nâu/cam/be của thùng
-  carton thật, đồng thời cũng là màu phổ biến trong các demo nhận
-  diện vật thể (dễ nhận biết, quen mắt).
-- Thêm NỀN ĐẶC phía sau chữ nhãn (trước đây chữ vẽ trực tiếp lên nền
-  video, dễ bị lẫn nếu nền sáng/trùng màu) — giờ luôn có 1 khối màu
-  xanh lá đặc phía sau, chữ đen phía trên — đọc được rõ ràng bất kể
-  nền video là gì, đúng kiểu nhãn trong ảnh demo COCO tham khảo.
-- Dùng ctx.measureText() để tính đúng độ rộng nền theo đúng độ dài
-  chữ track ID (không cố định cứng, số ID dài/ngắn khác nhau).
+============================================================
+2. Vẽ lại icon — thùng carton 3D, không còn giống mũi tên
+============================================================
+- public/icon-192.png, icon-512.png — vẽ lại bằng script Python
+  (Pillow), hình khối thùng carton 3 mặt (trước/trên/phải, phối cảnh
+  nhẹ) với 1 đường seam dọc mặt trước — rõ ràng là thùng hàng, khác
+  hẳn bản cũ (đường kẻ chéo dễ nhìn nhầm thành mũi tên chỉ lên).
+- src/components/TopNav.jsx — thay emoji 📦 tĩnh bằng chính icon mới
+  (dùng <img src="/icon-192.png">) — nhất quán thương hiệu giữa icon
+  app cài trên điện thoại và icon hiện trong giao diện.
 
-ĐÃ TỰ KIỂM TRA (Playwright + camera ảo thật, chặn response giả lập
-để có toạ độ khung hộp cố định kiểm tra được):
-- Route giả lập /live-frame được gọi đúng (xác nhận qua đếm số lần
-  gọi thật, không phải suy đoán).
-- Ảnh chụp màn hình xác nhận trực quan: khung hộp hiện đúng màu xanh
-  lá/cyan mới, không còn màu cam cũ dễ lẫn vào thùng.
+============================================================
+3. Tinh chỉnh giao diện — thêm chiều sâu, chuyển động mượt
+============================================================
+- src/styles/app.css:
+  + .topnav — nền gradient nhẹ + backdrop-filter blur (hiệu ứng kính
+    mờ khi cuộn trang, thanh điều hướng nổi bật hơn).
+  + .card — thêm box-shadow tạo chiều sâu, transition mượt khi hover.
+  + button.primary — nền gradient cam (thay vì màu phẳng), box-shadow
+    màu cam nhẹ, hiệu ứng nhấn xuống (scale 0.98) khi bấm — cảm giác
+    "vật lý" hơn khi tương tác.
+  + .statCard (thẻ thống kê Tổng quan) — nền gradient nhẹ, đổ bóng,
+    hiệu ứng nhấc lên (translateY) khi hover trên desktop.
+  + .topnav-tab — thêm hiệu ứng hover mượt (đổi màu chữ + nền mờ nhẹ)
+    trước khi bấm chọn hẳn, phản hồi trực quan tốt hơn.
+  + Dọn 1 chỗ trùng lặp button.primary:hover (đã có ở base style,
+    xoá bản thừa trong media query desktop).
+
+ĐÃ TỰ KIỂM TRA:
 - npm run build thành công, không lỗi.
+- Playwright xác nhận title trang đổi đúng "Warehouse — Đếm hàng
+  thông minh", header hiện đúng "Warehouse".
+- Ảnh chụp màn hình xác nhận trực quan: icon thùng carton mới hiện
+  rõ ràng, giao diện Tổng quan + Sản phẩm có chiều sâu (shadow/
+  gradient) rõ rệt so với bản phẳng cũ, không lỗi layout ở cả 2 trang
+  đã kiểm tra.

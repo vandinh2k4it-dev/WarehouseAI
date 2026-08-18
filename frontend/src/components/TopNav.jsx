@@ -38,9 +38,9 @@ export default function TopNav() {
     <header className="topnav">
       <div className="topnav-top">
         <div className="topnav-title">
-          <span className="topnav-logo">📦</span>
+          <img src="/icon-192.png" alt="Warehouse" className="topnav-logo" />
           <div>
-            <div className="topnav-h1">Kho thông minh</div>
+            <div className="topnav-h1">Warehouse</div>
             <div className="conn">
               <span className={`dot ${connStatus === "ok" ? "ok" : connStatus === "bad" ? "bad" : ""}`} />
               <span>

@@ -86,6 +86,8 @@
   border-radius: var(--radius);
   padding: 18px;
   margin-bottom: 14px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+  transition: border-color 0.15s ease;
 }
 
 .card h2 {
@@ -120,7 +122,7 @@ select {
 button.primary {
   width: 100%;
   border: none;
-  background: var(--accent);
+  background: linear-gradient(135deg, #FFB74D 0%, var(--accent) 100%);
   color: #1A1200;
   font-weight: 700;
   padding: 16px;
@@ -128,6 +130,15 @@ button.primary {
   font-size: 16px;
   cursor: pointer;
   font-family: 'Space Grotesk', sans-serif;
+  box-shadow: 0 4px 14px rgba(245, 165, 36, 0.28);
+  transition: transform 0.12s ease, box-shadow 0.12s ease, filter 0.12s ease;
+}
+button.primary:hover {
+  filter: brightness(1.06);
+  box-shadow: 0 6px 18px rgba(245, 165, 36, 0.38);
+}
+button.primary:active {
+  transform: scale(0.98);
 }
 button.primary:disabled {
   opacity: 0.5;
@@ -313,10 +324,11 @@ button.ghost {
    ========================================================== */
 .topnav {
   border-bottom: 1px solid var(--border);
-  background: var(--bg);
+  background: linear-gradient(180deg, #161B22 0%, var(--bg) 100%);
   position: sticky;
   top: 0;
   z-index: 10;
+  backdrop-filter: blur(10px);
 }
 
 .topnav-top {
@@ -330,7 +342,12 @@ button.ghost {
 }
 
 .topnav-logo {
-  font-size: 24px;
+  width: 30px;
+  height: 30px;
+  border-radius: 7px;
+  background: var(--accent-dim);
+  padding: 3px;
+  flex: none;
 }
 
 .topnav-h1 {
@@ -359,6 +376,11 @@ button.ghost {
   display: flex;
   align-items: center;
   gap: 6px;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+.topnav-tab:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.03);
 }
 .topnav-tab.active {
   color: var(--accent);
@@ -385,10 +407,16 @@ button.ghost {
   margin-bottom: 16px;
 }
 .statCard {
-  background: var(--surface);
+  background: linear-gradient(160deg, var(--surface-raised) 0%, var(--surface) 100%);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 16px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16);
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+.statCard:hover {
+  transform: translateY(-2px);
+  border-color: rgba(245, 165, 36, 0.35);
 }
 .statCard-value {
   font-family: 'Space Grotesk', sans-serif;
@@ -838,9 +866,6 @@ button.ghost {
   button.primary,
   button.ghost {
     max-width: 420px;
-  }
-  button.primary:hover {
-    filter: brightness(1.08);
   }
   button.ghost:hover {
     border-color: var(--text-muted);

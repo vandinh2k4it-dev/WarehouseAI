@@ -22,8 +22,8 @@ export default defineConfig({
       },
       registerType: 'autoUpdate',
       manifest: {
-        name: 'Đếm hàng — Kho thông minh',
-        short_name: 'Đếm hàng',
+        name: 'Warehouse — Đếm hàng thông minh',
+        short_name: 'Warehouse',
         description: 'Đếm thùng carton qua camera điện thoại — Hệ thống quản lý kho thông minh',
         theme_color: '#12161B',
         background_color: '#12161B',

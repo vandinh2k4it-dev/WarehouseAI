@@ -13,7 +13,7 @@ precacheAndRoute(self.__WB_MANIFEST);
 // PUSH NOTIFICATION — nhận thông báo đẩy từ backend (app/push_service.py)
 // ==========================================================
 self.addEventListener("push", (event) => {
-  let data = { title: "Kho thông minh", body: "Có cảnh báo mới", url: "/" };
+  let data = { title: "Warehouse", body: "Có cảnh báo mới", url: "/" };
   try {
     if (event.data) data = { ...data, ...event.data.json() };
   } catch {
