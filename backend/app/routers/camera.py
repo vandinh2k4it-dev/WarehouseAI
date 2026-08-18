@@ -364,6 +364,15 @@ async def count_video_segment(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Đếm video thất bại: {e!r}")
 
+    # Phát hiện SỚM trường hợp đang dùng nhầm model (xem model_warning trong
+    # count_boxes_in_video) — chặn lại NGAY, không cho đi tiếp vào luồng
+    # "lệch số" bình thường, vì đây không phải lệch số thật mà là lỗi cấu
+    # hình — để lẫn vào "LỆCH SỐ" thông thường sẽ khiến người dùng tưởng
+    # nhầm là vấn đề đếm thiếu, mất công debug sai hướng (đã từng xảy ra
+    # thật trước khi có cảnh báo này).
+    if result.model_warning:
+        raise HTTPException(status_code=500, detail=result.model_warning)
+
     # ultralytics tự đặt tên file bên trong {output_dir}/session/ theo tên
     # video gốc (đuôi .avi hoặc .mp4 tuỳ phiên bản) — tìm đúng file vừa tạo
     # thay vì đoán cứng tên, rồi chuyển vào thư mục cố định để phục vụ qua

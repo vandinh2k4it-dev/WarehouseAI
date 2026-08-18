@@ -76,6 +76,7 @@ class CountResult:
     track_ids: list[int] = field(default_factory=list)
     started_at: datetime = None
     ended_at: datetime = None
+    model_warning: str | None = None  # cảnh báo nếu nghi ngờ đang dùng SAI model (xem bên dưới)
 
 
 def count_boxes_in_video(
@@ -100,6 +101,23 @@ def count_boxes_in_video(
     # có thể không khớp tên — tự động bỏ lọc lớp trong trường hợp model chỉ
     # có đúng 1 class để tránh đếm hụt do sai tên.
     filter_by_class = target_class_name is not None and len(class_names) > 1
+
+    # CẢNH BÁO SỚM — nếu model có nhiều lớp (nghi ngờ đang dùng nhầm model
+    # COCO gốc thay vì model carton_box đã train) VÀ tên lớp cần lọc không
+    # hề tồn tại trong danh sách lớp của model -> MỌI kết quả phát hiện sẽ
+    # bị lọc bỏ hết, luôn ra đúng 0, dù model chạy "thành công" không báo
+    # lỗi gì. Phát hiện sớm trường hợp này để báo rõ ra UI thay vì để người
+    # dùng phải tự đoán vì sao đếm ra 0 (đã từng xảy ra thật — xem lịch sử
+    # debug trong PROJECT_CONTEXT.md).
+    model_warning = None
+    if filter_by_class and target_class_name not in class_names.values():
+        model_warning = (
+            f"⚠️ Model '{model_path}' có {len(class_names)} lớp "
+            f"({', '.join(list(class_names.values())[:5])}...) nhưng KHÔNG có lớp "
+            f"'{target_class_name}' — nhiều khả năng đang dùng NHẦM model gốc (COCO) "
+            f"thay vì model carton_box đã train. Mọi kết quả sẽ bị lọc về 0. "
+            f"Kiểm tra lại biến môi trường CARTON_MODEL_PATH."
+        )
 
     seen_track_ids: set[int] = set()
     confidences: list[float] = []
@@ -147,6 +165,7 @@ def count_boxes_in_video(
         track_ids=sorted(seen_track_ids),
         started_at=started_at,
         ended_at=ended_at,
+        model_warning=model_warning,
     )
 
 

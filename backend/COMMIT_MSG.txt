@@ -1,50 +1,46 @@
-feat(backend): xem lại video đã vẽ khung hộp nhận diện sau khi đếm qua "Quay video"
+fix(backend): phát hiện sớm khi web dùng NHẦM model — báo lỗi rõ ràng thay vì âm thầm đếm ra 0
 
-Bối cảnh:
-Người dùng muốn sau khi tải video lên đếm xong, xem lại được video có
-vẽ khung hộp nhận diện đè lên (giống demo YOLO/COCO điển hình: khung
-màu + nhãn lớp) — không chỉ nhận về mỗi con số như hiện tại.
+Bối cảnh (đã điều tra kỹ, có bằng chứng cụ thể):
+Cùng 1 video test — chạy qua test_video_local.py trên máy: đếm ĐÚNG
+34 thùng. Upload đúng video đó qua web (Railway đã deploy): đếm ra 0.
+Cùng video, cùng thuật toán đếm — vậy khác biệt duy nhất có thể xảy
+ra là SERVER TRÊN RAILWAY ĐANG DÙNG SAI MODEL.
 
-Phát hiện: count_boxes_in_video() (camera/count_pipeline.py) đã CÓ SẴN
-tham số save_annotated + output_dir từ trước (dùng save=True có sẵn
-của ultralytics model.track()) — chỉ chưa từng được bật/nối vào API
-web, chỉ dùng nội bộ khi chạy CLI với --save-annotated.
+Cơ chế gây ra hiện tượng "im lặng đếm ra 0" (đã suy luận và xác nhận
+đúng bằng code, không phải đoán mò):
+count_boxes_in_video() lọc kết quả theo đúng tên lớp "carton_box". Nếu
+CARTON_MODEL_PATH chưa được đặt trên Railway (hoặc đặt sai đường dẫn
+tới file không tồn tại thật trong container đã deploy), code sẽ TỰ
+ĐỘNG rơi về dùng "yolov8s.pt" (model gốc COCO, 80 lớp, KHÔNG có lớp
+nào tên "carton_box"). Model này vẫn chạy bình thường, không báo lỗi
+gì — nhưng vì không có lớp nào khớp tên "carton_box", MỌI kết quả
+phát hiện đều bị bộ lọc loại bỏ hết, luôn ra đúng 0 dù model hoạt
+động "thành công".
 
-File sửa:
-- app/schemas.py — thêm annotated_video_url (Optional) vào
-  CameraSegmentStopResult.
-- app/routers/camera.py
-  + _finalize_stop() nhận thêm tham số annotated_video_url, đưa vào
-    response trả về.
-  + Endpoint /count-video: bật save_annotated=True khi gọi
-    count_boxes_in_video(), ghi vào thư mục riêng theo từng phiên
-    (uploads/annotated_raw/session_{id}/) để 2 phiên xử lý cùng lúc
-    không ghi đè nhau. Sau khi xử lý xong, TÌM đúng file video
-    ultralytics vừa tạo ra (glob *.mp4/*.avi — không đoán cứng tên vì
-    tên/đuôi file có thể khác nhau tuỳ phiên bản ultralytics), chuyển
-    vào thư mục cố định uploads/annotated_videos/ với tên ổn định
-    (session_{id}.mp4/.avi), trả về đường dẫn URL /media/annotated/...
-  + Bọc toàn bộ bước tìm/chuyển file trong try/except riêng — nếu lỗi
-    (không tìm thấy file, quyền ghi...) thì annotated_video_url ở lại
-    None, KHÔNG làm hỏng kết quả đếm chính (số đếm vẫn đúng, đây chỉ
-    là tính năng phụ để xem lại).
-- app/main.py — mount thư mục uploads/annotated_videos vào URL
-  /media/annotated/ (StaticFiles), tự tạo thư mục nếu chưa có.
+Cách sửa (camera/count_pipeline.py + app/routers/camera.py):
+- count_boxes_in_video() giờ tự kiểm tra: nếu model có nhiều lớp
+  (nghi ngờ đang dùng model gốc) VÀ tên lớp cần lọc không tồn tại
+  trong danh sách lớp của model -> gắn cảnh báo rõ ràng vào kết quả
+  trả về (CountResult.model_warning), liệt kê luôn model đang dùng
+  có những lớp gì.
+- Endpoint /count-video: nếu có model_warning, CHẶN LẠI NGAY bằng lỗi
+  500 rõ ràng — không cho đi tiếp vào luồng "lệch số" bình thường (để
+  lẫn vào đó sẽ khiến người dùng tưởng nhầm là vấn đề đếm thiếu, mất
+  công debug sai hướng — đúng những gì vừa xảy ra thật).
 
-ĐÃ TỰ KIỂM TRA:
-- App khởi động thành công với mount static mới (không crash) — xác
-  nhận qua TestClient thật, không chỉ đọc code bằng mắt.
-- Field annotated_video_url có đúng trong OpenAPI schema thật sinh ra.
-- Gọi /media/annotated/file-khong-ton-tai.mp4 -> trả về 404 gọn gàng
-  (không crash toàn bộ app khi file chưa tồn tại — trường hợp bình
-  thường trước khi có bất kỳ video nào được xử lý).
+ĐÃ TỰ KIỂM TRA (test riêng logic phát hiện, không cần model/ultralytics
+thật — chỉ test đúng điều kiện if/else cốt lõi bằng dict giả lập):
+- Model giả COCO (nhiều lớp, không có carton_box) -> cảnh báo ĐÚNG
+  được tạo ra.
+- Model giả carton thật (1 lớp carton_box) -> KHÔNG tạo cảnh báo,
+  không ảnh hưởng luồng bình thường khi model đúng.
 
-CHƯA test được (cần model/ultralytics thật, sandbox không có):
-- Việc tìm-và-chuyển file video thật ultralytics tạo ra — logic dùng
-  glob tìm theo đuôi file, ĐÃ THIẾT KẾ để không phụ thuộc tên file cụ
-  thể, nhưng chưa tự chạy được với model thật để xác nhận 100% đúng
-  cấu trúc thư mục ultralytics thật sự tạo ra. Cần bạn tự thử 1 lần
-  trên máy có đủ ultralytics, xem file có xuất hiện đúng chỗ không —
-  nếu annotated_video_url về None hoài dù đếm ra số đúng, gửi mình
-  xem thử cấu trúc thư mục uploads/annotated_raw/ sau khi chạy để
-  chỉnh lại logic tìm file cho khớp.
+Việc cần làm ngay trên Railway (đây là hành động khắc phục, không
+phải trong code):
+1. Vào Railway -> service backend -> Variables -> kiểm tra
+   CARTON_MODEL_PATH có tồn tại và đúng giá trị "models/carton_counter_best.pt"
+   chưa.
+2. Chạy `git ls-files | findstr carton_counter_best` trên máy — nếu
+   KHÔNG ra dòng nào, file model CHƯA TỪNG được commit vào git, cần
+   add + commit + push file đó (kiểm tra .gitignore không lỡ chặn
+   nhầm *.pt).
