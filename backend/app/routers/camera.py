@@ -1,5 +1,6 @@
 import os
 import time
+import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -306,6 +307,37 @@ async def live_frame(
     return result
 
 
+def _reencode_to_h264(src_path: Path, dst_path: Path) -> bool:
+    """Chuyển đổi video sang H.264/MP4 chuẩn — ultralytics thường xuất video
+    bằng codec (mpeg4/mp4v qua container .avi) mà trình duyệt KHÔNG phát
+    trực tiếp được qua thẻ <video> (hiện ra 0:00, bấm play không chạy —
+    đúng hiện tượng gặp phải thật). Cần có ffmpeg cài sẵn trên server.
+    Trả về True nếu chuyển đổi thành công, False nếu ffmpeg lỗi/không có
+    (gọi nơi khác nên có phương án dự phòng, không được để crash cả request
+    chỉ vì bước phụ này thất bại)."""
+    try:
+        result = subprocess.run(
+            [
+                "ffmpeg", "-y", "-i", str(src_path),
+                "-c:v", "libx264", "-preset", "fast", "-pix_fmt", "yuv420p",
+                "-movflags", "+faststart",  # cho phép phát ngay trong lúc tải, không cần tải hết file mới xem được
+                str(dst_path),
+            ],
+            check=True, capture_output=True, timeout=180, text=True,
+        )
+        return dst_path.exists() and dst_path.stat().st_size > 0
+    except FileNotFoundError:
+        print("[annotated-video] ffmpeg KHÔNG có trên server — cần thêm 'ffmpeg' vào "
+              "RAILPACK_BUILD_APT_PACKAGES/RAILPACK_DEPLOY_APT_PACKAGES trên Railway.")
+        return False
+    except subprocess.CalledProcessError as e:
+        print(f"[annotated-video] ffmpeg chuyển đổi thất bại: {e.stderr[-500:] if e.stderr else e!r}")
+        return False
+    except subprocess.TimeoutExpired:
+        print("[annotated-video] ffmpeg chuyển đổi quá thời gian cho phép (180s) — video có thể quá dài.")
+        return False
+
+
 @router.post("/{session_id}/count-video", response_model=schemas.CameraSegmentStopResult)
 async def count_video_segment(
     session_id: int,
@@ -414,11 +446,27 @@ async def count_video_segment(
         if candidates:
             served_dir = Path("uploads/annotated_videos")
             served_dir.mkdir(parents=True, exist_ok=True)
-            final_name = f"session_{session_id}{candidates[0].suffix}"
+            final_name = f"session_{session_id}.mp4"
             final_path = served_dir / final_name
-            candidates[0].replace(final_path)
-            annotated_url = f"/media/annotated/{final_name}"
-            print(f"[annotated-video] Đã chuyển thành công -> {annotated_url}")
+
+            # ultralytics xuất video bằng codec (thường mpeg4/mp4v qua .avi)
+            # KHÔNG được trình duyệt hỗ trợ phát trực tiếp qua thẻ <video> —
+            # phải chuyển đổi lại sang H.264/MP4 chuẩn mới phát được trên
+            # mọi trình duyệt. Cần có ffmpeg cài sẵn trên server (xem
+            # RAILPACK_BUILD_APT_PACKAGES/RAILPACK_DEPLOY_APT_PACKAGES).
+            reencoded = _reencode_to_h264(candidates[0], final_path)
+            if reencoded:
+                annotated_url = f"/media/annotated/{final_name}"
+                print(f"[annotated-video] Đã chuyển đổi sang H.264 + phục vụ -> {annotated_url}")
+                candidates[0].unlink(missing_ok=True)  # dọn file gốc, không cần giữ 2 bản
+            else:
+                # ffmpeg lỗi/không có -> dùng tạm file gốc (có thể vẫn phát
+                # được tuỳ trình duyệt, còn hơn không có gì để xem).
+                fallback_name = f"session_{session_id}{candidates[0].suffix}"
+                fallback_path = served_dir / fallback_name
+                candidates[0].replace(fallback_path)
+                annotated_url = f"/media/annotated/{fallback_name}"
+                print(f"[annotated-video] ffmpeg lỗi/thiếu — dùng tạm file gốc chưa chuyển đổi -> {annotated_url}")
     except Exception as e:
         # Không tìm/chuyển được video đã vẽ khung hộp -> KHÔNG làm hỏng cả
         # kết quả đếm (số đếm vẫn đúng, giá trị chính) — chỉ đơn giản là

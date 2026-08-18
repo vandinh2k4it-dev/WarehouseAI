@@ -1,45 +1,42 @@
-fix(backend): tìm video đã vẽ khung hộp theo thời gian tạo (đệ quy) — sửa đúng theo log thật
+fix(backend): chuyển đổi video sang H.264/MP4 chuẩn — sửa lỗi "video hiện ra nhưng không phát được"
 
-Bối cảnh (có bằng chứng cụ thể từ Railway logs, không phải đoán):
-Log thật cho thấy dòng "Results saved to
-/app/runs/detect/uploads/annotated_raw/session_56/session" — ultralytics
-KHÔNG lưu đúng nguyên đường dẫn project= đã truyền vào
-("uploads/annotated_raw/session_56"), mà tự động chèn thêm tiền tố
-"runs/detect/" phía trước (do cấu hình runs_dir mặc định riêng của
-ultralytics, không phải bug của mình nhưng cần thích ứng theo).
+Bối cảnh (báo cáo thật kèm ảnh chụp màn hình):
+Sau khi sửa xong bước tìm file (commit trước), video ĐÃ HIỆN RA trên
+kết quả, nhưng bấm play không chạy — hiện "0:00", không phát được.
 
-Code cũ tìm CỨNG theo đúng "{project}/session/" nên không bao giờ tìm
-thấy — annotated_video_url luôn về None dù ultralytics đã lưu file
-thành công.
+Nguyên nhân: ultralytics mặc định xuất video bằng codec mpeg4/mp4v
+(qua container .avi) khi dùng save=True — codec này KHÔNG được hầu
+hết trình duyệt hỗ trợ phát trực tiếp qua thẻ <video> (trình duyệt
+chủ yếu hỗ trợ tốt H.264 trong container MP4). File vẫn tồn tại, tải
+về được, chỉ là trình duyệt không giải mã được để phát.
 
 Cách sửa (app/routers/camera.py):
-- Bỏ hẳn cách tìm cứng theo 1 đường dẫn giả định. Thay bằng: ghi lại
-  thời điểm BẮT ĐẦU xử lý (search_started_at), sau khi đếm xong TÌM
-  ĐỆ QUY (rglob) trong nhiều thư mục gốc khả nghi (runs/,
-  uploads/annotated_raw/session_{id}/, thư mục hiện tại) toàn bộ file
-  .mp4/.avi có THỜI GIAN SỬA ĐỔI SAU thời điểm bắt đầu (trừ hao 2 giây
-  cho sai lệch đồng hồ hệ thống) — không quan tâm ultralytics đặt ở
-  thư mục con nào, miễn là file MỚI TẠO RA trong lần xử lý này.
-- Lọc trùng (3 thư mục gốc tìm có thể trùng nhau) bằng resolve() so
-  sánh đường dẫn tuyệt đối.
-- Vẫn giữ log chi tiết (số file tìm thấy, đường dẫn file mới nhất) để
-  chẩn đoán tiếp nếu vẫn có vấn đề khác phát sinh.
+- Thêm hàm _reencode_to_h264() — dùng ffmpeg (subprocess) chuyển đổi
+  file ultralytics vừa tạo sang đúng chuẩn H.264 + yuv420p + cờ
+  +faststart (phát được ngay trong lúc tải, không cần đợi tải hết
+  file) trước khi phục vụ qua URL.
+- Endpoint /count-video: sau khi tìm được file gốc, gọi hàm chuyển
+  đổi; nếu thành công thì phục vụ bản đã chuyển đổi (luôn đặt tên
+  .mp4, dọn file gốc); nếu ffmpeg lỗi/thiếu thì fallback dùng tạm file
+  gốc chưa chuyển đổi (còn hơn không có gì) + log rõ lý do.
+- Bọc đủ 3 loại lỗi riêng biệt (FileNotFoundError nếu thiếu ffmpeg,
+  CalledProcessError nếu ffmpeg chạy nhưng lỗi, TimeoutExpired nếu
+  video quá dài xử lý quá 180s) — mỗi loại log rõ nguyên nhân khác
+  nhau, không gộp chung 1 thông báo mơ hồ.
 
-ƯU ĐIỂM cách làm này so với đoán cứng 1 đường dẫn: không bị vỡ lại
-nếu ultralytics đổi hành vi đặt thư mục ở phiên bản khác — chỉ cần
-đúng nguyên tắc "file mới nhất được tạo ra sau khi bắt đầu xử lý".
+VIỆC BẮT BUỘC PHẢI LÀM TRÊN RAILWAY (không phải trong code):
+Thêm "ffmpeg" vào CẢ 2 biến đã có sẵn trên Railway Dashboard >
+Variables (đã dùng để sửa lỗi libGL trước đó):
+  RAILPACK_BUILD_APT_PACKAGES=libgl1 libglib2.0-0 libsm6 libxext6 libxrender1 ffmpeg
+  RAILPACK_DEPLOY_APT_PACKAGES=libgl1 libglib2.0-0 libsm6 libxext6 libxrender1 ffmpeg
+Thiếu bước này thì hàm sẽ tự phát hiện, log rõ lý do, dùng tạm file
+gốc (không crash) — nhưng video vẫn sẽ không phát được như cũ.
 
-ĐÃ TỰ KIỂM TRA (mô phỏng CHÍNH XÁC cấu trúc thư mục lệch từ log thật —
-không phải cấu trúc giả định của mình, mà đúng cấu trúc log Railway
-đã cho thấy):
-- Tạo cấu trúc runs/detect/uploads/annotated_raw/session_56/session/
-  chứa file mới + 1 file RÁC CŨ (giả lập từ phiên trước, tạo cách đây
-  1 giờ) trong thư mục session khác.
-- Chạy logic tìm kiếm: CHỈ tìm thấy đúng 1 file (file mới của session
-  56), KHÔNG nhặt nhầm file rác cũ — xác nhận cả 2 yêu cầu (tìm đúng
-  vị trí lệch + không lấy nhầm file cũ) đều hoạt động chính xác.
-
-Việc cần làm: chạy lại upload video, lần này annotated_video_url phải
-có giá trị thật, video phải hiện trên kết quả. Nếu vẫn không hiện,
-gửi lại log Railway (tìm dòng [annotated-video]) — giờ log đã đủ chi
-tiết để chẩn đoán tiếp ngay lập tức, không cần vòng lặp debug nữa.
+ĐÃ TỰ KIỂM TRA (gọi THẬT qua chính hàm trong code, không phải mô
+phỏng riêng biệt):
+- Tạo file .avi giả lập ĐÚNG codec mpeg4 (giống ultralytics xuất
+  thật) bằng ffmpeg, gọi _reencode_to_h264() thật -> xác nhận file
+  đích sinh ra đúng codec h264 (kiểm tra bằng ffprobe, không chỉ tin
+  return True suông).
+- Test riêng trường hợp THIẾU ffmpeg (giả lập bằng cách xoá PATH) ->
+  xác nhận trả về False rõ ràng, KHÔNG crash, có log lý do cụ thể.
