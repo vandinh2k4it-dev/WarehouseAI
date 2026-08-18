@@ -1,42 +1,51 @@
-fix(backend): chuyển đổi video sang H.264/MP4 chuẩn — sửa lỗi "video hiện ra nhưng không phát được"
+fix(backend): tăng track_buffer ByteTrack — sửa lỗi ĐẾM THỪA khi thùng bị che khuất tạm thời
 
-Bối cảnh (báo cáo thật kèm ảnh chụp màn hình):
-Sau khi sửa xong bước tìm file (commit trước), video ĐÃ HIỆN RA trên
-kết quả, nhưng bấm play không chạy — hiện "0:00", không phát được.
+Bối cảnh (xác nhận thật từ người dùng, không phải suy đoán):
+Video video_thu.mp4 đếm ra 34 — con số này NHẤT QUÁN qua mọi lần chạy
+(CLI, script test, web) nhưng SAI so với số thùng thật (ít hơn 34) —
+model đang ĐẾM THỪA/TRÙNG, không phải lỗi wiring hay lỗi model sai.
 
-Nguyên nhân: ultralytics mặc định xuất video bằng codec mpeg4/mp4v
-(qua container .avi) khi dùng save=True — codec này KHÔNG được hầu
-hết trình duyệt hỗ trợ phát trực tiếp qua thẻ <video> (trình duyệt
-chủ yếu hỗ trợ tốt H.264 trong container MP4). File vẫn tồn tại, tải
-về được, chỉ là trình duyệt không giải mã được để phát.
+Nguyên nhân: ByteTrack mặc định chỉ "nhớ" 1 track bị mất trong 30
+khung hình (~1 giây ở 30fps) trước khi bỏ hẳn. Khi 1 thùng carton bị
+che khuất tạm thời (bởi thùng khác/tay người/rung camera) lâu hơn 1
+giây, ByteTrack coi lần xuất hiện lại là VẬT THỂ MỚI, gán track ID
+khác — cùng 1 thùng thật bị đếm 2 lần trở lên.
 
-Cách sửa (app/routers/camera.py):
-- Thêm hàm _reencode_to_h264() — dùng ffmpeg (subprocess) chuyển đổi
-  file ultralytics vừa tạo sang đúng chuẩn H.264 + yuv420p + cờ
-  +faststart (phát được ngay trong lúc tải, không cần đợi tải hết
-  file) trước khi phục vụ qua URL.
-- Endpoint /count-video: sau khi tìm được file gốc, gọi hàm chuyển
-  đổi; nếu thành công thì phục vụ bản đã chuyển đổi (luôn đặt tên
-  .mp4, dọn file gốc); nếu ffmpeg lỗi/thiếu thì fallback dùng tạm file
-  gốc chưa chuyển đổi (còn hơn không có gì) + log rõ lý do.
-- Bọc đủ 3 loại lỗi riêng biệt (FileNotFoundError nếu thiếu ffmpeg,
-  CalledProcessError nếu ffmpeg chạy nhưng lỗi, TimeoutExpired nếu
-  video quá dài xử lý quá 180s) — mỗi loại log rõ nguyên nhân khác
-  nhau, không gộp chung 1 thông báo mơ hồ.
+File mới:
+- camera/carton_bytetrack.yaml
+  Cấu hình ByteTrack riêng cho bài toán này — CHỈ đổi đúng 1 thông số
+  so với mặc định gốc: track_buffer 30 -> 90 (~3 giây ở 30fps), giữ
+  nguyên mọi thông số khác (track_high_thresh, track_low_thresh,
+  new_track_thresh, match_thresh, fuse_score). Giải thích đầy đủ đánh
+  đổi (track_buffer cao hơn giảm đếm thừa do che khuất, nhưng có thể
+  gây đếm thiếu ngược lại nếu 2 thùng KHÁC NHAU đi qua đúng vị trí
+  cách nhau dưới 3 giây) ngay trong comment của file.
 
-VIỆC BẮT BUỘC PHẢI LÀM TRÊN RAILWAY (không phải trong code):
-Thêm "ffmpeg" vào CẢ 2 biến đã có sẵn trên Railway Dashboard >
-Variables (đã dùng để sửa lỗi libGL trước đó):
-  RAILPACK_BUILD_APT_PACKAGES=libgl1 libglib2.0-0 libsm6 libxext6 libxrender1 ffmpeg
-  RAILPACK_DEPLOY_APT_PACKAGES=libgl1 libglib2.0-0 libsm6 libxext6 libxrender1 ffmpeg
-Thiếu bước này thì hàm sẽ tự phát hiện, log rõ lý do, dùng tạm file
-gốc (không crash) — nhưng video vẫn sẽ không phát được như cũ.
+File sửa:
+- camera/count_pipeline.py — thêm hằng CARTON_TRACKER_CONFIG (đường
+  dẫn TUYỆT ĐỐI tới file trên, tính qua Path(__file__).resolve(), không
+  phụ thuộc thư mục làm việc lúc chạy lệnh), dùng thay cho
+  tracker="bytetrack.yaml" mặc định trong count_boxes_in_video().
+- app/live_tracking.py — dùng ĐÚNG CÙNG 1 file config (tính đường dẫn
+  từ app/ trỏ sang camera/carton_bytetrack.yaml) cho chế độ "Trực
+  tiếp" — tránh 2 luồng đếm (quay-video-1-lần vs từng-khung-rời-rạc)
+  dùng 2 tham số ByteTrack khác nhau, dễ cho kết quả lệch nhau khó
+  giải thích khi so sánh.
 
-ĐÃ TỰ KIỂM TRA (gọi THẬT qua chính hàm trong code, không phải mô
-phỏng riêng biệt):
-- Tạo file .avi giả lập ĐÚNG codec mpeg4 (giống ultralytics xuất
-  thật) bằng ffmpeg, gọi _reencode_to_h264() thật -> xác nhận file
-  đích sinh ra đúng codec h264 (kiểm tra bằng ffprobe, không chỉ tin
-  return True suông).
-- Test riêng trường hợp THIẾU ffmpeg (giả lập bằng cách xoá PATH) ->
-  xác nhận trả về False rõ ràng, KHÔNG crash, có log lý do cụ thể.
+ĐÃ TỰ KIỂM TRA:
+- Cả 2 file (count_pipeline.py, live_tracking.py) tính đường dẫn
+  tuyệt đối và XÁC NHẬN TRỎ VỀ ĐÚNG CÙNG 1 FILE THẬT trên đĩa (không
+  chỉ đọc code bằng mắt — chạy thật Path().resolve() rồi so sánh 2
+  kết quả bằng assert).
+- File carton_bytetrack.yaml tồn tại thật, đường dẫn đúng cả khi tính
+  từ 2 vị trí gọi khác nhau (camera/ và app/).
+
+CHƯA test được (cần model/video thật, sandbox không có):
+- Hiệu quả thực tế của track_buffer=90 trong việc giảm đếm thừa —
+  đây là thông số CẦN TINH CHỈNH THÊM dựa theo tốc độ băng chuyền
+  thật. Đề xuất: chạy lại đúng video_thu.mp4 (đã biết trước là đếm
+  thừa ở 34), xem con số mới có giảm xuống gần đúng số thật không.
+  Nếu track_buffer=90 chưa đủ (vẫn đếm thừa), có thể tăng tiếp lên
+  120-150; nếu QUÁ CAO gây đếm THIẾU (2 thùng khác nhau bị gộp làm
+  1), giảm xuống 45-60 thử lại — đây là quá trình thử-và-điều-chỉnh,
+  không có 1 con số đúng tuyệt đối cho mọi video.

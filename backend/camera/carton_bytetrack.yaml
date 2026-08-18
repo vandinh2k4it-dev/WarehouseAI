@@ -1,0 +1,32 @@
+# Cấu hình ByteTrack RIÊNG cho bài toán đếm thùng carton — khác với file
+# bytetrack.yaml mặc định đi kèm ultralytics (chỉ thay đổi ĐÚNG 1 thông số:
+# track_buffer, các thông số khác giữ nguyên giá trị mặc định gốc).
+#
+# LÝ DO CẦN FILE NÀY (phát hiện qua test thật, không phải lý thuyết suông):
+# Test video thật cho thấy hiện tượng ĐẾM THỪA — cùng 1 thùng carton bị che
+# khuất tạm thời (bởi thùng khác/tay người/rung camera) trong lúc quay, khi
+# xuất hiện lại bị ByteTrack gán track ID MỚI thay vì nhận ra là thùng cũ,
+# dẫn tới đếm trùng 1 thùng thành 2 lần trở lên.
+#
+# track_buffer mặc định của ultralytics = 30 khung hình — ở video quay
+# khoảng 30fps, nghĩa là ByteTrack chỉ "nhớ" 1 track bị mất trong ĐÚNG 1
+# GIÂY trước khi bỏ hẳn track đó và coi lần xuất hiện lại là vật thể mới.
+# Tăng lên 90 khung hình (~3 giây ở 30fps) cho phép ByteTrack "chờ" lâu hơn
+# nhiều trước khi từ bỏ 1 track, tăng khả năng nhận đúng lại thùng cũ sau
+# khi bị che khuất, giảm đếm trùng.
+#
+# ĐÁNH ĐỔI: track_buffer cao hơn cũng có nghĩa nếu 2 thùng THẬT SỰ khác
+# nhau đi qua đúng cùng 1 vị trí trong khung hình cách nhau dưới 3 giây,
+# CÓ THỂ bị ByteTrack nhầm là cùng 1 thùng (ngược lại — đếm THIẾU). Đây là
+# đánh đổi giữa 2 loại lỗi (đếm thừa vs đếm thiếu), không có giá trị nào
+# "đúng tuyệt đối" cho mọi tình huống — 90 là điểm khởi đầu hợp lý, có thể
+# cần tinh chỉnh thêm dựa theo tốc độ băng chuyền thực tế (băng chuyền càng
+# nhanh, khoảng cách giữa các thùng càng gần về thời gian, càng cần giảm
+# track_buffer xuống để tránh đếm thiếu kiểu ngược lại).
+tracker_type: bytetrack
+track_high_thresh: 0.25
+track_low_thresh: 0.1
+new_track_thresh: 0.25
+track_buffer: 90
+match_thresh: 0.8
+fuse_score: True

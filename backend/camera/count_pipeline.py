@@ -67,6 +67,15 @@ except ImportError:  # pragma: no cover
 DEFAULT_BACKEND_URL = "http://localhost:8000"
 CARTON_CLASS_NAME = "carton_box"  # đúng tên lớp đã định nghĩa trong notebook (CFG.CLASS_NAMES)
 
+# Cấu hình ByteTrack riêng — track_buffer tăng lên 90 (thay vì mặc định 30)
+# để giảm đếm trùng khi thùng bị che khuất tạm thời (xem giải thích đầy đủ
+# trong chính file .yaml). Dùng đường dẫn TUYỆT ĐỐI (Path(__file__).parent)
+# để luôn đúng bất kể server chạy lệnh từ thư mục nào — nếu chỉ ghi
+# "carton_bytetrack.yaml" (đường dẫn tương đối) thì ultralytics sẽ tìm theo
+# thư mục làm việc hiện tại lúc chạy, dễ lỗi "không tìm thấy file" tuỳ nơi
+# gọi lệnh (đã từng gặp vấn đề tương tự với đường dẫn tương đối trước đây).
+CARTON_TRACKER_CONFIG = str(Path(__file__).resolve().parent / "carton_bytetrack.yaml")
+
 
 @dataclass
 class CountResult:
@@ -128,7 +137,7 @@ def count_boxes_in_video(
         source=video_path,
         conf=conf,
         iou=iou,
-        tracker="bytetrack.yaml",
+        tracker=CARTON_TRACKER_CONFIG,
         persist=True,
         stream=True,
         verbose=False,

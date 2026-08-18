@@ -13,6 +13,7 @@ bộ nhớ nếu nhân viên bỏ dở không bấm "Xong".
 """
 import time
 import logging
+from pathlib import Path
 from threading import Lock
 
 logger = logging.getLogger(__name__)
@@ -28,6 +29,12 @@ DEFAULT_CONF = 0.35  # hạ từ 0.5 -> 0.35: model dễ bỏ sót thùng bị c
 # ngay trên URL để thử nghiệm nhanh.
 DEFAULT_IOU = 0.45
 STALE_SECONDS = 600  # phiên không hoạt động quá 10 phút -> tự dọn
+
+# Dùng chung đúng 1 cấu hình ByteTrack với camera/count_pipeline.py (track_buffer
+# tăng lên 90 để giảm đếm trùng khi thùng bị che khuất tạm thời) — tránh 2 nơi
+# xử lý đếm (video-1-lần vs từng-khung-rời-rạc) dùng 2 tham số khác nhau, dễ
+# gây kết quả lệch nhau khó giải thích.
+_TRACKER_CONFIG = str(Path(__file__).resolve().parent.parent / "camera" / "carton_bytetrack.yaml")
 
 
 def _get_or_create(session_id: int, model_path: str):
@@ -60,7 +67,7 @@ def process_frame(session_id: int, model_path: str, frame_bytes: bytes,
         raise ValueError("Không đọc được ảnh gửi lên (file hỏng hoặc sai định dạng)")
 
     results = model.track(
-        frame, persist=True, tracker="bytetrack.yaml",
+        frame, persist=True, tracker=_TRACKER_CONFIG,
         conf=conf, iou=iou, verbose=False,
     )
 
