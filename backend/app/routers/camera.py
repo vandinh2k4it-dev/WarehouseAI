@@ -380,10 +380,22 @@ async def count_video_segment(
     annotated_url = None
     try:
         produced_dir = annotated_raw_dir / "session"
+        # In ra Railway logs để CHẨN ĐOÁN ĐƯỢC THẬT khi video không hiện —
+        # trước đây bọc try/except im lặng hoàn toàn, không cách nào biết
+        # được lý do thật (thư mục không tồn tại? sai đuôi file? ultralytics
+        # đặt tên khác dự đoán?) — giờ in đủ thông tin ra log mỗi lần chạy.
+        print(f"[annotated-video] Tìm file trong: {produced_dir.resolve()}")
+        print(f"[annotated-video] Thư mục có tồn tại không: {produced_dir.exists()}")
+        if produced_dir.exists():
+            all_files = list(produced_dir.iterdir())
+            print(f"[annotated-video] Toàn bộ file trong thư mục: {[f.name for f in all_files]}")
+
         candidates = sorted(
             [*produced_dir.glob("*.mp4"), *produced_dir.glob("*.avi")],
             key=lambda p: p.stat().st_mtime, reverse=True,
         )
+        print(f"[annotated-video] Số file .mp4/.avi tìm thấy: {len(candidates)}")
+
         if candidates:
             served_dir = Path("uploads/annotated_videos")
             served_dir.mkdir(parents=True, exist_ok=True)
@@ -391,11 +403,13 @@ async def count_video_segment(
             final_path = served_dir / final_name
             candidates[0].replace(final_path)
             annotated_url = f"/media/annotated/{final_name}"
-    except Exception:
+            print(f"[annotated-video] Đã chuyển thành công -> {annotated_url}")
+    except Exception as e:
         # Không tìm/chuyển được video đã vẽ khung hộp -> KHÔNG làm hỏng cả
         # kết quả đếm (số đếm vẫn đúng, giá trị chính) — chỉ đơn giản là
-        # không có video xem lại, annotated_url ở lại None.
-        pass
+        # không có video xem lại, annotated_url ở lại None. NHƯNG vẫn in lỗi
+        # thật ra log thay vì nuốt hoàn toàn như trước — cần biết lý do thật.
+        print(f"[annotated-video] LỖI khi tìm/chuyển file: {e!r}")
 
     return _finalize_stop(
         db, session,

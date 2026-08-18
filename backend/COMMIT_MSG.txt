@@ -1,46 +1,29 @@
-fix(backend): phát hiện sớm khi web dùng NHẦM model — báo lỗi rõ ràng thay vì âm thầm đếm ra 0
+fix(backend): thêm log chẩn đoán cho bước tìm video đã vẽ khung hộp — đang bị nuốt lỗi im lặng
 
-Bối cảnh (đã điều tra kỹ, có bằng chứng cụ thể):
-Cùng 1 video test — chạy qua test_video_local.py trên máy: đếm ĐÚNG
-34 thùng. Upload đúng video đó qua web (Railway đã deploy): đếm ra 0.
-Cùng video, cùng thuật toán đếm — vậy khác biệt duy nhất có thể xảy
-ra là SERVER TRÊN RAILWAY ĐANG DÙNG SAI MODEL.
+Bối cảnh:
+Đếm video đã ra đúng số (34) sau khi sửa CARTON_MODEL_PATH, nhưng
+KHÔNG thấy khung video nào hiện trên kết quả (tính năng "xem lại video
+đã vẽ khung hộp" thêm ở commit trước). Nguyên nhân thật chưa xác định
+được vì bước tìm/chuyển file được bọc trong try/except NUỐT LỖI HOÀN
+TOÀN (except Exception: pass) — annotated_video_url âm thầm về None,
+không có cách nào biết được lý do thật (thư mục không tồn tại? sai
+tên file ultralytics đặt? quyền ghi?).
 
-Cơ chế gây ra hiện tượng "im lặng đếm ra 0" (đã suy luận và xác nhận
-đúng bằng code, không phải đoán mò):
-count_boxes_in_video() lọc kết quả theo đúng tên lớp "carton_box". Nếu
-CARTON_MODEL_PATH chưa được đặt trên Railway (hoặc đặt sai đường dẫn
-tới file không tồn tại thật trong container đã deploy), code sẽ TỰ
-ĐỘNG rơi về dùng "yolov8s.pt" (model gốc COCO, 80 lớp, KHÔNG có lớp
-nào tên "carton_box"). Model này vẫn chạy bình thường, không báo lỗi
-gì — nhưng vì không có lớp nào khớp tên "carton_box", MỌI kết quả
-phát hiện đều bị bộ lọc loại bỏ hết, luôn ra đúng 0 dù model hoạt
-động "thành công".
+Thay đổi (app/routers/camera.py, endpoint /count-video):
+- In ra Railway logs (xem được qua tab Deployments > Logs, hoặc lệnh
+  `railway logs`) đầy đủ từng bước:
+  + Đường dẫn tuyệt đối thư mục đang tìm.
+  + Thư mục đó có tồn tại không.
+  + TOÀN BỘ tên file thật sự có trong thư mục (nếu thư mục tồn tại) —
+    để biết chính xác ultralytics đặt tên/đuôi file gì, so với giả
+    định *.mp4/*.avi đang tìm.
+  + Số file .mp4/.avi khớp được.
+  + Nếu lỗi exception xảy ra, in ra ĐÚNG nội dung lỗi thật thay vì
+    nuốt hoàn toàn như trước.
 
-Cách sửa (camera/count_pipeline.py + app/routers/camera.py):
-- count_boxes_in_video() giờ tự kiểm tra: nếu model có nhiều lớp
-  (nghi ngờ đang dùng model gốc) VÀ tên lớp cần lọc không tồn tại
-  trong danh sách lớp của model -> gắn cảnh báo rõ ràng vào kết quả
-  trả về (CountResult.model_warning), liệt kê luôn model đang dùng
-  có những lớp gì.
-- Endpoint /count-video: nếu có model_warning, CHẶN LẠI NGAY bằng lỗi
-  500 rõ ràng — không cho đi tiếp vào luồng "lệch số" bình thường (để
-  lẫn vào đó sẽ khiến người dùng tưởng nhầm là vấn đề đếm thiếu, mất
-  công debug sai hướng — đúng những gì vừa xảy ra thật).
-
-ĐÃ TỰ KIỂM TRA (test riêng logic phát hiện, không cần model/ultralytics
-thật — chỉ test đúng điều kiện if/else cốt lõi bằng dict giả lập):
-- Model giả COCO (nhiều lớp, không có carton_box) -> cảnh báo ĐÚNG
-  được tạo ra.
-- Model giả carton thật (1 lớp carton_box) -> KHÔNG tạo cảnh báo,
-  không ảnh hưởng luồng bình thường khi model đúng.
-
-Việc cần làm ngay trên Railway (đây là hành động khắc phục, không
-phải trong code):
-1. Vào Railway -> service backend -> Variables -> kiểm tra
-   CARTON_MODEL_PATH có tồn tại và đúng giá trị "models/carton_counter_best.pt"
-   chưa.
-2. Chạy `git ls-files | findstr carton_counter_best` trên máy — nếu
-   KHÔNG ra dòng nào, file model CHƯA TỪNG được commit vào git, cần
-   add + commit + push file đó (kiểm tra .gitignore không lỡ chặn
-   nhầm *.pt).
+Việc cần làm: chạy lại upload video 1 lần nữa, sau đó vào Railway ->
+tab Deployments -> Logs (hoặc chạy `railway logs` qua CLI đã cài từ
+trước), tìm các dòng bắt đầu bằng "[annotated-video]" — copy gửi lại,
+mình đọc log thật sẽ biết chính xác lý do và sửa đúng chỗ (nhiều khả
+năng ultralytics đặt tên/đuôi file khác giả định, hoặc cấu trúc thư
+mục project/name khác dự đoán khi dùng stream=True).
