@@ -1,51 +1,24 @@
-fix(backend): tăng track_buffer ByteTrack — sửa lỗi ĐẾM THỪA khi thùng bị che khuất tạm thời
+fix(backend): tăng tiếp track_buffer 90->150 + nới match_thresh — 34->32 đúng hướng nhưng chưa đủ
 
-Bối cảnh (xác nhận thật từ người dùng, không phải suy đoán):
-Video video_thu.mp4 đếm ra 34 — con số này NHẤT QUÁN qua mọi lần chạy
-(CLI, script test, web) nhưng SAI so với số thùng thật (ít hơn 34) —
-model đang ĐẾM THỪA/TRÙNG, không phải lỗi wiring hay lỗi model sai.
+Bối cảnh (test thật, lặp lại đúng video video_thu.mp4):
+Sau khi tăng track_buffer 30->90 (commit trước): số đếm giảm 34->32,
+ĐÚNG HƯỚNG (giảm đếm thừa) nhưng người dùng xác nhận VẪN CÒN THỪA so
+với số thùng thật. Cần tăng tiếp.
 
-Nguyên nhân: ByteTrack mặc định chỉ "nhớ" 1 track bị mất trong 30
-khung hình (~1 giây ở 30fps) trước khi bỏ hẳn. Khi 1 thùng carton bị
-che khuất tạm thời (bởi thùng khác/tay người/rung camera) lâu hơn 1
-giây, ByteTrack coi lần xuất hiện lại là VẬT THỂ MỚI, gán track ID
-khác — cùng 1 thùng thật bị đếm 2 lần trở lên.
+Thay đổi (camera/carton_bytetrack.yaml):
+- track_buffer: 90 -> 150 (~5 giây ở 30fps, tăng từ ~3 giây) — ByteTrack
+  "chờ" lâu hơn nữa trước khi từ bỏ 1 track bị mất dấu.
+- match_thresh: 0.8 -> 0.7 — nới ngưỡng IoU tối thiểu để nối lại đúng 1
+  track cũ, dễ nhận lại thùng hơn khi vị trí xê dịch nhẹ trong lúc bị
+  che khuất (dù camera đứng yên, bản thân thùng có thể di chuyển nhẹ
+  trên băng chuyền trong lúc khuất tầm nhìn).
 
-File mới:
-- camera/carton_bytetrack.yaml
-  Cấu hình ByteTrack riêng cho bài toán này — CHỈ đổi đúng 1 thông số
-  so với mặc định gốc: track_buffer 30 -> 90 (~3 giây ở 30fps), giữ
-  nguyên mọi thông số khác (track_high_thresh, track_low_thresh,
-  new_track_thresh, match_thresh, fuse_score). Giải thích đầy đủ đánh
-  đổi (track_buffer cao hơn giảm đếm thừa do che khuất, nhưng có thể
-  gây đếm thiếu ngược lại nếu 2 thùng KHÁC NHAU đi qua đúng vị trí
-  cách nhau dưới 3 giây) ngay trong comment của file.
+Không đổi code Python nào — chỉ đổi 2 con số trong file cấu hình
+carton_bytetrack.yaml đã tạo ở commit trước, cả count_pipeline.py lẫn
+live_tracking.py đều tự động dùng giá trị mới (đọc từ cùng 1 file).
 
-File sửa:
-- camera/count_pipeline.py — thêm hằng CARTON_TRACKER_CONFIG (đường
-  dẫn TUYỆT ĐỐI tới file trên, tính qua Path(__file__).resolve(), không
-  phụ thuộc thư mục làm việc lúc chạy lệnh), dùng thay cho
-  tracker="bytetrack.yaml" mặc định trong count_boxes_in_video().
-- app/live_tracking.py — dùng ĐÚNG CÙNG 1 file config (tính đường dẫn
-  từ app/ trỏ sang camera/carton_bytetrack.yaml) cho chế độ "Trực
-  tiếp" — tránh 2 luồng đếm (quay-video-1-lần vs từng-khung-rời-rạc)
-  dùng 2 tham số ByteTrack khác nhau, dễ cho kết quả lệch nhau khó
-  giải thích khi so sánh.
-
-ĐÃ TỰ KIỂM TRA:
-- Cả 2 file (count_pipeline.py, live_tracking.py) tính đường dẫn
-  tuyệt đối và XÁC NHẬN TRỎ VỀ ĐÚNG CÙNG 1 FILE THẬT trên đĩa (không
-  chỉ đọc code bằng mắt — chạy thật Path().resolve() rồi so sánh 2
-  kết quả bằng assert).
-- File carton_bytetrack.yaml tồn tại thật, đường dẫn đúng cả khi tính
-  từ 2 vị trí gọi khác nhau (camera/ và app/).
-
-CHƯA test được (cần model/video thật, sandbox không có):
-- Hiệu quả thực tế của track_buffer=90 trong việc giảm đếm thừa —
-  đây là thông số CẦN TINH CHỈNH THÊM dựa theo tốc độ băng chuyền
-  thật. Đề xuất: chạy lại đúng video_thu.mp4 (đã biết trước là đếm
-  thừa ở 34), xem con số mới có giảm xuống gần đúng số thật không.
-  Nếu track_buffer=90 chưa đủ (vẫn đếm thừa), có thể tăng tiếp lên
-  120-150; nếu QUÁ CAO gây đếm THIẾU (2 thùng khác nhau bị gộp làm
-  1), giảm xuống 45-60 thử lại — đây là quá trình thử-và-điều-chỉnh,
-  không có 1 con số đúng tuyệt đối cho mọi video.
+Việc cần làm: chạy lại đúng video_thu.mp4 lần nữa. Đây là vòng lặp
+thử-và-điều-chỉnh (đã nói rõ từ đầu, không có 1 con số đúng ngay lần
+đầu) — nếu 150 vẫn còn thừa, báo mình con số mới, mình tăng tiếp lên
+200+; nếu 150 làm số đếm THẤP HƠN số thật (lố tay, gộp nhầm 2 thùng
+khác nhau thành 1) thì lùi lại giữa 90-150 tìm điểm cân bằng.
