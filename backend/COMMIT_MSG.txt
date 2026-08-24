@@ -1,24 +1,69 @@
-fix(backend): tăng tiếp track_buffer 90->150 + nới match_thresh — 34->32 đúng hướng nhưng chưa đủ
+fix(backend): lọc bỏ khung hộp quá to — sửa lỗi nhận nhầm tường/tủ máy/hàng rào thành thùng carton
 
-Bối cảnh (test thật, lặp lại đúng video video_thu.mp4):
-Sau khi tăng track_buffer 30->90 (commit trước): số đếm giảm 34->32,
-ĐÚNG HƯỚNG (giảm đếm thừa) nhưng người dùng xác nhận VẪN CÒN THỪA so
-với số thùng thật. Cần tăng tiếp.
+Bối cảnh (bằng chứng thật từ ảnh chụp màn hình khi test video Pexels):
+Model nhận nhầm nhiều vật thể lớn, tĩnh (tường, tủ điện, hàng rào sắt)
+thành "carton_box" khi test ở môi trường khác điều kiện train (nhà máy/
+kho nước ngoài, khác hẳn 300 ảnh cửa hàng tạp hóa VN đã dùng để train).
+Quan sát chung từ các ảnh chụp: mọi trường hợp nhận nhầm đều là khung
+hộp CHIẾM DIỆN TÍCH RẤT LỚN so với cả khung hình (gần như choán hết
+màn hình) — khác hẳn 1 thùng carton thật đi qua camera ở khoảng cách
+quay bình thường (kịch bản băng chuyền đã thiết kế), hiếm khi chiếm
+quá 60-70% khung hình.
 
-Thay đổi (camera/carton_bytetrack.yaml):
-- track_buffer: 90 -> 150 (~5 giây ở 30fps, tăng từ ~3 giây) — ByteTrack
-  "chờ" lâu hơn nữa trước khi từ bỏ 1 track bị mất dấu.
-- match_thresh: 0.8 -> 0.7 — nới ngưỡng IoU tối thiểu để nối lại đúng 1
-  track cũ, dễ nhận lại thùng hơn khi vị trí xê dịch nhẹ trong lúc bị
-  che khuất (dù camera đứng yên, bản thân thùng có thể di chuyển nhẹ
-  trên băng chuyền trong lúc khuất tầm nhìn).
+Cách sửa: thêm bộ lọc theo TỈ LỆ DIỆN TÍCH — bỏ qua (không đếm, không
+vẽ) mọi khung hộp phát hiện được có diện tích > 65% diện tích khung
+hình, áp dụng NHẤT QUÁN ở cả 2 nơi xử lý đếm (video-1-lần và
+từng-khung-rời-rạc) để không cho ra kết quả lệch nhau khó giải thích.
 
-Không đổi code Python nào — chỉ đổi 2 con số trong file cấu hình
-carton_bytetrack.yaml đã tạo ở commit trước, cả count_pipeline.py lẫn
-live_tracking.py đều tự động dùng giá trị mới (đọc từ cùng 1 file).
+File sửa:
+- app/live_tracking.py
+  + Thêm hằng MAX_BOX_AREA_RATIO = 0.65 và hàm _is_plausible_box_size()
+    kiểm tra tỉ lệ (diện tích khung hộp / diện tích khung hình).
+  + Trong process_frame(): di chuyển dòng lấy h, w (kích thước khung
+    hình) lên TRƯỚC vòng lặp xử lý từng khung hộp (trước đây nằm SAU,
+    không dùng được bên trong vòng lặp) — thêm điều kiện lọc ngay khi
+    duyệt từng khung hộp phát hiện được, trước khi thêm vào
+    state["seen_ids"] và danh sách boxes_out trả về cho frontend vẽ.
 
-Việc cần làm: chạy lại đúng video_thu.mp4 lần nữa. Đây là vòng lặp
-thử-và-điều-chỉnh (đã nói rõ từ đầu, không có 1 con số đúng ngay lần
-đầu) — nếu 150 vẫn còn thừa, báo mình con số mới, mình tăng tiếp lên
-200+; nếu 150 làm số đếm THẤP HƠN số thật (lố tay, gộp nhầm 2 thùng
-khác nhau thành 1) thì lùi lại giữa 90-150 tìm điểm cân bằng.
+- camera/count_pipeline.py
+  + Thêm ĐÚNG cùng hằng số + hàm lọc (dùng chung ngưỡng 0.65 với
+    live_tracking.py).
+  + Trong count_boxes_in_video(): lấy kích thước khung hình qua
+    result.orig_shape (thuộc tính CÓ SẴN của đối tượng Results trong
+    ultralytics — đã ĐỌC TRỰC TIẾP SOURCE CODE thật của thư viện để
+    xác nhận đúng ý nghĩa "self.orig_shape = orig_img.shape[:2]", tức
+    (height, width), không đoán mò) thay vì phải mở lại video bằng
+    cv2.VideoCapture riêng — đơn giản và chắc chắn khớp đúng kích
+    thước từng khung hình thật đang xử lý.
+  + Thêm điều kiện lọc trong vòng lặp xử lý mỗi khung hình, trước dòng
+    seen_track_ids.add(tid).
+
+ĐÃ TỰ KIỂM TRA (nhiều lớp, không chỉ đọc code bằng mắt):
+1. Test logic thuần tuý (không cần model): xác nhận đúng cả 3 trường
+   hợp — tường lớn chiếm 91% khung hình bị loại (False), thùng carton
+   bình thường chiếm ~27% được giữ (True), thùng quay quá cận cảnh
+   chiếm 80% cũng bị loại (False, đúng cảnh báo đánh đổi đã ghi rõ).
+2. Cài ultralytics THẬT vào sandbox, đọc trực tiếp source code class
+   Results để XÁC NHẬN CHẮC CHẮN result.orig_shape đúng là (height,
+   width) — không suy đoán từ tài liệu/trí nhớ.
+3. Chạy THẬT count_boxes_in_video() với model yolov8n.pt (COCO, tự
+   tải) trên video test tổng hợp — chạy thành công, không crash, xác
+   nhận orig_shape hoạt động đúng trong pipeline thật (20 khung hình
+   xử lý trọn vẹn, không lỗi).
+4. Chạy THẬT process_frame() với cùng model trên 1 khung hình ảnh thật
+   — chạy thành công, không crash, trả về đúng cấu trúc dữ liệu kỳ
+   vọng (boxes, count, frame_width, frame_height).
+
+LƯU Ý: các bài test THẬT ở trên xác nhận CODE CHẠY ĐÚNG KỸ THUẬT
+(không crash, dùng đúng API), KHÔNG xác nhận được HIỆU QUẢ LỌC THẬT
+với ảnh tường/tủ máy cụ thể (cần model carton_counter_best.pt +
+video/ảnh thật gây nhận nhầm để kiểm chứng, sandbox không có sẵn cả
+2 thứ này). Đề xuất: chạy lại đúng video Pexels đã gây nhận nhầm
+trước đó, xem sau khi có bộ lọc này, các trường hợp tường/tủ máy có
+còn bị đếm nhầm không.
+
+Việc cần làm: copy 2 file camera/carton_bytetrack.yaml (nếu chưa có
+sẵn trên máy — file này được tạo lại trong lần làm việc này do sandbox
+trước đó bị mất, nội dung giống hệt bản gốc track_buffer=150) và 2
+file đã sửa vào đúng vị trí trong project thật, sau đó thêm cả 2 vào
+git nếu carton_bytetrack.yaml chưa từng được commit.

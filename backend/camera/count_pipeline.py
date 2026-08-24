@@ -76,6 +76,26 @@ CARTON_CLASS_NAME = "carton_box"  # đúng tên lớp đã định nghĩa trong 
 # gọi lệnh (đã từng gặp vấn đề tương tự với đường dẫn tương đối trước đây).
 CARTON_TRACKER_CONFIG = str(Path(__file__).resolve().parent / "carton_bytetrack.yaml")
 
+# Khung hộp chiếm > 65% diện tích khung hình -> loại bỏ, nghi ngờ là
+# tường/tủ máy/hàng rào sắt hoặc vật thể lớn tĩnh khác bị nhận NHẦM thành
+# thùng carton (đã gặp thật khi test video ở môi trường khác điều kiện
+# train). Dùng CHUNG đúng ngưỡng này với app/live_tracking.py để 2 luồng
+# đếm (quay-video-1-lần vs từng-khung-rời-rạc) nhất quán với nhau.
+#
+# ĐÁNH ĐỔI: nếu quay CẬN CẢNH 1 thùng lớn, bộ lọc này CÓ THỂ loại nhầm
+# thùng thật — nếu gặp trường hợp đó, tăng MAX_BOX_AREA_RATIO lên 0.75-0.8.
+MAX_BOX_AREA_RATIO = 0.65
+
+
+def _is_plausible_box_size(x1: float, y1: float, x2: float, y2: float, frame_w: int, frame_h: int) -> bool:
+    """True nếu khung hộp có kích thước hợp lý so với cả khung hình (không
+    quá to, nghi ngờ là tường/vật thể lớn tĩnh bị nhận nhầm)."""
+    box_area = max(0.0, x2 - x1) * max(0.0, y2 - y1)
+    frame_area = frame_w * frame_h
+    if frame_area <= 0:
+        return True
+    return (box_area / frame_area) <= MAX_BOX_AREA_RATIO
+
 
 @dataclass
 class CountResult:
@@ -154,13 +174,18 @@ def count_boxes_in_video(
         if boxes is None or boxes.id is None:
             continue
 
+        frame_h, frame_w = result.orig_shape  # (height, width) — có sẵn từ chính kết quả, không cần mở lại video riêng
         track_ids = boxes.id.int().tolist()
         cls_ids = boxes.cls.int().tolist()
         confs = boxes.conf.tolist()
+        xyxy_list = boxes.xyxy.tolist()
 
-        for tid, cid, c in zip(track_ids, cls_ids, confs):
+        for tid, cid, c, box_xyxy in zip(track_ids, cls_ids, confs, xyxy_list):
             if filter_by_class and class_names.get(cid) != target_class_name:
                 continue
+            x1, y1, x2, y2 = box_xyxy
+            if not _is_plausible_box_size(x1, y1, x2, y2, frame_w, frame_h):
+                continue  # nghi ngờ tường/tủ máy/vật thể lớn tĩnh -> bỏ qua, không đếm
             seen_track_ids.add(tid)
             confidences.append(c)
 

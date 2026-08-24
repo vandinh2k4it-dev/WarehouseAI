@@ -1,36 +1,16 @@
 # Cấu hình ByteTrack RIÊNG cho bài toán đếm thùng carton — khác với file
-# bytetrack.yaml mặc định đi kèm ultralytics (chỉ thay đổi ĐÚNG 1 thông số:
-# track_buffer, các thông số khác giữ nguyên giá trị mặc định gốc).
+# bytetrack.yaml mặc định đi kèm ultralytics.
 #
-# LÝ DO CẦN FILE NÀY (phát hiện qua test thật, không phải lý thuyết suông):
-# Test video thật cho thấy hiện tượng ĐẾM THỪA — cùng 1 thùng carton bị che
-# khuất tạm thời (bởi thùng khác/tay người/rung camera) trong lúc quay, khi
-# xuất hiện lại bị ByteTrack gán track ID MỚI thay vì nhận ra là thùng cũ,
-# dẫn tới đếm trùng 1 thùng thành 2 lần trở lên.
+# track_buffer: 150 (~5 giây ở 30fps, mặc định gốc chỉ 30 = ~1 giây) — tăng
+# lên sau khi test thật cho thấy đếm THỪA (34, sau đó 32) do thùng bị che
+# khuất tạm thời bị gán track ID mới thay vì nhận lại đúng ID cũ.
 #
-# track_buffer mặc định của ultralytics = 30 khung hình — ở video quay
-# khoảng 30fps, nghĩa là ByteTrack chỉ "nhớ" 1 track bị mất trong ĐÚNG 1
-# GIÂY trước khi bỏ hẳn track đó và coi lần xuất hiện lại là vật thể mới.
-# Tăng lên 150 khung hình (~5 giây ở 30fps) — ĐÃ THỬ 90 (~3 giây) trước đó,
-# vẫn còn đếm thừa (test thật: 34 -> 32, đúng hướng nhưng chưa đủ) — tăng
-# tiếp lên 150 cho phép ByteTrack "chờ" lâu hơn nữa trước khi từ bỏ 1 track.
-#
-# ĐÁNH ĐỔI: track_buffer cao hơn cũng có nghĩa nếu 2 thùng THẬT SỰ khác
-# nhau đi qua đúng cùng 1 vị trí trong khung hình cách nhau dưới 5 giây,
-# CÓ THỂ bị ByteTrack nhầm là cùng 1 thùng (ngược lại — đếm THIẾU). Đây là
-# đánh đổi giữa 2 loại lỗi (đếm thừa vs đếm thiếu), không có giá trị nào
-# "đúng tuyệt đối" cho mọi tình huống — nếu 150 gây đếm THIẾU, giảm về
-# khoảng 100-120; nếu VẪN còn đếm thừa dù đã 150, tăng tiếp lên 200+.
+# match_thresh: 0.7 (mặc định gốc 0.8) — nới nhẹ để dễ nhận lại thùng hơn
+# khi vị trí xê dịch chút ít sau lúc bị che khuất.
 tracker_type: bytetrack
 track_high_thresh: 0.25
 track_low_thresh: 0.1
 new_track_thresh: 0.25
 track_buffer: 150
-# match_thresh mặc định 0.8 (ngưỡng IoU tối thiểu để nối lại đúng 1 track
-# cũ) — nới nhẹ xuống 0.7 để dễ nhận lại thùng hơn khi vị trí lệch chút ít
-# sau lúc bị che khuất (thùng có thể xê dịch nhẹ trên băng chuyền trong lúc
-# bị khuất tầm nhìn, dù camera đứng yên). Nới quá thấp thì rủi ro nhận nhầm
-# 2 thùng gần nhau thành cùng 1 track — 0.7 là mức thận trọng, không nới
-# quá tay.
 match_thresh: 0.7
 fuse_score: True

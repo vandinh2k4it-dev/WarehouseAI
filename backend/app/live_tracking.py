@@ -30,6 +30,29 @@ DEFAULT_CONF = 0.35  # hạ từ 0.5 -> 0.35: model dễ bỏ sót thùng bị c
 DEFAULT_IOU = 0.45
 STALE_SECONDS = 600  # phiên không hoạt động quá 10 phút -> tự dọn
 
+# Khung hộp chiếm > 65% diện tích khung hình -> loại bỏ, nghi ngờ là
+# tường/tủ máy/hàng rào sắt hoặc vật thể lớn tĩnh khác bị nhận NHẦM thành
+# thùng carton (đã gặp thật khi test video ở môi trường khác điều kiện
+# train — xem ảnh chụp: model nhận nhầm tường/tủ điện thành "carton_box").
+# Thùng carton thật đi qua camera ở khoảng cách quay bình thường (kịch bản
+# băng chuyền) hiếm khi chiếm gần hết khung hình như vậy.
+#
+# ĐÁNH ĐỔI: nếu quay CẬN CẢNH 1 thùng lớn (thùng chiếm gần hết khung hình
+# do đặt camera sát), bộ lọc này CÓ THỂ loại nhầm thùng thật — nếu gặp
+# trường hợp đó, tăng MAX_BOX_AREA_RATIO lên 0.75-0.8, hoặc giãn camera ra
+# xa hơn khi quay thay vì đổi số này.
+MAX_BOX_AREA_RATIO = 0.65
+
+
+def _is_plausible_box_size(x1: float, y1: float, x2: float, y2: float, frame_w: int, frame_h: int) -> bool:
+    """True nếu khung hộp có kích thước hợp lý so với cả khung hình (không
+    quá to, nghi ngờ là tường/vật thể lớn tĩnh bị nhận nhầm)."""
+    box_area = max(0.0, x2 - x1) * max(0.0, y2 - y1)
+    frame_area = frame_w * frame_h
+    if frame_area <= 0:
+        return True
+    return (box_area / frame_area) <= MAX_BOX_AREA_RATIO
+
 # Dùng chung đúng 1 cấu hình ByteTrack với camera/count_pipeline.py (track_buffer
 # tăng lên 90 để giảm đếm trùng khi thùng bị che khuất tạm thời) — tránh 2 nơi
 # xử lý đếm (video-1-lần vs từng-khung-rời-rạc) dùng 2 tham số khác nhau, dễ
@@ -73,19 +96,22 @@ def process_frame(session_id: int, model_path: str, frame_bytes: bytes,
 
     boxes_out = []
     r = results[0] if results else None
+    h, w = frame.shape[:2]  # cần lấy TRƯỚC vòng lặp để dùng cho bộ lọc kích thước
     if r is not None and r.boxes is not None and r.boxes.id is not None:
         xyxy = r.boxes.xyxy.tolist()
         ids = r.boxes.id.tolist()
         confs = r.boxes.conf.tolist()
         for box, track_id, confidence in zip(xyxy, ids, confs):
+            x1, y1, x2, y2 = box
+            if not _is_plausible_box_size(x1, y1, x2, y2, w, h):
+                continue  # nghi ngờ tường/tủ máy/vật thể lớn tĩnh -> bỏ qua, không đếm
             tid = int(track_id)
             state["seen_ids"].add(tid)
             boxes_out.append({
-                "x1": box[0], "y1": box[1], "x2": box[2], "y2": box[3],
+                "x1": x1, "y1": y1, "x2": x2, "y2": y2,
                 "track_id": tid, "conf": round(float(confidence), 3),
             })
 
-    h, w = frame.shape[:2]
     return {
         "boxes": boxes_out,
         "count": len(state["seen_ids"]),
