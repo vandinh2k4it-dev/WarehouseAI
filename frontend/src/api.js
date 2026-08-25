@@ -102,10 +102,11 @@ export const api = {
 
   // Quay video xong -> upload thẳng, backend tự đếm (YOLOv8+ByteTrack) rồi
   // tự đối chiếu luôn — chỉ 1 lần gọi, không cần round-trip riêng.
-  countVideo: async (sessionId, videoFile, thresholdPct = 0.02) => {
+  countVideo: async (sessionId, videoFile, thresholdPct = 0.02, conf = 0.5) => {
     const form = new FormData();
     form.append("file", videoFile);
     form.append("threshold_pct", String(thresholdPct));
+    form.append("conf", String(conf));
     const res = await fetch(`${API_BASE}/camera-sessions/${sessionId}/count-video`, {
       method: "POST",
       body: form,

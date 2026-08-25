@@ -17,6 +17,7 @@ export default function CountingScreen({ session, expectedQuantity, label, onDon
   const [result, setResult] = useState(null);
   const [errorMsg, setErrorMsg] = useState("");
   const inputRef = useRef(null);
+  const [videoConf, setVideoConf] = useState(0.5); // độ nhạy phát hiện cho chế độ Quay video — khớp mặc định 0.5 bên backend
 
   async function handleFileSelected(e) {
     const file = e.target.files?.[0];
@@ -25,7 +26,7 @@ export default function CountingScreen({ session, expectedQuantity, label, onDon
     setStatus("uploading");
     setErrorMsg("");
     try {
-      const res = await api.countVideo(session.id, file);
+      const res = await api.countVideo(session.id, file, 0.02, videoConf);
       setResult(res);
       setStatus("done");
     } catch (err) {
@@ -114,28 +115,49 @@ export default function CountingScreen({ session, expectedQuantity, label, onDon
           </div>
 
           {mode === "video" ? (
-            <div className="scanBtnRow">
-              <label className="camBtn">
-                🎥 Quay video mới
+            <>
+              <div className="confSlider">
+                <div className="confSlider-row">
+                  <span>Độ nhạy phát hiện</span>
+                  <span className="mono">{videoConf.toFixed(2)}</span>
+                </div>
                 <input
-                  type="file"
-                  accept="video/*"
-                  capture="environment"
-                  onChange={handleFileSelected}
-                  style={{ display: "none" }}
+                  type="range"
+                  min="0.15"
+                  max="0.8"
+                  step="0.05"
+                  value={videoConf}
+                  onChange={(e) => setVideoConf(parseFloat(e.target.value))}
                 />
-              </label>
-              <label className="camBtn secondary">
-                📁 Chọn video có sẵn
-                <input
-                  ref={inputRef}
-                  type="file"
-                  accept="video/*"
-                  onChange={handleFileSelected}
-                  style={{ display: "none" }}
-                />
-              </label>
-            </div>
+                <div className="confSlider-hint">
+                  Kéo trái nếu model đang BỎ SÓT nhiều thùng — kéo phải nếu đang NHẬN NHẦM tường/tủ
+                  máy/vật khác thành thùng (thường nhận nhầm có độ tin cậy thấp hơn thùng thật, tăng
+                  ngưỡng giúp lọc bớt nhưng không loại được hết mọi trường hợp).
+                </div>
+              </div>
+              <div className="scanBtnRow">
+                <label className="camBtn">
+                  🎥 Quay video mới
+                  <input
+                    type="file"
+                    accept="video/*"
+                    capture="environment"
+                    onChange={handleFileSelected}
+                    style={{ display: "none" }}
+                  />
+                </label>
+                <label className="camBtn secondary">
+                  📁 Chọn video có sẵn
+                  <input
+                    ref={inputRef}
+                    type="file"
+                    accept="video/*"
+                    onChange={handleFileSelected}
+                    style={{ display: "none" }}
+                  />
+                </label>
+              </div>
+            </>
           ) : (
             <>
               <input

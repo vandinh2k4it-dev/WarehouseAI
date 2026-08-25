@@ -1,47 +1,54 @@
-feat(frontend): đổi tên app thành "Warehouse" + icon thùng carton mới + tinh chỉnh giao diện
+feat(frontend): thanh trượt chỉnh độ nhạy cho chế độ Quay video (không chỉ Trực tiếp)
 
-============================================================
-1. Đổi tên "Kho thông minh" -> "Warehouse" (4 chỗ)
-============================================================
-- src/components/TopNav.jsx — tên hiện trên header.
-- src/sw.js — tiêu đề mặc định khi hiện push notification.
-- vite.config.js — tên app PWA (name/short_name trong manifest, hiện
-  khi cài lên màn hình chính điện thoại).
-- index.html — <title> tab trình duyệt.
+Nối vào backend đã có sẵn tham số conf trên /count-video (xem
+COMMIT_MSG.txt bên backend cùng đợt).
 
-============================================================
-2. Vẽ lại icon — thùng carton 3D, không còn giống mũi tên
-============================================================
-- public/icon-192.png, icon-512.png — vẽ lại bằng script Python
-  (Pillow), hình khối thùng carton 3 mặt (trước/trên/phải, phối cảnh
-  nhẹ) với 1 đường seam dọc mặt trước — rõ ràng là thùng hàng, khác
-  hẳn bản cũ (đường kẻ chéo dễ nhìn nhầm thành mũi tên chỉ lên).
-- src/components/TopNav.jsx — thay emoji 📦 tĩnh bằng chính icon mới
-  (dùng <img src="/icon-192.png">) — nhất quán thương hiệu giữa icon
-  app cài trên điện thoại và icon hiện trong giao diện.
+File sửa:
+- src/api.js
+  countVideo() thêm tham số thứ 4 "conf" (mặc định 0.5) — gửi thêm
+  field "conf" vào FormData cùng file video và threshold_pct đã có.
+  GIỮ NGUYÊN vị trí tham số thresholdPct ở vị trí thứ 3 (không đổi thứ
+  tự tham số cũ, tránh phá vỡ chỗ gọi khác nếu có — chỉ thêm tham số
+  MỚI vào cuối).
 
-============================================================
-3. Tinh chỉnh giao diện — thêm chiều sâu, chuyển động mượt
-============================================================
-- src/styles/app.css:
-  + .topnav — nền gradient nhẹ + backdrop-filter blur (hiệu ứng kính
-    mờ khi cuộn trang, thanh điều hướng nổi bật hơn).
-  + .card — thêm box-shadow tạo chiều sâu, transition mượt khi hover.
-  + button.primary — nền gradient cam (thay vì màu phẳng), box-shadow
-    màu cam nhẹ, hiệu ứng nhấn xuống (scale 0.98) khi bấm — cảm giác
-    "vật lý" hơn khi tương tác.
-  + .statCard (thẻ thống kê Tổng quan) — nền gradient nhẹ, đổ bóng,
-    hiệu ứng nhấc lên (translateY) khi hover trên desktop.
-  + .topnav-tab — thêm hiệu ứng hover mượt (đổi màu chữ + nền mờ nhẹ)
-    trước khi bấm chọn hẳn, phản hồi trực quan tốt hơn.
-  + Dọn 1 chỗ trùng lặp button.primary:hover (đã có ở base style,
-    xoá bản thừa trong media query desktop).
+- src/components/CountingScreen.jsx
+  + Thêm state videoConf (mặc định 0.5, khớp đúng mặc định mới bên
+    backend).
+  + Thêm thanh trượt "Độ nhạy phát hiện" (0.15-0.8) ngay phía TRÊN 2
+    nút "Quay video mới"/"Chọn video có sẵn" khi đang ở chế độ video —
+    kèm chú thích ngắn giải thích kéo bên nào khi nào, VÀ lưu ý rõ
+    ràng tính năng này không loại được hết mọi trường hợp nhận nhầm
+    (tránh người dùng kỳ vọng sai).
+  + Sửa lời gọi api.countVideo() để truyền đúng videoConf vào ĐÚNG VỊ
+    TRÍ tham số thứ 4 (giữ nguyên threshold_pct mặc định 0.02 ở vị trí
+    thứ 3) — LỖI THẬT ĐÃ TỰ PHÁT HIỆN VÀ SỬA TRƯỚC KHI GIAO: lúc đầu
+    viết nhầm api.countVideo(session.id, file, videoConf) — đưa
+    videoConf vào ĐÚNG VỊ TRÍ của thresholdPct (tham số thứ 3), nghĩa
+    là ngưỡng đối chiếu khớp/lệch (threshold_pct) sẽ bị ghi đè bằng
+    giá trị confidence (vd 0.5) thay vì giữ đúng 0.02 mặc định — lỗi
+    này sẽ làm sai lệch tiêu chí đối chiếu khớp/lệch một cách ÂM THẦM,
+    khó phát hiện qua test thông thường vì không gây crash, chỉ cho
+    kết quả đối chiếu sai lặng lẽ. Đã tự nhận ra khi đọc lại đúng chữ
+    ký hàm thật trong api.js (không giả định), sửa lại gọi đúng thứ
+    tự: countVideo(session.id, file, 0.02, videoConf).
 
-ĐÃ TỰ KIỂM TRA:
-- npm run build thành công, không lỗi.
-- Playwright xác nhận title trang đổi đúng "Warehouse — Đếm hàng
-  thông minh", header hiện đúng "Warehouse".
-- Ảnh chụp màn hình xác nhận trực quan: icon thùng carton mới hiện
-  rõ ràng, giao diện Tổng quan + Sản phẩm có chiều sâu (shadow/
-  gradient) rõ rệt so với bản phẳng cũ, không lỗi layout ở cả 2 trang
-  đã kiểm tra.
+ĐÃ TỰ KIỂM TRA (dùng esbuild build thử — không có sẵn Vite/npm đầy đủ
+trong sandbox lần này do bị reset, dùng esbuild có sẵn để xác nhận cú
+pháp hợp lệ thay vì chỉ đọc bằng mắt):
+- api.js: build thành công qua esbuild (chỉ 1 cảnh báo về import.meta
+  không tương thích định dạng iife khi build ngoài Vite — không phải
+  lỗi cú pháp, chỉ là hạn chế môi trường test, Vite thật sẽ xử lý đúng
+  import.meta bình thường).
+- CountingScreen.jsx: build JSX thành công qua esbuild (bundle, đánh
+  dấu external cho react/LiveCountingScreen/api để tránh lỗi thiếu
+  file phụ thuộc không liên quan tới việc kiểm tra cú pháp).
+- Đếm thủ công số thẻ <div> mở/đóng: xác nhận cân bằng đúng (bản gốc
+  16 mở/15 đóng do có 1 div tự đóng <div className="spinner" />; bản
+  đã sửa 19 mở/18 đóng — đúng +3 cặp mới thêm, không lệch).
+
+CHƯA làm được trong lần này (thiếu Vite/npm trong sandbox bị reset):
+chưa chạy được npm run build thật để build ra dist/ hoàn chỉnh như
+mọi lần trước — chỉ xác nhận được CÚ PHÁP đúng qua esbuild, chưa chạy
+được toàn bộ pipeline build + test Playwright như quy trình chuẩn đã
+dùng xuyên suốt trước đó. Đề nghị bạn tự chạy npm run build trên máy
+mình sau khi áp dụng để chắc chắn 100% trước khi deploy Railway/Vercel.
