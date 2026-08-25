@@ -1,54 +1,66 @@
-feat(frontend): thanh trượt chỉnh độ nhạy cho chế độ Quay video (không chỉ Trực tiếp)
+feat(frontend): trang Sản phẩm thành dashboard quản trị chuyên nghiệp — bảng chi tiết + % + biểu đồ cột
 
-Nối vào backend đã có sẵn tham số conf trên /count-video (xem
-COMMIT_MSG.txt bên backend cùng đợt).
+Bối cảnh: thay thế lưới thẻ (card grid) cũ bằng bảng dữ liệu chi tiết
+kiểu dashboard quản trị thật (giống phần mềm quản lý kho chuyên
+nghiệp) — đầy đủ cột số liệu, cột phần trăm đóng góp tồn kho, kèm
+biểu đồ cột trực quan top sản phẩm.
 
 File sửa:
-- src/api.js
-  countVideo() thêm tham số thứ 4 "conf" (mặc định 0.5) — gửi thêm
-  field "conf" vào FormData cùng file video và threshold_pct đã có.
-  GIỮ NGUYÊN vị trí tham số thresholdPct ở vị trí thứ 3 (không đổi thứ
-  tự tham số cũ, tránh phá vỡ chỗ gọi khác nếu có — chỉ thêm tham số
-  MỚI vào cuối).
+- src/pages/Products.jsx (viết lại phần hiển thị, giữ nguyên toàn bộ
+  logic lấy dữ liệu/tính toán/sắp xếp/tìm kiếm đã có từ trước)
+  + THÊM: tính totalStockAll (tổng tồn kho toàn bộ sản phẩm cộng lại)
+    — dùng làm mẫu số tính % đóng góp của từng sản phẩm.
+  + THÊM: tính topForChart (8 sản phẩm tồn kho cao nhất) — dữ liệu
+    cho biểu đồ cột.
+  + THÊM: 2 lựa chọn sắp xếp mới "Tồn kho cao nhất/thấp nhất trước".
+  + THAY: bỏ hẳn lưới thẻ (.productGrid/.productCard), thay bằng
+    <table> với 7 cột: #, Sản phẩm (kèm SKU), Tồn kho, % Tổng kho
+    (thanh tiến trình mini + số %), Trạng thái (badge màu theo 3 mức:
+    Đủ hàng/Sắp hết/Hết hàng), Số lô, HSD gần nhất.
+  + THÊM: bấm vào 1 dòng để MỞ RỘNG xem chi tiết từng lô hàng của
+    đúng sản phẩm đó (thay vì luôn hiện sẵn như bản thẻ cũ).
 
-- src/components/CountingScreen.jsx
-  + Thêm state videoConf (mặc định 0.5, khớp đúng mặc định mới bên
-    backend).
-  + Thêm thanh trượt "Độ nhạy phát hiện" (0.15-0.8) ngay phía TRÊN 2
-    nút "Quay video mới"/"Chọn video có sẵn" khi đang ở chế độ video —
-    kèm chú thích ngắn giải thích kéo bên nào khi nào, VÀ lưu ý rõ
-    ràng tính năng này không loại được hết mọi trường hợp nhận nhầm
-    (tránh người dùng kỳ vọng sai).
-  + Sửa lời gọi api.countVideo() để truyền đúng videoConf vào ĐÚNG VỊ
-    TRÍ tham số thứ 4 (giữ nguyên threshold_pct mặc định 0.02 ở vị trí
-    thứ 3) — LỖI THẬT ĐÃ TỰ PHÁT HIỆN VÀ SỬA TRƯỚC KHI GIAO: lúc đầu
-    viết nhầm api.countVideo(session.id, file, videoConf) — đưa
-    videoConf vào ĐÚNG VỊ TRÍ của thresholdPct (tham số thứ 3), nghĩa
-    là ngưỡng đối chiếu khớp/lệch (threshold_pct) sẽ bị ghi đè bằng
-    giá trị confidence (vd 0.5) thay vì giữ đúng 0.02 mặc định — lỗi
-    này sẽ làm sai lệch tiêu chí đối chiếu khớp/lệch một cách ÂM THẦM,
-    khó phát hiện qua test thông thường vì không gây crash, chỉ cho
-    kết quả đối chiếu sai lặng lẽ. Đã tự nhận ra khi đọc lại đúng chữ
-    ký hàm thật trong api.js (không giả định), sửa lại gọi đúng thứ
-    tự: countVideo(session.id, file, 0.02, videoConf).
+- src/styles/app.css
+  + .barChart, .barChart-col, .barChart-bar, .barChart-value,
+    .barChart-label — biểu đồ cột TỰ VẼ BẰNG CSS THUẦN (không dùng
+    thư viện ngoài) — có chủ đích: package.json chưa có thư viện biểu
+    đồ nào, thêm mới tăng rủi ro (không cài/test được npm install
+    thật trong sandbox lần này do bị reset) và tăng dung lượng bundle
+    không cần thiết cho 1 biểu đồ cột đơn giản.
+  + .tableScroll, .adminTable, .adminTable-row, .adminTable-name,
+    .adminTable-sku, .adminTable-expandRow — style bảng dữ liệu.
+  + .pctCell, .pctCell-bar, .pctCell-fill, .pctCell-num — thanh tiến
+    trình mini trong ô % Tổng kho.
+  + .stockStatus + .ok/.warn/.danger — badge trạng thái tồn kho (tên
+    class MỚI, tách riêng khỏi .badge dùng cho trạng thái đếm hàng và
+    .alertType-* dùng cho cảnh báo — tránh xung đột giữa 3 hệ thống
+    badge khác domain trong cùng app).
 
-ĐÃ TỰ KIỂM TRA (dùng esbuild build thử — không có sẵn Vite/npm đầy đủ
-trong sandbox lần này do bị reset, dùng esbuild có sẵn để xác nhận cú
-pháp hợp lệ thay vì chỉ đọc bằng mắt):
-- api.js: build thành công qua esbuild (chỉ 1 cảnh báo về import.meta
-  không tương thích định dạng iife khi build ngoài Vite — không phải
-  lỗi cú pháp, chỉ là hạn chế môi trường test, Vite thật sẽ xử lý đúng
-  import.meta bình thường).
-- CountingScreen.jsx: build JSX thành công qua esbuild (bundle, đánh
-  dấu external cho react/LiveCountingScreen/api để tránh lỗi thiếu
-  file phụ thuộc không liên quan tới việc kiểm tra cú pháp).
-- Đếm thủ công số thẻ <div> mở/đóng: xác nhận cân bằng đúng (bản gốc
-  16 mở/15 đóng do có 1 div tự đóng <div className="spinner" />; bản
-  đã sửa 19 mở/18 đóng — đúng +3 cặp mới thêm, không lệch).
+ĐÃ TỰ KIỂM TRA KỸ (dựng hẳn môi trường test độc lập vì sandbox bị
+reset, thiếu App.jsx/main.jsx/index.html/vite.config.js để chạy được
+cả app thật qua Vite):
+1. esbuild xác nhận cú pháp JSX + CSS hợp lệ.
+2. Phát hiện CDN unpkg.com bị chặn trong sandbox (403) khi thử dựng
+   harness test bằng React qua CDN — chuyển sang cài react/react-dom/
+   @babel/standalone qua npm (registry chính thức, được phép) rồi
+   dùng bản cài cục bộ — giải quyết đúng vấn đề thay vì bỏ cuộc.
+3. Test bằng Playwright với dữ liệu giả lập (7 sản phẩm, đủ 3 trạng
+   thái tồn kho) trên React THẬT (không phải HTML/CSS tĩnh suông):
+   - Biểu đồ cột vẽ đúng tỉ lệ, nhãn dài tự cắt ellipsis không vỡ layout.
+   - Bảng cuộn ngang đúng trên màn hẹp (390px, bảng rộng 640px) —
+     xác nhận đủ cả 7 cột khi cuộn, % TÍNH ĐÚNG (42.2+25.5+25.5+5.8+
+     0.5+0.4+0.0 ≈ 100%, khớp toán học).
+   - Badge trạng thái đúng màu cho cả 3 mức, đúng logic ngưỡng.
+   - Bấm 1 dòng MỞ RỘNG đúng, hiện đúng chi tiết lô của ĐÚNG sản phẩm.
+   - Test desktop (950px) — đủ cột, giao diện cân đối.
 
-CHƯA làm được trong lần này (thiếu Vite/npm trong sandbox bị reset):
-chưa chạy được npm run build thật để build ra dist/ hoàn chỉnh như
-mọi lần trước — chỉ xác nhận được CÚ PHÁP đúng qua esbuild, chưa chạy
-được toàn bộ pipeline build + test Playwright như quy trình chuẩn đã
-dùng xuyên suốt trước đó. Đề nghị bạn tự chạy npm run build trên máy
-mình sau khi áp dụng để chắc chắn 100% trước khi deploy Railway/Vercel.
+LƯU Ý: môi trường test tự dựng chỉ trích đúng phần CSS mới (không có
+media query responsive desktop mở rộng .page-main từ app.css thật) —
+bản desktop test hẹp hơn thực tế sẽ chạy trong app thật (app thật đã
+có sẵn media query mở rộng .page-main 880-1040px trên desktop, KHÔNG
+đổi gì trong lần sửa này) — không phải lỗi, chỉ hạn chế môi trường
+test rút gọn.
+
+Việc cần làm: chạy `npm run build` thật trên máy bạn (sandbox thiếu
+Vite đầy đủ nên chưa chạy được build thật lần này) để xác nhận build
+production thành công trước khi deploy Railway/Vercel.

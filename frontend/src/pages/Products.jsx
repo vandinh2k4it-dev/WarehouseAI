@@ -1,20 +1,29 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { api } from "../api";
 
 const SORT_OPTIONS = [
   { value: "default", label: "Mặc định (theo tên)" },
+  { value: "stock_desc", label: "Tồn kho cao nhất trước" },
+  { value: "stock_asc", label: "Tồn kho thấp nhất trước" },
   { value: "expiry_asc", label: "HSD sắp hết trước" },
   { value: "expiry_desc", label: "HSD còn xa trước" },
   { value: "received_desc", label: "Nhập gần đây trước" },
   { value: "received_asc", label: "Nhập lâu rồi trước" },
 ];
 
+function stockStatusOf(total, threshold) {
+  if (total <= 0) return { label: "Hết hàng", cls: "danger" };
+  if (total <= threshold) return { label: "Sắp hết", cls: "warn" };
+  return { label: "Đủ hàng", cls: "ok" };
+}
+
 export default function Products() {
   const [products, setProducts] = useState(null);
   const [inventory, setInventory] = useState(null);
   const [errorMsg, setErrorMsg] = useState("");
   const [search, setSearch] = useState("");
-  const [sortBy, setSortBy] = useState("default");
+  const [sortBy, setSortBy] = useState("stock_desc");
+  const [expandedId, setExpandedId] = useState(null);
 
   useEffect(() => {
     Promise.all([api.listProducts(), api.listInventory()])
@@ -43,6 +52,20 @@ export default function Products() {
     });
   }, [products, inventory]);
 
+  // Tổng tồn kho CẢ KHO (mọi sản phẩm cộng lại) — dùng làm mẫu số tính %
+  // đóng góp của từng sản phẩm trong tổng thể, hiển thị ở cột "% Tổng kho".
+  const totalStockAll = useMemo(() => {
+    if (!enriched) return 0;
+    return enriched.reduce((s, e) => s + e.total, 0);
+  }, [enriched]);
+
+  // Top 8 sản phẩm theo tồn kho — dữ liệu cho biểu đồ cột phía trên bảng.
+  const topForChart = useMemo(() => {
+    if (!enriched) return [];
+    return [...enriched].sort((a, b) => b.total - a.total).slice(0, 8);
+  }, [enriched]);
+  const chartMax = topForChart[0]?.total || 1;
+
   const filtered = enriched?.filter((e) =>
     (e.product.name + " " + (e.product.sku || "")).toLowerCase().includes(search.toLowerCase())
   );
@@ -51,6 +74,10 @@ export default function Products() {
     if (!filtered) return null;
     const arr = [...filtered];
     switch (sortBy) {
+      case "stock_desc":
+        return arr.sort((a, b) => b.total - a.total);
+      case "stock_asc":
+        return arr.sort((a, b) => a.total - b.total);
       case "expiry_asc":
         // Sản phẩm không có HSD (hết hàng) đẩy xuống cuối
         return arr.sort((a, b) => (a.nearestExpiry || "9999") < (b.nearestExpiry || "9999") ? -1 : 1);
@@ -67,8 +94,33 @@ export default function Products() {
 
   return (
     <main className="page-main">
+      {/* Biểu đồ cột — top sản phẩm theo tồn kho, giúp nhìn nhanh mặt hàng
+          nào đang chiếm nhiều kho nhất mà không cần đọc hết cả bảng. */}
       <div className="card">
-        <h2>Sản phẩm ({products?.length ?? "…"})</h2>
+        <h2>Top tồn kho</h2>
+        {!enriched && <div className="empty">Đang tải…</div>}
+        {topForChart.length > 0 && (
+          <div className="barChart">
+            {topForChart.map(({ product: p, total }) => (
+              <div className="barChart-col" key={p.id}>
+                <div className="barChart-value mono">{total.toLocaleString("vi-VN")}</div>
+                <div className="barChart-bar" style={{ height: `${Math.max((total / chartMax) * 100, 3)}%` }} />
+                <div className="barChart-label" title={p.name}>
+                  {p.name}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Bảng dữ liệu chi tiết — kiểu dashboard quản trị: đầy đủ cột số
+          liệu (tồn kho, % tổng kho, trạng thái, số lô, HSD), bấm vào 1
+          dòng để mở rộng xem chi tiết từng lô hàng của đúng sản phẩm đó. */}
+      <div className="card">
+        <div className="card-headRow">
+          <h2>Sản phẩm ({products?.length ?? "…"})</h2>
+        </div>
         <input
           type="text"
           placeholder="Tìm theo tên hoặc SKU…"
@@ -90,38 +142,80 @@ export default function Products() {
         {sorted && sorted.length === 0 && <div className="empty">Không tìm thấy sản phẩm nào</div>}
 
         {sorted && sorted.length > 0 && (
-          <div className="productGrid">
-            {sorted.map(({ product: p, batches, total }) => {
-              const isLow = total <= p.low_stock_threshold;
-              return (
-                <div className="productCard" key={p.id}>
-                  <div className="productCard-head">
-                    <div className="productCard-name">{p.name}</div>
-                    {p.sku && <div className="productCard-sku mono">{p.sku}</div>}
-                  </div>
-                  <div className={`productCard-total${isLow ? " low" : ""}`}>
-                    {total.toLocaleString("vi-VN")} {p.unit}
-                    {isLow && <span className="badge needs_review" style={{ marginLeft: 8 }}>sắp hết</span>}
-                  </div>
-                  {batches.length > 0 ? (
-                    <div className="productCard-batches">
-                      {batches
-                        .slice()
-                        .sort((a, b) => (a.expiry_date || "9999").localeCompare(b.expiry_date || "9999"))
-                        .map((b) => (
-                          <div key={b.id} className="productCard-batchRow">
-                            <span className="mono">{b.batch_code}</span>
-                            <span>{b.quantity} {p.unit}</span>
-                            <span className="text-muted">{b.expiry_date || "—"}</span>
+          <div className="tableScroll">
+            <table className="dataTable adminTable">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Sản phẩm</th>
+                  <th>Tồn kho</th>
+                  <th>% Tổng kho</th>
+                  <th>Trạng thái</th>
+                  <th>Số lô</th>
+                  <th>HSD gần nhất</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sorted.map(({ product: p, batches, total, nearestExpiry }, idx) => {
+                  const pct = totalStockAll > 0 ? (total / totalStockAll) * 100 : 0;
+                  const status = stockStatusOf(total, p.low_stock_threshold);
+                  const isExpanded = expandedId === p.id;
+                  return (
+                    <Fragment key={p.id}>
+                      <tr className="adminTable-row" onClick={() => setExpandedId(isExpanded ? null : p.id)}>
+                        <td className="text-muted">{idx + 1}</td>
+                        <td>
+                          <div className="adminTable-name">{p.name}</div>
+                          {p.sku && <div className="adminTable-sku mono">{p.sku}</div>}
+                        </td>
+                        <td className="mono">
+                          {total.toLocaleString("vi-VN")} {p.unit}
+                        </td>
+                        <td>
+                          <div className="pctCell">
+                            <div className="pctCell-bar">
+                              <div className="pctCell-fill" style={{ width: `${Math.min(pct, 100)}%` }} />
+                            </div>
+                            <span className="mono pctCell-num">{pct.toFixed(1)}%</span>
                           </div>
-                        ))}
-                    </div>
-                  ) : (
-                    <div className="empty" style={{ padding: "8px 0" }}>Hết tồn kho</div>
-                  )}
-                </div>
-              );
-            })}
+                        </td>
+                        <td>
+                          <span className={`stockStatus ${status.cls}`}>{status.label}</span>
+                        </td>
+                        <td className="text-muted">{batches.length}</td>
+                        <td className="text-muted">{nearestExpiry || "—"}</td>
+                      </tr>
+                      {isExpanded && (
+                        <tr className="adminTable-expandRow">
+                          <td colSpan={7}>
+                            {batches.length > 0 ? (
+                              <div className="productCard-batches">
+                                {batches
+                                  .slice()
+                                  .sort((a, b) => (a.expiry_date || "9999").localeCompare(b.expiry_date || "9999"))
+                                  .map((b) => (
+                                    <div key={b.id} className="productCard-batchRow">
+                                      <span className="mono">{b.batch_code}</span>
+                                      <span>
+                                        {b.quantity} {p.unit}
+                                      </span>
+                                      <span className="text-muted">{b.expiry_date || "—"}</span>
+                                    </div>
+                                  ))}
+                              </div>
+                            ) : (
+                              <div className="empty" style={{ padding: "4px 0" }}>
+                                Hết tồn kho — không còn lô nào
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         )}
       </div>

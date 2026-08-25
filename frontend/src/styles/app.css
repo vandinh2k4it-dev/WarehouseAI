@@ -495,6 +495,128 @@ button.ghost {
 }
 
 /* ==========================================================
+   BIỂU ĐỒ CỘT — top sản phẩm theo tồn kho (trang Sản phẩm)
+   Tự vẽ bằng CSS thuần, không dùng thư viện ngoài — nhẹ, không thêm
+   phụ thuộc, đủ dùng cho 1 biểu đồ cột đơn giản.
+   ========================================================== */
+.barChart {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  height: 180px;
+  padding: 10px 4px 0;
+  overflow-x: auto;
+}
+.barChart-col {
+  flex: 1 0 56px;
+  min-width: 56px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  height: 100%;
+}
+.barChart-value {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+  white-space: nowrap;
+}
+.barChart-bar {
+  width: 60%;
+  min-height: 4px;
+  background: linear-gradient(180deg, #FFD180 0%, var(--accent) 100%);
+  border-radius: 6px 6px 2px 2px;
+  transition: height 0.3s ease;
+}
+.barChart-label {
+  margin-top: 8px;
+  font-size: 10.5px;
+  color: var(--text-muted);
+  text-align: center;
+  max-width: 68px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ==========================================================
+   BẢNG SẢN PHẨM DẠNG DASHBOARD QUẢN TRỊ — cột %, trạng thái, mở
+   rộng xem chi tiết lô khi bấm vào 1 dòng.
+   ========================================================== */
+.tableScroll {
+  overflow-x: auto;
+  margin: 0 -4px;
+}
+.adminTable {
+  min-width: 640px; /* ép cuộn ngang trên màn hẹp thay vì bóp méo cột */
+}
+.adminTable-row {
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+.adminTable-row:hover {
+  background: var(--surface-raised);
+}
+.adminTable-name {
+  font-weight: 600;
+  font-size: 13.5px;
+}
+.adminTable-sku {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+.adminTable-expandRow td {
+  background: rgba(255, 255, 255, 0.02);
+  padding: 10px 6px 14px;
+}
+
+.pctCell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 110px;
+}
+.pctCell-bar {
+  flex: 1;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--surface-raised);
+  overflow: hidden;
+}
+.pctCell-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 999px;
+}
+.pctCell-num {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.stockStatus {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.stockStatus.ok {
+  background: var(--success-dim);
+  color: var(--success);
+}
+.stockStatus.warn {
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+.stockStatus.danger {
+  background: var(--danger-dim);
+  color: var(--danger);
+}
+
+/* ==========================================================
    CHIP TOGGLE (Đang mở / Đã xử lý ở trang Cảnh báo)
    ========================================================== */
 .chips {
