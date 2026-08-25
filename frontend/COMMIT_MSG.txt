@@ -1,66 +1,60 @@
-feat(frontend): trang Sản phẩm thành dashboard quản trị chuyên nghiệp — bảng chi tiết + % + biểu đồ cột
+feat(frontend): thêm Toast + hộp xác nhận dùng chung, chuẩn hoá đổ bóng/bo góc toàn app
 
-Bối cảnh: thay thế lưới thẻ (card grid) cũ bằng bảng dữ liệu chi tiết
-kiểu dashboard quản trị thật (giống phần mềm quản lý kho chuyên
-nghiệp) — đầy đủ cột số liệu, cột phần trăm đóng góp tồn kho, kèm
-biểu đồ cột trực quan top sản phẩm.
+Bối cảnh: người dùng chia sẻ 1 bộ nguyên tắc thiết kế chi tiết từ 1 dự
+án KHÁC (dùng Tailwind CSS, BottomNav, hệ màu slate/indigo/emerald/
+rose/amber, sáng+tối...) và muốn áp dụng cho app này. Quyết định có
+chủ đích SAU KHI TRAO ĐỔI RÕ với người dùng: KHÔNG chuyển sang
+Tailwind (rủi ro rất cao — cần viết lại toàn bộ 10+ trang/component,
+đổi cấu trúc điều hướng, thêm build tooling mới, mà sandbox lúc này
+không có đủ TOÀN BỘ file gốc để làm an toàn/kiểm chứng từng trang) —
+thay vào đó ÁP DỤNG ĐÚNG TINH THẦN cốt lõi ("nhất quán tuyệt đối" theo
+đúng lời người dùng tự kết luận) trong CSS thuần đã có sẵn, không đổi
+công nghệ, giảm rủi ro vỡ các trang chưa có file để kiểm tra.
+
+File mới:
+- src/components/Toast.jsx
+  Hệ thống thông báo dùng chung qua React Context — bọc <ToastProvider>
+  1 lần ở App.jsx, mọi trang con gọi useToast() để hiện thông báo
+  thành công/lỗi/info, tự biến mất sau 3 giây, bấm vào tắt sớm được.
+  Trước đây mỗi trang tự hiện kết quả theo cách khác nhau (số trong
+  <div>, không nhất quán) — giờ có 1 điểm chuẩn duy nhất.
+
+- src/components/ConfirmDialog.jsx
+  Hộp xác nhận dùng chung trước các hành động quan trọng/khó hoàn tác
+  — che mờ nền, đóng được bằng cách bấm ra ngoài HOẶC bấm nút Huỷ,
+  có biến thể "danger" (nút đỏ) cho hành động nguy hiểm.
 
 File sửa:
-- src/pages/Products.jsx (viết lại phần hiển thị, giữ nguyên toàn bộ
-  logic lấy dữ liệu/tính toán/sắp xếp/tìm kiếm đã có từ trước)
-  + THÊM: tính totalStockAll (tổng tồn kho toàn bộ sản phẩm cộng lại)
-    — dùng làm mẫu số tính % đóng góp của từng sản phẩm.
-  + THÊM: tính topForChart (8 sản phẩm tồn kho cao nhất) — dữ liệu
-    cho biểu đồ cột.
-  + THÊM: 2 lựa chọn sắp xếp mới "Tồn kho cao nhất/thấp nhất trước".
-  + THAY: bỏ hẳn lưới thẻ (.productGrid/.productCard), thay bằng
-    <table> với 7 cột: #, Sản phẩm (kèm SKU), Tồn kho, % Tổng kho
-    (thanh tiến trình mini + số %), Trạng thái (badge màu theo 3 mức:
-    Đủ hàng/Sắp hết/Hết hàng), Số lô, HSD gần nhất.
-  + THÊM: bấm vào 1 dòng để MỞ RỘNG xem chi tiết từng lô hàng của
-    đúng sản phẩm đó (thay vì luôn hiện sẵn như bản thẻ cũ).
-
 - src/styles/app.css
-  + .barChart, .barChart-col, .barChart-bar, .barChart-value,
-    .barChart-label — biểu đồ cột TỰ VẼ BẰNG CSS THUẦN (không dùng
-    thư viện ngoài) — có chủ đích: package.json chưa có thư viện biểu
-    đồ nào, thêm mới tăng rủi ro (không cài/test được npm install
-    thật trong sandbox lần này do bị reset) và tăng dung lượng bundle
-    không cần thiết cho 1 biểu đồ cột đơn giản.
-  + .tableScroll, .adminTable, .adminTable-row, .adminTable-name,
-    .adminTable-sku, .adminTable-expandRow — style bảng dữ liệu.
-  + .pctCell, .pctCell-bar, .pctCell-fill, .pctCell-num — thanh tiến
-    trình mini trong ô % Tổng kho.
-  + .stockStatus + .ok/.warn/.danger — badge trạng thái tồn kho (tên
-    class MỚI, tách riêng khỏi .badge dùng cho trạng thái đếm hàng và
-    .alertType-* dùng cho cảnh báo — tránh xung đột giữa 3 hệ thống
-    badge khác domain trong cùng app).
+  + Thêm biến --shadow-sm/md/lg, --radius-sm/lg (khai báo bổ sung
+    vào :root, KHÔNG sửa index.css có sẵn — CSS tự gộp biến từ nhiều
+    file cùng nhắm :root, không xung đột với biến màu đã có).
+  + Áp dụng lại .card, .statCard dùng đúng var(--shadow-md) thay vì
+    tự viết rgba() riêng lẻ — 1 công thức đổ bóng chuẩn dùng lại,
+    đúng tinh thần "lặp lại có kỷ luật" từ bộ nguyên tắc được chia sẻ.
+  + CSS đầy đủ cho .toastStack/.toast (+3 biến thể success/error/info)
+    và .confirmOverlay/.confirmBox/.dangerBtn.
 
-ĐÃ TỰ KIỂM TRA KỸ (dựng hẳn môi trường test độc lập vì sandbox bị
-reset, thiếu App.jsx/main.jsx/index.html/vite.config.js để chạy được
-cả app thật qua Vite):
-1. esbuild xác nhận cú pháp JSX + CSS hợp lệ.
-2. Phát hiện CDN unpkg.com bị chặn trong sandbox (403) khi thử dựng
-   harness test bằng React qua CDN — chuyển sang cài react/react-dom/
-   @babel/standalone qua npm (registry chính thức, được phép) rồi
-   dùng bản cài cục bộ — giải quyết đúng vấn đề thay vì bỏ cuộc.
-3. Test bằng Playwright với dữ liệu giả lập (7 sản phẩm, đủ 3 trạng
-   thái tồn kho) trên React THẬT (không phải HTML/CSS tĩnh suông):
-   - Biểu đồ cột vẽ đúng tỉ lệ, nhãn dài tự cắt ellipsis không vỡ layout.
-   - Bảng cuộn ngang đúng trên màn hẹp (390px, bảng rộng 640px) —
-     xác nhận đủ cả 7 cột khi cuộn, % TÍNH ĐÚNG (42.2+25.5+25.5+5.8+
-     0.5+0.4+0.0 ≈ 100%, khớp toán học).
-   - Badge trạng thái đúng màu cho cả 3 mức, đúng logic ngưỡng.
-   - Bấm 1 dòng MỞ RỘNG đúng, hiện đúng chi tiết lô của ĐÚNG sản phẩm.
-   - Test desktop (950px) — đủ cột, giao diện cân đối.
+ĐÃ TỰ KIỂM TRA KỸ (dựng môi trường test React thật lần 2, do sandbox
+vẫn thiếu App.jsx để wiring ToastProvider thật vào cây component):
+- esbuild xác nhận cú pháp JSX + CSS hợp lệ cho cả 3 file.
+- Test Playwright với DEMO APP THẬT (ToastProvider bọc component con
+  gọi useToast() qua Context — đúng cơ chế thật, không phải giả lập):
+  + Toast hiện đúng, đúng màu/icon theo loại (thành công/lỗi/info).
+  + NHIỀU toast xếp chồng đúng thứ tự thời gian (mới nhất dưới cùng).
+  + Toast TỰ BIẾN MẤT đúng sau 3 giây (đếm số phần tử .toast còn lại
+    sau 3.2s, xác nhận bằng 0 — không phải đoán).
+  + Hộp xác nhận: bấm nút "Xác nhận" đóng đúng dialog (xác nhận bằng
+    cách đếm .confirmOverlay còn lại = 0).
+  + Hộp xác nhận: bấm RA NGOÀI overlay cũng đóng đúng (không bắt buộc
+    phải bấm đúng nút Huỷ) — xác nhận UX thân thiện hoạt động đúng.
 
-LƯU Ý: môi trường test tự dựng chỉ trích đúng phần CSS mới (không có
-media query responsive desktop mở rộng .page-main từ app.css thật) —
-bản desktop test hẹp hơn thực tế sẽ chạy trong app thật (app thật đã
-có sẵn media query mở rộng .page-main 880-1040px trên desktop, KHÔNG
-đổi gì trong lần sửa này) — không phải lỗi, chỉ hạn chế môi trường
-test rút gọn.
-
-Việc cần làm: chạy `npm run build` thật trên máy bạn (sandbox thiếu
-Vite đầy đủ nên chưa chạy được build thật lần này) để xác nhận build
-production thành công trước khi deploy Railway/Vercel.
+Việc cần làm để thực sự dùng được (chưa làm trong lần này vì thiếu
+file App.jsx):
+1. Trong App.jsx, import và bọc ToastProvider quanh toàn bộ
+   HashRouter (hoặc tương đương).
+2. Thay dần các chỗ hiện kết quả rời rạc hiện tại (vd trong
+   ImportFlow.jsx, CountingScreen.jsx, Alerts.jsx...) bằng
+   useToast() — CHƯA làm trong lần này vì không có các file đó, chỉ
+   mới tạo xong 2 component sẵn sàng dùng, chưa nối vào các trang cụ
+   thể. Gửi các file đó ở lượt sau nếu muốn mình nối tiếp.
