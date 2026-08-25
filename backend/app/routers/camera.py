@@ -343,12 +343,21 @@ async def count_video_segment(
     session_id: int,
     file: UploadFile = File(...),
     threshold_pct: float = Form(DEFAULT_THRESHOLD_PCT),
+    conf: float = Form(0.5),
     db: Session = Depends(get_db),
 ):
     """Nhận video quay TRỰC TIẾP từ điện thoại (qua trang mobile.html), tự
     chạy YOLOv8+ByteTrack đếm số thùng, rồi gọi thẳng luôn bước đối chiếu —
     chỉ cần 1 lần upload duy nhất, không cần vòng round-trip riêng như widget
     mô phỏng "+1" trên web desktop.
+
+    Tham số conf (mặc định 0.5) cho phép CHỈNH NGƯỠNG confidence ngay từ
+    frontend — hữu ích khi model nhận nhầm vật thể lớn tĩnh (tường, tủ máy,
+    hàng rào sắt) thành thùng carton với độ tin cậy THẤP HƠN rõ rệt so với
+    thùng thật (đã quan sát thực tế: khung sai ~0.5-0.6, khung đúng
+    ~0.85-0.90) — tăng ngưỡng lên giúp lọc bớt các trường hợp nhận nhầm có
+    độ tin cậy thấp, dù KHÔNG loại được hết mọi trường hợp (có case nhận
+    nhầm từng lên tới 0.83, ngang khung đúng — xem PROJECT_CONTEXT.md).
 
     Cần biến môi trường CARTON_MODEL_PATH trỏ tới model .pt đã train (xem
     camera/count_pipeline.py). Nếu chưa có model thật, mặc định dùng tạm
@@ -391,6 +400,7 @@ async def count_video_segment(
         result = count_boxes_in_video(
             model_path=model_path,
             video_path=str(video_path),
+            conf=conf,
             target_class_name=CARTON_CLASS_NAME,
             save_annotated=True,
             output_dir=str(annotated_raw_dir),
