@@ -934,6 +934,64 @@ button.ghost {
    RỘNG bố cục khi có đủ chỗ, không đổi logic, chỉ đổi layout.
    ========================================================== */
 @media (min-width: 768px) {
+  /* ==========================================================
+     SIDEBAR TRÁI CỐ ĐỊNH (thay cho tab ngang trên cùng) — chỉ áp
+     dụng từ tablet/desktop trở lên. Điện thoại (dưới 768px) giữ
+     NGUYÊN bố cục tab ngang cũ, không đổi gì — tránh phá vỡ trải
+     nghiệm mobile đã test kỹ trước đó.
+     ========================================================== */
+  .topnav {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 240px;
+    border-bottom: none;
+    border-right: 1px solid var(--border);
+    background: linear-gradient(180deg, #161B22 0%, var(--bg) 100%);
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+  }
+
+  .topnav-top {
+    padding: 22px 20px 18px;
+  }
+
+  .topnav-tabs {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 3px;
+    padding: 8px 12px 16px;
+    overflow-x: visible;
+  }
+
+  .topnav-tab {
+    border-radius: 10px;
+    padding: 11px 14px;
+    border-bottom: none;
+    border-left: 3px solid transparent;
+    justify-content: flex-start;
+  }
+  .topnav-tab.active {
+    border-bottom-color: transparent;
+    border-left-color: var(--accent);
+  }
+
+  .topnav-tab-icon {
+    font-size: 16px;
+    flex: none;
+  }
+
+  /* Toàn bộ nội dung (Outlet) dịch sang phải đúng bằng chiều rộng
+     sidebar, để không bị che khuất phía dưới sidebar cố định. Bên
+     trong đó, .page-main vẫn tự căn giữa (margin:0 auto) như cũ —
+     nhưng giờ căn giữa ĐÚNG trong phần không gian còn lại sau
+     sidebar, không lệch hẳn về 1 bên như trước. */
+  .page {
+    padding-left: 240px;
+  }
+
   .page-main {
     max-width: 880px;
     padding: 32px 24px;

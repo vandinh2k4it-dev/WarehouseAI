@@ -1,60 +1,72 @@
-feat(frontend): thêm Toast + hộp xác nhận dùng chung, chuẩn hoá đổ bóng/bo góc toàn app
+feat(frontend): chuyển sang bố cục sidebar trái trên desktop — theo tham khảo giao diện ảnh mẫu
 
-Bối cảnh: người dùng chia sẻ 1 bộ nguyên tắc thiết kế chi tiết từ 1 dự
-án KHÁC (dùng Tailwind CSS, BottomNav, hệ màu slate/indigo/emerald/
-rose/amber, sáng+tối...) và muốn áp dụng cho app này. Quyết định có
-chủ đích SAU KHI TRAO ĐỔI RÕ với người dùng: KHÔNG chuyển sang
-Tailwind (rủi ro rất cao — cần viết lại toàn bộ 10+ trang/component,
-đổi cấu trúc điều hướng, thêm build tooling mới, mà sandbox lúc này
-không có đủ TOÀN BỘ file gốc để làm an toàn/kiểm chứng từng trang) —
-thay vào đó ÁP DỤNG ĐÚNG TINH THẦN cốt lõi ("nhất quán tuyệt đối" theo
-đúng lời người dùng tự kết luận) trong CSS thuần đã có sẵn, không đổi
-công nghệ, giảm rủi ro vỡ các trang chưa có file để kiểm tra.
+Bối cảnh: bố cục tab ngang trên cùng ở màn hình rộng khiến nội dung
+dồn hết về bên trái, thừa nhiều khoảng trống bên phải, nhìn mất cân
+đối (đúng phản ánh từ ảnh chụp thật). Người dùng gửi 1 ảnh tham khảo
+(app quản lý HTCamera Schedule) có bố cục sidebar trái cố định + nội
+dung bên phải — cân đối hơn hẳn. Áp dụng đúng bố cục đó, GIỮ NGUYÊN
+màu cam thương hiệu (không đổi sang xanh dương như ảnh tham khảo).
 
-File mới:
-- src/components/Toast.jsx
-  Hệ thống thông báo dùng chung qua React Context — bọc <ToastProvider>
-  1 lần ở App.jsx, mọi trang con gọi useToast() để hiện thông báo
-  thành công/lỗi/info, tự biến mất sau 3 giây, bấm vào tắt sớm được.
-  Trước đây mỗi trang tự hiện kết quả theo cách khác nhau (số trong
-  <div>, không nhất quán) — giờ có 1 điểm chuẩn duy nhất.
-
-- src/components/ConfirmDialog.jsx
-  Hộp xác nhận dùng chung trước các hành động quan trọng/khó hoàn tác
-  — che mờ nền, đóng được bằng cách bấm ra ngoài HOẶC bấm nút Huỷ,
-  có biến thể "danger" (nút đỏ) cho hành động nguy hiểm.
+Quyết định kỹ thuật quan trọng: làm bằng CSS THUẦN, KHÔNG đổi cấu
+trúc component/JS của App.jsx (chỉ đổi TopNav.jsx thêm icon) — sidebar
+là chính TopNav cũ, chỉ đổi position từ sticky-top sang fixed-left ở
+breakpoint desktop (≥768px, khớp breakpoint desktop đã dùng nhất quán
+toàn app từ trước). Mobile (dưới 768px) GIỮ NGUYÊN 100% bố cục tab
+ngang cũ, không đổi gì — không có rủi ro phá vỡ trải nghiệm mobile đã
+test kỹ trước đó.
 
 File sửa:
-- src/styles/app.css
-  + Thêm biến --shadow-sm/md/lg, --radius-sm/lg (khai báo bổ sung
-    vào :root, KHÔNG sửa index.css có sẵn — CSS tự gộp biến từ nhiều
-    file cùng nhắm :root, không xung đột với biến màu đã có).
-  + Áp dụng lại .card, .statCard dùng đúng var(--shadow-md) thay vì
-    tự viết rgba() riêng lẻ — 1 công thức đổ bóng chuẩn dùng lại,
-    đúng tinh thần "lặp lại có kỷ luật" từ bộ nguyên tắc được chia sẻ.
-  + CSS đầy đủ cho .toastStack/.toast (+3 biến thể success/error/info)
-    và .confirmOverlay/.confirmBox/.dangerBtn.
+- src/components/TopNav.jsx
+  Thêm field "icon" (emoji) vào từng mục trong TABS, render icon
+  trước label — khớp đúng phong cách sidebar có icon của ảnh tham
+  khảo. Không đổi logic điều hướng/đếm cảnh báo nào khác.
 
-ĐÃ TỰ KIỂM TRA KỸ (dựng môi trường test React thật lần 2, do sandbox
-vẫn thiếu App.jsx để wiring ToastProvider thật vào cây component):
-- esbuild xác nhận cú pháp JSX + CSS hợp lệ cho cả 3 file.
-- Test Playwright với DEMO APP THẬT (ToastProvider bọc component con
-  gọi useToast() qua Context — đúng cơ chế thật, không phải giả lập):
-  + Toast hiện đúng, đúng màu/icon theo loại (thành công/lỗi/info).
-  + NHIỀU toast xếp chồng đúng thứ tự thời gian (mới nhất dưới cùng).
-  + Toast TỰ BIẾN MẤT đúng sau 3 giây (đếm số phần tử .toast còn lại
-    sau 3.2s, xác nhận bằng 0 — không phải đoán).
-  + Hộp xác nhận: bấm nút "Xác nhận" đóng đúng dialog (xác nhận bằng
-    cách đếm .confirmOverlay còn lại = 0).
-  + Hộp xác nhận: bấm RA NGOÀI overlay cũng đóng đúng (không bắt buộc
-    phải bấm đúng nút Huỷ) — xác nhận UX thân thiện hoạt động đúng.
+- src/styles/app.css (thêm vào ĐẦU khối @media (min-width: 768px) đã
+  có sẵn — không tạo breakpoint mới, không đụng các rule khác trong
+  cùng khối)
+  + .topnav: position fixed, left/top/bottom:0, width:240px, border
+    chuyển từ dưới sang phải, flex-direction column, overflow-y auto
+    (phòng khi danh sách mục điều hướng dài hơn chiều cao màn hình).
+  + .topnav-tabs: đổi flex-direction sang column, danh sách dọc thay
+    vì hàng ngang.
+  + .topnav-tab: bo góc đều 4 cạnh (thay vì chỉ bo trên), border trái
+    3px làm dấu hiệu active (thay cho border dưới) — đúng kiểu sidebar
+    item chuẩn.
+  + .topnav-tab-icon: cỡ chữ icon phù hợp.
+  + .page: thêm padding-left:240px — dịch TOÀN BỘ nội dung (Outlet)
+    sang phải đúng bằng chiều rộng sidebar, tránh bị che khuất phía
+    dưới sidebar fixed. .page-main bên trong đó vẫn tự căn giữa
+    (margin:0 auto có sẵn từ trước) — giờ căn giữa ĐÚNG trong phần
+    không gian còn lại sau sidebar, giải quyết đúng vấn đề "dồn về 1
+    bên" ban đầu.
 
-Việc cần làm để thực sự dùng được (chưa làm trong lần này vì thiếu
-file App.jsx):
-1. Trong App.jsx, import và bọc ToastProvider quanh toàn bộ
-   HashRouter (hoặc tương đương).
-2. Thay dần các chỗ hiện kết quả rời rạc hiện tại (vd trong
-   ImportFlow.jsx, CountingScreen.jsx, Alerts.jsx...) bằng
-   useToast() — CHƯA làm trong lần này vì không có các file đó, chỉ
-   mới tạo xong 2 component sẵn sàng dùng, chưa nối vào các trang cụ
-   thể. Gửi các file đó ở lượt sau nếu muốn mình nối tiếp.
+ĐÃ TỰ KIỂM TRA KỸ (dựng môi trường test React + React Router THẬT lần
+3, do sandbox vẫn thiếu index.css/main.jsx/các trang thật khác —
+riêng lần này cần cài thêm react-router-dom UMD + 2 gói phụ thuộc của
+nó (react-router, @remix-run/router) vì đây là thay đổi ĐIỀU HƯỚNG
+thật, không thể test bằng React suông như 2 lần trước):
+1. esbuild xác nhận cú pháp TopNav.jsx + app.css hợp lệ.
+2. Test Playwright TRÊN CẢ 2 kích thước màn hình với ĐIỀU HƯỚNG THẬT
+   (react-router-dom thật, không phải giả lập chuyển trang):
+   - Desktop (1280px): sidebar hiện đúng cố định bên trái, đo chính
+     xác bounding box xác nhận nội dung bắt đầu ngay sau khi hết
+     sidebar (không đè lên nhau, không có khoảng hở/chồng lấn ngoài
+     1px do border — đã kiểm tra và xác nhận không phải lỗi thật).
+   - Bấm CHUYỂN TRANG thật (Tổng quan -> Sản phẩm): tab mới sáng đúng
+     màu cam + viền trái, nội dung đổi đúng — xác nhận cơ chế active
+     state dựa theo location.pathname vẫn hoạt động đúng sau khi đổi
+     CSS, không bị ảnh hưởng bởi thay đổi layout.
+   - Mobile (390px): xác nhận GIỮ NGUYÊN 100% bố cục tab ngang cũ,
+     chỉ thêm icon — không có thay đổi nào khác so với trước.
+3. Phát hiện và tự sửa 1 lỗi TRONG CHÍNH MÔI TRƯỜNG TEST (không phải
+   lỗi code thật): quên set background cho <body> trong file test
+   rút gọn khiến ảnh chụp đầu tiên ra nền trắng sai — đã nhận ra ngay
+   (do index.css thật của app đã có sẵn dòng này, chỉ thiếu trong bản
+   test rút gọn của mình), sửa lại và chụp lại xác nhận đúng.
+
+Việc cần làm: đã có sẵn UnmappedLines.jsx (trang "Sản phẩm chưa gán")
+được nhắc tới ở các đợt sửa trước, nhưng file App.jsx bạn gửi lần này
+KHÔNG có route "/products/unmapped" — có thể route này đã bị mất ở 1
+lần merge nào đó. Không tự ý thêm lại trong commit này (ngoài phạm vi
+yêu cầu lần này), chỉ ghi chú để bạn biết và tự quyết định có cần
+thêm lại không.

@@ -3,10 +3,10 @@ import { useEffect, useState } from "react";
 import { api } from "../api";
 
 const TABS = [
-  { to: "/", label: "Tổng quan", match: (p) => p === "/" },
-  { to: "/products", label: "Sản phẩm", match: (p) => p.startsWith("/products") },
-  { to: "/inout", label: "Nhập / Xuất kho", match: (p) => ["/inout", "/import", "/export"].some((x) => p.startsWith(x)) },
-  { to: "/alerts", label: "Cảnh báo", match: (p) => p.startsWith("/alerts") },
+  { to: "/", label: "Tổng quan", icon: "📊", match: (p) => p === "/" },
+  { to: "/products", label: "Sản phẩm", icon: "📦", match: (p) => p.startsWith("/products") },
+  { to: "/inout", label: "Nhập / Xuất kho", icon: "🔄", match: (p) => ["/inout", "/import", "/export"].some((x) => p.startsWith(x)) },
+  { to: "/alerts", label: "Cảnh báo", icon: "⚠️", match: (p) => p.startsWith("/alerts") },
 ];
 
 export default function TopNav() {
@@ -56,7 +56,8 @@ export default function TopNav() {
       <nav className="topnav-tabs">
         {TABS.map((tab) => (
           <NavLink key={tab.to} to={tab.to} className={`topnav-tab${tab.match(location.pathname) ? " active" : ""}`}>
-            {tab.label}
+            <span className="topnav-tab-icon">{tab.icon}</span>
+            <span className="topnav-tab-label">{tab.label}</span>
             {tab.to === "/alerts" && openAlertCount != null && openAlertCount > 0 && (
               <span className="topnav-badge">{openAlertCount}</span>
             )}
