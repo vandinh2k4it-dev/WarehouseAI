@@ -46,3 +46,5 @@ requests==2.32.*
 # Push notification (Web Push) — đẩy cảnh báo ra điện thoại (app/push_service.py)
 pywebpush==2.0.*
 py-vapid==1.9.*
+
+google-genai

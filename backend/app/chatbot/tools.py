@@ -1,17 +1,27 @@
-"""Định nghĩa các "công cụ" (tools) mà Claude được phép gọi để trả lời câu
-hỏi của nhân viên kho — mục 6.6 đề cương (chatbot tra cứu tồn kho/phiếu
-nhập/cảnh báo). Mỗi tool là 1 hàm Python thuần, chỉ ĐỌC dữ liệu (không có
-tool nào sửa/xoá DB) — Claude không có quyền tự ý thay đổi tồn kho, chỉ trả
-lời dựa trên dữ liệu thật lấy từ Postgres.
+"""Định nghĩa các "công cụ" (tools) mà AI được phép gọi để trả lời câu hỏi
+của nhân viên kho — mục 6.6 đề cương (chatbot tra cứu tồn kho/phiếu nhập/
+cảnh báo). Mỗi tool là 1 hàm Python thuần, chỉ ĐỌC dữ liệu (không có tool
+nào sửa/xoá DB) — AI không có quyền tự ý thay đổi tồn kho, chỉ trả lời dựa
+trên dữ liệu thật lấy từ Postgres.
 
-Cách hoạt động (tool-use / function-calling của Claude API):
+ĐÃ CHUYỂN từ Claude (Anthropic) sang Gemini (Google) — lý do: Gemini có
+free tier thật (không cần nạp tiền) cho khối lượng dùng ở quy mô demo
+khóa luận, xem app/chatbot/service.py để biết chi tiết. Khoá "input_schema"
+(định dạng của Claude) đã đổi thành "parameters_json_schema" (Gemini SDK
+mới google-genai chấp nhận TRỰC TIẾP JSON Schema chuẩn qua field này —
+đã xác nhận thật bằng cách cài thử SDK, không phải đoán — nên KHÔNG cần
+viết lại cấu trúc properties/required bên trong, chỉ đổi đúng 1 tên khoá).
+Toàn bộ hàm xử lý DB bên dưới KHÔNG đổi gì — các hàm này chỉ đọc Postgres,
+không phụ thuộc nhà cung cấp AI nào cả.
+
+Cách hoạt động (tool-use / function-calling):
 1. Gửi câu hỏi của người dùng + danh sách TOOLS (khai báo ở cuối file) cho
-   Claude.
-2. Nếu Claude thấy cần dữ liệu thật để trả lời, nó trả về 1 tool_use block
+   model AI.
+2. Nếu model thấy cần dữ liệu thật để trả lời, nó trả về 1 function_call
    (tên hàm + tham số) thay vì trả lời ngay.
 3. Backend chạy đúng hàm Python tương ứng trong TOOL_FUNCTIONS, lấy kết quả
-   thật từ DB, gửi lại cho Claude dưới dạng tool_result.
-4. Claude đọc kết quả đó và viết câu trả lời cuối bằng ngôn ngữ tự nhiên.
+   thật từ DB, gửi lại cho model dưới dạng function_response.
+4. Model đọc kết quả đó và viết câu trả lời cuối bằng ngôn ngữ tự nhiên.
 Toàn bộ vòng lặp này nằm trong app/chatbot/service.py.
 """
 from datetime import date, timedelta
@@ -97,12 +107,23 @@ def get_low_stock_products(db: Session) -> list[dict]:
 
 def get_expiring_soon(db: Session, days: int = 30) -> list[dict]:
     """Các lô hàng sắp hết hạn trong N ngày tới (mặc định 30 ngày) — phục vụ
-    FEFO, cảnh báo hàng cận date."""
-    cutoff = date.today() + timedelta(days=days)
+    FEFO, cảnh báo hàng cận date.
+
+    CHỈ tính lô CHƯA hết hạn (expiry_date >= hôm nay) — "sắp hết hạn" và
+    "đã hết hạn" là 2 khái niệm khác nhau, không được gộp chung. Thiếu bộ
+    lọc này từng gây lỗi thật: chatbot liệt kê cả lô đã hết hạn 5 ngày
+    trước vào danh sách "sắp hết hạn trong 30 ngày tới" với "days_left: -5"
+    vô lý. Endpoint REST /inventory/expiring-soon (app/routers/inventory.py)
+    đã có đúng bộ lọc này từ trước — bản ở đây (dùng riêng cho chatbot) bị
+    thiếu do 2 nơi cùng viết lại logic tương tự một cách độc lập, chỉ 1 chỗ
+    được sửa đúng."""
+    today = date.today()
+    cutoff = today + timedelta(days=days)
     rows = (
         db.query(models.Inventory, models.Product)
         .join(models.Product, models.Inventory.product_id == models.Product.id)
         .filter(models.Inventory.expiry_date.isnot(None))
+        .filter(models.Inventory.expiry_date >= today)
         .filter(models.Inventory.expiry_date <= cutoff)
         .filter(models.Inventory.quantity > 0)
         .order_by(models.Inventory.expiry_date.asc())
@@ -204,7 +225,7 @@ TOOLS = [
     {
         "name": "search_products",
         "description": "Tìm sản phẩm trong danh mục theo tên gần đúng (không cần gõ chính xác dấu).",
-        "input_schema": {
+        "parameters_json_schema": {
             "type": "object",
             "properties": {
                 "keyword": {"type": "string", "description": "Từ khoá tên sản phẩm cần tìm"},
@@ -215,7 +236,7 @@ TOOLS = [
     {
         "name": "get_inventory_by_product",
         "description": "Xem tồn kho chi tiết theo từng lô (mã lô, số lượng, HSD) của 1 sản phẩm.",
-        "input_schema": {
+        "parameters_json_schema": {
             "type": "object",
             "properties": {
                 "product_name": {"type": "string", "description": "Tên sản phẩm cần tra (gần đúng)"},
@@ -226,7 +247,7 @@ TOOLS = [
     {
         "name": "get_total_stock",
         "description": "Tổng số lượng tồn kho (cộng dồn mọi lô) của 1 sản phẩm — dùng khi người dùng hỏi 'còn bao nhiêu X'.",
-        "input_schema": {
+        "parameters_json_schema": {
             "type": "object",
             "properties": {
                 "product_name": {"type": "string", "description": "Tên sản phẩm cần tra"},
@@ -237,12 +258,12 @@ TOOLS = [
     {
         "name": "get_low_stock_products",
         "description": "Danh sách sản phẩm đang tồn kho thấp hơn ngưỡng cảnh báo, cần nhập thêm.",
-        "input_schema": {"type": "object", "properties": {}},
+        "parameters_json_schema": {"type": "object", "properties": {}},
     },
     {
         "name": "get_expiring_soon",
         "description": "Danh sách lô hàng sắp hết hạn trong N ngày tới (mặc định 30 ngày).",
-        "input_schema": {
+        "parameters_json_schema": {
             "type": "object",
             "properties": {
                 "days": {"type": "integer", "description": "Số ngày tới cần kiểm tra, mặc định 30"},
@@ -252,7 +273,7 @@ TOOLS = [
     {
         "name": "get_open_alerts",
         "description": "Danh sách cảnh báo đang mở, có thể lọc theo loại: low_stock, expiring_soon, discrepancy.",
-        "input_schema": {
+        "parameters_json_schema": {
             "type": "object",
             "properties": {
                 "alert_type": {"type": "string", "description": "Loại cảnh báo cần lọc, để trống nếu muốn xem tất cả"},
@@ -262,7 +283,7 @@ TOOLS = [
     {
         "name": "get_receipt_status",
         "description": "Xem trạng thái và chi tiết dòng hàng của 1 phiếu nhập, theo ID hoặc mã phiếu.",
-        "input_schema": {
+        "parameters_json_schema": {
             "type": "object",
             "properties": {
                 "receipt_id": {"type": "integer", "description": "ID phiếu nhập"},
@@ -273,7 +294,7 @@ TOOLS = [
     {
         "name": "get_recent_discrepancies",
         "description": "Các lần đối chiếu camera-phiếu nhập bị lệch số lượng gần đây, chưa khớp.",
-        "input_schema": {
+        "parameters_json_schema": {
             "type": "object",
             "properties": {
                 "limit": {"type": "integer", "description": "Số kết quả tối đa, mặc định 10"},

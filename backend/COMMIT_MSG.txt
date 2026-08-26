@@ -1,52 +1,78 @@
-fix(backend): chatbot tự nói rõ lý do rơi vào MOCK — không cần mò log Railway nữa
+feat(backend): chuyển chatbot từ Claude (Anthropic) sang Gemini (Google) — dùng free tier, không cần nạp tiền
 
-Bối cảnh: người dùng đã làm theo hướng dẫn thêm ANTHROPIC_API_KEY
-nhưng chatbot vẫn trả về "[MOCK] Chế độ mô phỏng..." KHÔNG KÈM BẤT KỲ
-lý do nào — không biết là chưa deploy xong, sai tên biến, hay lỗi
-khác. Câu hỏi đặt ra: "có cách nào test biết đã connect api key
-claude không" — đúng vấn đề cần giải quyết.
+Bối cảnh: chatbot đã hoạt động đúng với Claude nhưng cần nạp credit
+($5 tối thiểu) mới dùng được AI thật — người dùng chọn hướng đổi hẳn
+sang Gemini (có free tier THẬT, không cần thẻ) dù biết sẽ tốn công
+viết lại code, thay vì nạp tiền (đã được tư vấn rõ đánh đổi trước khi
+quyết định).
 
-Phát hiện qua đọc code: ask_chatbot() có 3 nhánh dẫn tới MOCK, nhưng
-CHỈ 1 NHÁNH (lỗi gọi API thật) có gắn tiền tố giải thích — 2 nhánh còn
-lại (force_mock, thiếu key) trả về MOCK TRƠN, không có bất kỳ dấu hiệu
-nào phân biệt được với nhau hay với nhánh có lỗi.
+============================================================
+Phát hiện quan trọng giúp việc chuyển đổi NHẸ NHÀNG hơn dự kiến
+============================================================
+SDK mới của Google (google-genai, KHÁC với SDK cũ đã ngừng phát triển
+"google-generativeai") có field "parameters_json_schema" nhận TRỰC
+TIẾP JSON Schema chuẩn — ĐÃ XÁC NHẬN THẬT bằng cách cài thử SDK và
+dựng thử FunctionDeclaration, không phải đọc tài liệu suông. Nghĩa là
+toàn bộ cấu trúc chi tiết bên trong mỗi tool (properties, required...)
+ở app/chatbot/tools.py GIỮ NGUYÊN 100%, chỉ cần đổi tên đúng 1 khoá
+"input_schema" -> "parameters_json_schema" — không phải viết lại từng
+tool một cách thủ công.
 
-Cách sửa (app/chatbot/service.py, hàm ask_chatbot):
-Mỗi trong 3 nhánh giờ có ĐÚNG 1 tiền tố riêng biệt, dễ đọc ngay trong
-khung chat:
-1. "[MOCK — biến CHATBOT_MOCK đang BẬT...]" — nếu quên tắt biến này
-   sau lúc test (thường bị bỏ quên nhất).
-2. "[MOCK — CHƯA CÓ biến ANTHROPIC_API_KEY trên server...]" — kèm 3
-   gợi ý kiểm tra cụ thể: đúng tên biến/đã lưu/đã build lại chưa.
-3. "[MOCK — gọi Claude API thật thất bại: {LoạiLỗi} (HTTP {mã}):
-   {chi tiết}]" — cho MỌI lỗi khi gọi API thật (sai định dạng key ->
-   AuthenticationError 401, hết credit -> 400, rate limit -> 429,
-   lỗi mạng -> APIConnectionError).
+============================================================
+File sửa
+============================================================
+- app/chatbot/tools.py
+  + Đổi "input_schema" -> "parameters_json_schema" ở cả 8 khai báo tool.
+  + Cập nhật docstring đầu file, không nhắc riêng Claude/Anthropic nữa.
+  + KHÔNG đổi bất kỳ hàm xử lý DB nào (search_products, get_total_stock...)
+    — các hàm này chỉ đọc Postgres, không phụ thuộc nhà cung cấp AI.
 
-LỖI THẬT THỨ 2 TỰ PHÁT HIỆN (đọc kỹ cấu trúc exception thật của thư
-viện anthropic, không đoán mò): except clause cũ chỉ bắt
-anthropic.APIStatusError — bỏ sót hoàn toàn anthropic.
-APIConnectionError (lỗi mạng/DNS/timeout), dù cả 2 đều là con của
-anthropic.APIError. Hậu quả: nếu server gọi Claude API mà gặp trục
-trặc mạng (khá dễ xảy ra), request sẽ CRASH 500 THẲNG cho người dùng
-thay vì rớt êm về mock như mọi lỗi khác. Đã sửa: đổi except clause
-sang bắt anthropic.APIError (lớp cha chung), bao trọn cả 2 nhóm lỗi.
+- app/chatbot/service.py (viết lại hoàn toàn logic gọi AI)
+  + Đổi từ anthropic.Anthropic sang google.genai.Client.
+  + Đổi biến môi trường ANTHROPIC_API_KEY -> GEMINI_API_KEY.
+  + MODEL_NAME = "gemini-2.5-flash" — cân bằng miễn phí + đủ thông
+    minh dùng tool đúng cách (đã tra cứu giá/free-tier hiện tại qua
+    web search, tránh dùng tên model cũ đã/sắp ngừng hỗ trợ). Có ghi
+    chú rõ trong code: tên model AI hay đổi, nếu sau này lỗi "model
+    not found" thì kiểm tra lại tên hiện hành trên trang Google.
+  + "history" đổi sang định dạng Gemini (list dict "role"+"parts",
+    dùng ContentDict/PartDict thuần — đã xác nhận SDK chấp nhận trực
+    tiếp dict) — vẫn giữ triết lý cũ: history JSON-serialize được,
+    client chỉ giữ và gửi lại nguyên vẹn.
+  + Giữ nguyên cơ chế 3 tầng fallback MOCK đã làm ở đợt trước, chỉ đổi
+    lớp exception bắt cho khớp SDK mới + thêm 1 lớp Exception chung
+    làm lưới an toàn cuối cùng (phòng lỗi mạng không được SDK bọc lại).
 
-ĐÃ TỰ KIỂM TRA (cài thật thư viện anthropic, đọc trực tiếp __mro__ để
-XÁC NHẬN cấu trúc kế thừa thật — không suy đoán từ trí nhớ — rồi giả
-lập cả 4 tình huống bằng cách patch _ask_claude_real với đúng loại
-exception thật của SDK, không phải Exception chung chung tự bịa):
-1. CHATBOT_MOCK=true -> đúng tiền tố "CHATBOT_MOCK đang BẬT".
-2. Thiếu ANTHROPIC_API_KEY -> đúng tiền tố "CHƯA CÓ biến...".
-3. Giả lập anthropic.AuthenticationError (401, response thật dùng
-   httpx.Response) -> hiện đúng "AuthenticationError (HTTP 401):
-   Invalid API key" — xác nhận đọc đúng status_code từ exception thật.
-4. Giả lập anthropic.APIConnectionError (lỗi mạng — TRƯỜNG HỢP TRƯỚC
-   ĐÂY BỊ BỎ SÓT HOÀN TOÀN, sẽ crash 500) -> giờ hiện đúng "[MOCK —
-   gọi Claude API thật thất bại: APIConnectionError: Connection
-   error.]", xác nhận KHÔNG còn crash, rớt êm về mock như thiết kế.
+============================================================
+VIỆC BẮT BUỘC PHẢI LÀM THÊM (không có trong 2 file gửi lần này)
+============================================================
+1. requirements.txt (không có trong lượt gửi này — tự thêm dòng
+   "google-genai", có thể bỏ dòng "anthropic" cũ nếu không dùng ở
+   chỗ nào khác trong dự án).
+2. Lấy GEMINI_API_KEY miễn phí tại https://aistudio.google.com/apikey
+   (chỉ cần tài khoản Google, không cần thẻ tín dụng cho free tier).
+3. Trên Railway -> service backend -> Variables: thêm GEMINI_API_KEY.
+   Có thể xoá ANTHROPIC_API_KEY (không bắt buộc).
+4. Đợi Railway build lại, thử hỏi lại chatbot.
 
-Việc cần làm: deploy xong, thử hỏi lại chatbot 1 câu — nếu vẫn ra
-MOCK, giờ đọc đúng tiền tố hiện ra để biết chính xác đang vướng ở
-bước nào (thiếu key / build chưa xong / key sai / hết credit / lỗi
-mạng), không cần đoán hay vào Railway xem log nữa.
+ĐÃ TỰ KIỂM TRA KỸ (cài thật SDK google-genai, đọc trực tiếp
+model_fields/signature của các class thật để xác nhận cấu trúc, rồi
+test với response object THẬT của SDK):
+1. Xác nhận parameters_json_schema build thành công FunctionDeclaration
+   cho ĐỦ CẢ 8 tool thật trong dự án.
+2. Test 4 tình huống chẩn đoán MOCK (CHATBOT_MOCK bật, thiếu key, lỗi
+   401 dùng đúng genai_errors.ClientError thật, lỗi mạng thô không
+   qua wrapper SDK) — cả 4 đúng tiền tố, không crash.
+3. Test TOÀN BỘ vòng lặp tool-use end-to-end: dựng response object
+   THẬT (types.GenerateContentResponse có function_call), chạy với
+   DATABASE SQLITE THẬT (seed 1 sản phẩm tồn kho 42 thùng) — xác nhận
+   tool đọc đúng DB ra đúng số 42, vòng lặp gửi lại đúng function_
+   response, output cuối khớp đúng toàn chuỗi xử lý.
+4. Test messages/history JSON-serialize thành công, parse lại đúng
+   thứ tự 4 lượt user->model->user(tool result)->model.
+
+CHƯA kiểm tra được (cần GEMINI_API_KEY thật): gọi THẬT tới Gemini
+qua mạng — mọi test trên dùng response giả lập TỪ ĐÚNG CẤU TRÚC OBJECT
+THẬT của SDK, xác nhận code xử lý đúng khi nhận response đúng định
+dạng, nhưng chưa xác nhận Gemini thật sự trả về đúng vậy khi gọi qua
+mạng thật. Cần bạn tự test 1 lần sau khi có key để chắc chắn 100%.
