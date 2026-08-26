@@ -1,37 +1,42 @@
-feat(backend): thêm endpoint lịch sử xuất kho — đọc lại dữ liệu có sẵn, không cần bảng mới
+fix(backend): sửa lỗi hiện "sản phẩm #None" trong thông báo lệch số khi Nhập kho
 
-Bối cảnh: người dùng nhận ra Xuất kho thiếu đối xứng với Nhập kho —
-Nhập kho có hẳn hệ thống Phiếu để tra cứu lại, Xuất kho thì xuất xong
-là mất, không xem lại được.
+Bối cảnh (bằng chứng thật từ ảnh chụp Tổng quan): cảnh báo lệch số cho
+phiên NHẬP hiện đúng "Lệch -105 khi đếm 'sản phẩm #None'" — chữ
+"#None" bị in thẳng ra màn hình, rất phản cảm.
 
-Phát hiện quan trọng khi rà lại models.py: MỌI lần xuất kho (dù qua
-form gõ tay /inventory/export hay qua đếm camera
-/camera-sessions/{id}/stop) đều ĐÃ TỰ GHI LOG từ trước vào bảng
-InventoryTransaction (transaction_type='export') qua hàm dùng chung
-perform_fefo_export() — chỉ là CHƯA CÓ API NÀO ĐỌC LẠI dữ liệu này.
-Do đó không cần tạo bảng "ExportReceipt" mới như ban đầu nghĩ tới —
-chỉ cần thêm 1 endpoint ĐỌC LẠI đúng dữ liệu đã có, join thêm tên sản
-phẩm/đơn vị/mã lô cho dễ hiển thị.
+Nguyên nhân: dòng cũ
+  product = db.get(Product, session.product_id) if session.product_id else None
+  product_name = product.name if product else f"sản phẩm #{session.product_id}"
+Với phiên "export", session.product_id có sẵn nên không sao. Nhưng với
+phiên "import", session.product_id THƯỜNG LÀ NULL (sản phẩm chỉ được
+xác định qua receipt_line_item_id -> ReceiptLineItem.product_id, không
+gán trực tiếp vào session.product_id) — khiến product=None VÀ
+session.product_id=None cùng lúc, rơi vào fallback in ra đúng
+f"sản phẩm #{None}" = "sản phẩm #None".
 
-File sửa:
-- app/schemas.py — thêm ExportHistoryItem (id, product_id, product_name,
-  unit, batch_code, quantity, reference_type, reference_id, note,
-  created_at).
-- app/routers/inventory.py — thêm GET /inventory/export-history: join
-  InventoryTransaction + Inventory + Product, lọc transaction_type=
-  'export', sắp theo created_at giảm dần (mới nhất trước), đổi dấu
-  change_qty (lưu âm trong DB vì là trừ kho) thành số dương cho dễ đọc
-  trên giao diện.
+Cách sửa (app/routers/camera.py, trong _finalize_stop):
+- Với phiên direction='import', ưu tiên lấy tên qua
+  ReceiptLineItem.product_name_raw (luôn có sẵn, kể cả khi OCR chưa
+  khớp được với sản phẩm nào trong danh mục — đây chính xác là tên
+  hiển thị đúng nhất, không phụ thuộc việc đã map được product_id
+  hay chưa).
+- Nếu không phải import hoặc không tra được line, dùng product.name
+  như cũ.
+- Fallback CUỐI CÙNG (khi cả 2 đều không có) đổi từ
+  f"sản phẩm #{session.product_id}" (có thể in ra "#None") sang
+  chuỗi cố định an toàn "sản phẩm này" — KHÔNG BAO GIỜ còn khả năng
+  in ra dạng "#None" nữa dù trong bất kỳ tình huống dữ liệu xấu nào.
+- Tối ưu thêm: dùng lại biến line_for_name đã tra sẵn thay vì
+  query lại ReceiptLineItem lần 2 trong nhánh matched (trước đây
+  query 2 lần cho cùng 1 dòng).
 
-Không đổi models.py/chatbot.py/main.py — chatbot router đã đăng ký
-sẵn từ trước, không cần thêm gì phía backend cho phần chatbot (chỉ
-thiếu giao diện frontend, xem COMMIT_MSG.txt bên frontend).
-
-ĐÃ TỰ KIỂM TRA (dựng FastAPI app tối giản chỉ chứa router inventory +
-database thật SQLite, xuất kho THẬT qua đúng endpoint /inventory/export
-2 lần cho 2 sản phẩm khác nhau, rồi gọi endpoint mới):
-- Trả về đúng 2 bản ghi, đúng thứ tự.
-- product_name/unit join đúng ("Sữa Vinamilk 1L"/"thùng",
-  "Mì Hảo Hảo"/"thùng").
-- quantity đúng dấu dương (15.0 và 8.0, khớp đúng số đã xuất).
-- note và reference_type ("manual") giữ nguyên đúng giá trị đã gửi.
+ĐÃ TỰ KIỂM TRA (test logic thuần tuý bằng object giả lập, mô phỏng
+đúng 3 tình huống thực tế, không cần toàn bộ dependency nặng của
+camera.py):
+1. Phiên import, product_id=None (ĐÚNG tình huống lỗi thật) -> lấy
+   đúng tên "Bánh Solite hộp" từ ReceiptLineItem, KHÔNG còn chữ "None".
+2. Phiên export, có product -> lấy đúng tên từ Product như cũ,
+   không bị ảnh hưởng bởi thay đổi.
+3. Tình huống xấu nhất (cả line lẫn product đều None) -> fallback ra
+   đúng "sản phẩm này", xác nhận KHÔNG BAO GIỜ chứa chữ "None" dù
+   trong trường hợp cực đoan nhất.

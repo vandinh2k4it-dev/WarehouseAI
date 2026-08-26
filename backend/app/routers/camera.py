@@ -204,12 +204,31 @@ def _finalize_stop(
     db.flush()
 
     product = db.get(models.Product, session.product_id) if session.product_id else None
-    product_name = product.name if product else f"sản phẩm #{session.product_id}"
+
+    # Xác định tên sản phẩm hiện trong thông báo — với phiên "export",
+    # session.product_id có sẵn (product ở trên đã đúng). Với phiên
+    # "import" thì session.product_id THƯỜNG LÀ NULL (sản phẩm chỉ được
+    # xác định qua receipt_line_item_id, không gán trực tiếp vào session)
+    # — nếu không xử lý riêng, rơi vào nhánh dự phòng cũ in thẳng
+    # f"sản phẩm #{session.product_id}" ra ĐÚNG CHỮ "sản phẩm #None" (lỗi
+    # thật đã xảy ra, thấy trong ảnh chụp cảnh báo trên Tổng quan). Sửa:
+    # với phiên import, ưu tiên lấy product_name_raw từ ReceiptLineItem
+    # (luôn có, kể cả khi OCR chưa khớp được sản phẩm nào trong danh mục).
+    line_for_name = None
+    if session.direction == "import" and session.receipt_line_item_id:
+        line_for_name = db.get(models.ReceiptLineItem, session.receipt_line_item_id)
+
+    if line_for_name:
+        product_name = line_for_name.product_name_raw
+    elif product:
+        product_name = product.name
+    else:
+        product_name = "sản phẩm này"  # dự phòng an toàn — KHÔNG BAO GIỜ in ra dạng "#None"
 
     if matched:
         session.status = "completed"
         if session.direction == "import":
-            line = db.get(models.ReceiptLineItem, session.receipt_line_item_id)
+            line = line_for_name or db.get(models.ReceiptLineItem, session.receipt_line_item_id)
             apply_line_import(db, line)
             _maybe_complete_receipt(db, line.receipt_id)
         else:  # export
