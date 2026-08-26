@@ -52,29 +52,50 @@ def ask_chatbot(db: Session, user_message: str, history: list[dict] | None = Non
     cho người dùng thấy chatbot lấy dữ liệu từ đâu ra).
 
     Tự động chuyển sang MOCK MODE (app/chatbot/mock_service.py — không gọi
-    Claude thật, không tốn credit) trong 2 trường hợp:
-    1. Chưa cấu hình ANTHROPIC_API_KEY, hoặc set CHATBOT_MOCK=true trong .env
-       (ép mock dù đã có key, để giữ credit khi test linh tinh).
-    2. Gọi Claude thật nhưng bị lỗi hết credit/quota (anthropic.APIStatusError
-       mã 400 'credit balance too low' hoặc 429 rate limit) — tự rớt xuống
-       mock thay vì trả lỗi 500 cho người dùng.
+    Claude thật, không tốn credit) trong 3 trường hợp — MỖI TRƯỜNG HỢP GẮN
+    ĐÚNG 1 TIỀN TỐ RIÊNG BIỆT vào câu trả lời để người dùng tự chẩn đoán
+    được ngay trong khung chat, không cần mò log Railway:
+    1. Biến CHATBOT_MOCK đang bật (ép mock dù có key thật — thường do quên
+       tắt sau lúc test).
+    2. Chưa cấu hình ANTHROPIC_API_KEY (biến trống/chưa deploy lại).
+    3. Có key nhưng gọi Claude thật bị lỗi — bắt RỘNG theo anthropic.APIError
+       (lớp cha chung của CẢ APIStatusError [lỗi HTTP: sai định dạng key ->
+       401 AuthenticationError, hết credit -> 400, rate limit -> 429] LẪN
+       APIConnectionError [lỗi mạng/DNS/timeout] — bản trước chỉ bắt
+       APIStatusError, bỏ sót lỗi mạng, khiến request bị crash 500 thay vì
+       rớt êm về mock).
     """
     force_mock = os.getenv("CHATBOT_MOCK", "").lower() in ("1", "true", "yes")
     has_key = bool(os.getenv("ANTHROPIC_API_KEY"))
 
-    if force_mock or not has_key:
-        return mock_ask(db, user_message, history)
+    if force_mock:
+        fallback = mock_ask(db, user_message, history)
+        fallback["reply"] = (
+            "[MOCK — biến CHATBOT_MOCK đang BẬT trên server, ép dùng mô phỏng dù "
+            "có thể đã có ANTHROPIC_API_KEY thật. Xoá biến CHATBOT_MOCK trên Railway "
+            "nếu muốn dùng AI thật.]\n" + fallback["reply"]
+        )
+        return fallback
+
+    if not has_key:
+        fallback = mock_ask(db, user_message, history)
+        fallback["reply"] = (
+            "[MOCK — CHƯA CÓ biến ANTHROPIC_API_KEY trên server (đọc ra rỗng). "
+            "Kiểm tra lại: (1) đã thêm đúng tên biến ANTHROPIC_API_KEY trên Railway "
+            "chưa (phân biệt hoa/thường, không thừa khoảng trắng), (2) đã LƯU biến "
+            "chưa, (3) Railway đã BUILD LẠI xong chưa (đổi biến môi trường luôn cần "
+            "build lại mới có hiệu lực, không tự áp dụng ngay lập tức).]\n"
+            + fallback["reply"]
+        )
+        return fallback
 
     try:
         return _ask_claude_real(db, user_message, history)
-    except anthropic.APIStatusError as e:
-        # Hết credit (400) hoặc rate limit (429) -> rớt xuống mock, kèm ghi
-        # chú rõ ràng để không nhầm đây là câu trả lời AI thật.
+    except anthropic.APIError as e:
+        status_code = getattr(e, "status_code", None)
+        error_detail = type(e).__name__ + (f" (HTTP {status_code})" if status_code else "") + f": {e}"
         fallback = mock_ask(db, user_message, history)
-        fallback["reply"] = (
-            f"[Claude API lỗi: {e.status_code} — tự chuyển sang chế độ mô phỏng]\n"
-            + fallback["reply"]
-        )
+        fallback["reply"] = f"[MOCK — gọi Claude API thật thất bại: {error_detail}]\n" + fallback["reply"]
         return fallback
 
 

@@ -1,42 +1,52 @@
-fix(backend): sửa lỗi hiện "sản phẩm #None" trong thông báo lệch số khi Nhập kho
+fix(backend): chatbot tự nói rõ lý do rơi vào MOCK — không cần mò log Railway nữa
 
-Bối cảnh (bằng chứng thật từ ảnh chụp Tổng quan): cảnh báo lệch số cho
-phiên NHẬP hiện đúng "Lệch -105 khi đếm 'sản phẩm #None'" — chữ
-"#None" bị in thẳng ra màn hình, rất phản cảm.
+Bối cảnh: người dùng đã làm theo hướng dẫn thêm ANTHROPIC_API_KEY
+nhưng chatbot vẫn trả về "[MOCK] Chế độ mô phỏng..." KHÔNG KÈM BẤT KỲ
+lý do nào — không biết là chưa deploy xong, sai tên biến, hay lỗi
+khác. Câu hỏi đặt ra: "có cách nào test biết đã connect api key
+claude không" — đúng vấn đề cần giải quyết.
 
-Nguyên nhân: dòng cũ
-  product = db.get(Product, session.product_id) if session.product_id else None
-  product_name = product.name if product else f"sản phẩm #{session.product_id}"
-Với phiên "export", session.product_id có sẵn nên không sao. Nhưng với
-phiên "import", session.product_id THƯỜNG LÀ NULL (sản phẩm chỉ được
-xác định qua receipt_line_item_id -> ReceiptLineItem.product_id, không
-gán trực tiếp vào session.product_id) — khiến product=None VÀ
-session.product_id=None cùng lúc, rơi vào fallback in ra đúng
-f"sản phẩm #{None}" = "sản phẩm #None".
+Phát hiện qua đọc code: ask_chatbot() có 3 nhánh dẫn tới MOCK, nhưng
+CHỈ 1 NHÁNH (lỗi gọi API thật) có gắn tiền tố giải thích — 2 nhánh còn
+lại (force_mock, thiếu key) trả về MOCK TRƠN, không có bất kỳ dấu hiệu
+nào phân biệt được với nhau hay với nhánh có lỗi.
 
-Cách sửa (app/routers/camera.py, trong _finalize_stop):
-- Với phiên direction='import', ưu tiên lấy tên qua
-  ReceiptLineItem.product_name_raw (luôn có sẵn, kể cả khi OCR chưa
-  khớp được với sản phẩm nào trong danh mục — đây chính xác là tên
-  hiển thị đúng nhất, không phụ thuộc việc đã map được product_id
-  hay chưa).
-- Nếu không phải import hoặc không tra được line, dùng product.name
-  như cũ.
-- Fallback CUỐI CÙNG (khi cả 2 đều không có) đổi từ
-  f"sản phẩm #{session.product_id}" (có thể in ra "#None") sang
-  chuỗi cố định an toàn "sản phẩm này" — KHÔNG BAO GIỜ còn khả năng
-  in ra dạng "#None" nữa dù trong bất kỳ tình huống dữ liệu xấu nào.
-- Tối ưu thêm: dùng lại biến line_for_name đã tra sẵn thay vì
-  query lại ReceiptLineItem lần 2 trong nhánh matched (trước đây
-  query 2 lần cho cùng 1 dòng).
+Cách sửa (app/chatbot/service.py, hàm ask_chatbot):
+Mỗi trong 3 nhánh giờ có ĐÚNG 1 tiền tố riêng biệt, dễ đọc ngay trong
+khung chat:
+1. "[MOCK — biến CHATBOT_MOCK đang BẬT...]" — nếu quên tắt biến này
+   sau lúc test (thường bị bỏ quên nhất).
+2. "[MOCK — CHƯA CÓ biến ANTHROPIC_API_KEY trên server...]" — kèm 3
+   gợi ý kiểm tra cụ thể: đúng tên biến/đã lưu/đã build lại chưa.
+3. "[MOCK — gọi Claude API thật thất bại: {LoạiLỗi} (HTTP {mã}):
+   {chi tiết}]" — cho MỌI lỗi khi gọi API thật (sai định dạng key ->
+   AuthenticationError 401, hết credit -> 400, rate limit -> 429,
+   lỗi mạng -> APIConnectionError).
 
-ĐÃ TỰ KIỂM TRA (test logic thuần tuý bằng object giả lập, mô phỏng
-đúng 3 tình huống thực tế, không cần toàn bộ dependency nặng của
-camera.py):
-1. Phiên import, product_id=None (ĐÚNG tình huống lỗi thật) -> lấy
-   đúng tên "Bánh Solite hộp" từ ReceiptLineItem, KHÔNG còn chữ "None".
-2. Phiên export, có product -> lấy đúng tên từ Product như cũ,
-   không bị ảnh hưởng bởi thay đổi.
-3. Tình huống xấu nhất (cả line lẫn product đều None) -> fallback ra
-   đúng "sản phẩm này", xác nhận KHÔNG BAO GIỜ chứa chữ "None" dù
-   trong trường hợp cực đoan nhất.
+LỖI THẬT THỨ 2 TỰ PHÁT HIỆN (đọc kỹ cấu trúc exception thật của thư
+viện anthropic, không đoán mò): except clause cũ chỉ bắt
+anthropic.APIStatusError — bỏ sót hoàn toàn anthropic.
+APIConnectionError (lỗi mạng/DNS/timeout), dù cả 2 đều là con của
+anthropic.APIError. Hậu quả: nếu server gọi Claude API mà gặp trục
+trặc mạng (khá dễ xảy ra), request sẽ CRASH 500 THẲNG cho người dùng
+thay vì rớt êm về mock như mọi lỗi khác. Đã sửa: đổi except clause
+sang bắt anthropic.APIError (lớp cha chung), bao trọn cả 2 nhóm lỗi.
+
+ĐÃ TỰ KIỂM TRA (cài thật thư viện anthropic, đọc trực tiếp __mro__ để
+XÁC NHẬN cấu trúc kế thừa thật — không suy đoán từ trí nhớ — rồi giả
+lập cả 4 tình huống bằng cách patch _ask_claude_real với đúng loại
+exception thật của SDK, không phải Exception chung chung tự bịa):
+1. CHATBOT_MOCK=true -> đúng tiền tố "CHATBOT_MOCK đang BẬT".
+2. Thiếu ANTHROPIC_API_KEY -> đúng tiền tố "CHƯA CÓ biến...".
+3. Giả lập anthropic.AuthenticationError (401, response thật dùng
+   httpx.Response) -> hiện đúng "AuthenticationError (HTTP 401):
+   Invalid API key" — xác nhận đọc đúng status_code từ exception thật.
+4. Giả lập anthropic.APIConnectionError (lỗi mạng — TRƯỜNG HỢP TRƯỚC
+   ĐÂY BỊ BỎ SÓT HOÀN TOÀN, sẽ crash 500) -> giờ hiện đúng "[MOCK —
+   gọi Claude API thật thất bại: APIConnectionError: Connection
+   error.]", xác nhận KHÔNG còn crash, rớt êm về mock như thiết kế.
+
+Việc cần làm: deploy xong, thử hỏi lại chatbot 1 câu — nếu vẫn ra
+MOCK, giờ đọc đúng tiền tố hiện ra để biết chính xác đang vướng ở
+bước nào (thiếu key / build chưa xong / key sai / hết credit / lỗi
+mạng), không cần đoán hay vào Railway xem log nữa.
