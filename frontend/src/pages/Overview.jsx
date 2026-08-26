@@ -26,6 +26,7 @@ export default function Overview() {
   const [receipts, setReceipts] = useState(null);
   const [errorMsg, setErrorMsg] = useState("");
   const [ackBusy, setAckBusy] = useState(null);
+  const [expandedAlertId, setExpandedAlertId] = useState(null);
 
   useEffect(() => {
     loadAll();
@@ -93,17 +94,35 @@ export default function Overview() {
           </p>
           {recentAlerts && recentAlerts.length === 0 && <div className="empty">Không có cảnh báo nào đang mở 🎉</div>}
           <div className="alertList">
-            {recentAlerts?.map((a) => (
-              <div className="alertRow" key={a.id}>
-                <div>
-                  <span className={`badge alertType-${a.alert_type}`}>{ALERT_TYPE_LABEL[a.alert_type] || a.alert_type}</span>
-                  <div className="alertRow-msg">{a.message}</div>
+            {recentAlerts?.map((a) => {
+              const isExpanded = expandedAlertId === a.id;
+              // Rút gọn về đúng CÂU ĐẦU TIÊN (tới dấu chấm đầu tiên) cho cái
+              // nhìn tổng quan gọn gàng — phần chi tiết kỹ thuật (ngưỡng %,
+              // số phiên...) chỉ hiện khi bấm vào xem thêm, tránh mỗi dòng
+              // cảnh báo dài 3-4 dòng làm rối cả trang Tổng quan.
+              const firstSentenceEnd = a.message.indexOf(". ");
+              const shortMsg =
+                firstSentenceEnd > -1 ? a.message.slice(0, firstSentenceEnd + 1) : a.message;
+              const hasMore = shortMsg.length < a.message.length;
+
+              return (
+                <div className="alertRow" key={a.id}>
+                  <div
+                    className={hasMore ? "alertRow-clickable" : ""}
+                    onClick={hasMore ? () => setExpandedAlertId(isExpanded ? null : a.id) : undefined}
+                  >
+                    <span className={`badge alertType-${a.alert_type}`}>{ALERT_TYPE_LABEL[a.alert_type] || a.alert_type}</span>
+                    <div className="alertRow-msg">{isExpanded ? a.message : shortMsg}</div>
+                    {hasMore && (
+                      <span className="alertRow-toggle">{isExpanded ? "Thu gọn" : "Xem thêm"}</span>
+                    )}
+                  </div>
+                  <button className="tapbtn" disabled={ackBusy === a.id} onClick={() => handleAck(a.id)}>
+                    {ackBusy === a.id ? "…" : "Đã xử lý"}
+                  </button>
                 </div>
-                <button className="tapbtn" disabled={ackBusy === a.id} onClick={() => handleAck(a.id)}>
-                  {ackBusy === a.id ? "…" : "Đã xử lý"}
-                </button>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
