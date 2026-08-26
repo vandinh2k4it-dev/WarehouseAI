@@ -1,40 +1,60 @@
-fix(frontend): tinh gọn thẻ cảnh báo ở Tổng quan — rút gọn 1 dòng, bấm "Xem thêm" mới hiện chi tiết
+fix(frontend): sửa 3 lỗi giao diện thật — nút Gửi to bất thường, bottom nav mobile, gạch chân link
 
-Bối cảnh: mỗi cảnh báo hiện TOÀN BỘ nội dung kỹ thuật cùng lúc (ngưỡng
-%, số phiên, dòng "cần kiểm tra lại"...) khiến mỗi dòng cảnh báo dài
-3-4 dòng, làm trang Tổng quan nhìn rối — đúng phản ánh thật từ ảnh
-chụp người dùng gửi.
+Bối cảnh: 3 lỗi cụ thể từ ảnh chụp màn hình mobile thật.
 
-Cách sửa (src/pages/Overview.jsx):
-- Rút gọn message về đúng CÂU ĐẦU TIÊN (cắt tới dấu ". " đầu tiên tìm
-  thấy trong chuỗi) cho cái nhìn mặc định — phần chi tiết kỹ thuật
-  phía sau (thường bắt đầu bằng "Chưa cập nhật tồn kho... cần kiểm
-  tra lại (phiên #N)") bị ẩn đi cho tới khi bấm "Xem thêm".
-- Thêm state expandedAlertId (id của ĐÚNG 1 cảnh báo đang mở rộng —
-  các cảnh báo khác không bị ảnh hưởng, độc lập với nhau).
-- Chỉ hiện nút "Xem thêm/Thu gọn" khi message THỰC SỰ có phần bị cắt
-  (so sánh độ dài shortMsg với message gốc) — cảnh báo nào vốn đã
-  ngắn (như low_stock) thì không hiện nút thừa không cần thiết.
-- Cách làm CHUNG cho MỌI loại cảnh báo (discrepancy/low_stock/
-  expiring_soon) bằng cách cắt theo dấu câu, không cần biết cấu trúc
-  chi tiết bên trong từng loại message khác nhau — đơn giản, không
-  cần đổi gì ở backend hay parse theo alert_type riêng.
+============================================================
+1. Nút "Gửi" ở Chatbot bị to hết cỡ, ép ô nhập bị bóp nhỏ vỡ layout
+============================================================
+NGUYÊN NHÂN THẬT (lỗi độ ưu tiên CSS): selector "button.primary" (2
+điều kiện: thẻ+class) có độ ưu tiên CAO HƠN ".chatbot-sendBtn" (1
+điều kiện). Bản cũ dùng ".chatbot-sendBtn { width: auto }" để ghi đè
+"button.primary { width: 100% }" nhưng vì độ ưu tiên THẤP HƠN nên
+KHÔNG ghi đè được, bất kể thứ tự viết trước/sau. Hậu quả: nút Gửi vẫn
+nhận width:100%, ép textarea (flex:1) co lại gần bằng 0 — đúng hiện
+tượng vỡ chữ thấy trong ảnh.
 
-File sửa:
-- src/styles/app.css — thêm .alertRow-clickable (con trỏ tay + không
-  đẩy vỡ layout khi nội dung dài/ngắn khác nhau) và .alertRow-toggle
-  (chữ "Xem thêm"/"Thu gọn" màu cam, phân biệt rõ là có thể bấm).
+Cách sửa (src/styles/app.css):
+- Đổi selector thành ".chatbot-inputRow button.primary" (độ ưu tiên
+  bằng "button.primary", đủ thắng theo thứ tự nguồn).
+- Thêm min-width:0 cho .chatbot-input để textarea co giãn đúng.
 
-ĐÃ TỰ KIỂM TRA (esbuild bundle CHÍNH FILE THẬT + Playwright, dùng
-ĐÚNG NỘI DUNG MESSAGE THẬT lấy từ ảnh chụp màn hình gốc — không phải
-message tự bịa ra để test):
-- Xác nhận KHÔNG CÒN chữ "None" nào trong toàn bộ trang (kiểm tra
-  bằng cách tìm chuỗi "None" trong text nội dung thật của trang,
-  không phải đoán bằng mắt) — xác nhận đồng thời cả bản vá backend
-  (tên sản phẩm đúng) VÀ bản vá frontend (rút gọn) hoạt động đúng
-  cùng lúc.
-- Bấm "Xem thêm" ở đúng 1 cảnh báo -> CHỈ cảnh báo đó mở rộng ra
-  (hiện đủ "Chưa cập nhật tồn kho... phiên #79"), đổi chữ thành "Thu
-  gọn" — cảnh báo khác vẫn giữ nguyên trạng thái gọn, xác nhận state
-  độc lập theo từng id, không bị lẫn giữa các dòng.
-- npm run build (qua esbuild) thành công, không lỗi cú pháp.
+============================================================
+2. Chuyển sang bottom nav kiểu Facebook trên mobile
+============================================================
+- .topnav-tabs (mobile): position:fixed, bottom:0, justify-content:
+  space-around — 6 mục dàn đều, icon trên/chữ dưới.
+- .page: tăng padding-bottom = calc(64px + safe-area-inset-bottom)
+  để nội dung không bị bottom nav che.
+- Khối desktop (≥768px): reset lại các thuộc tính mới cho mobile để
+  không phá vỡ sidebar đã làm ở đợt trước.
+
+LỖI THẬT THỨ 2 TỰ PHÁT HIỆN (đo bounding box, không phải đọc code
+bằng mắt): sau khi đổi position:fixed, bottom nav vẫn dính ở TRÊN
+(y≈0) dù CSS đúng cú pháp. Nguyên nhân: .topnav (cha) có
+backdrop-filter:blur(10px) — hiệu ứng phụ ít người biết là filter/
+backdrop-filter/transform trên phần tử CHA tạo ra 1 khung chứa mới
+cho phần tử CON dùng position:fixed, khiến .topnav-tabs bị "giam"
+theo khung .topnav thay vì theo toàn màn hình. Đã sửa bằng cách
+chuyển backdrop-filter xuống riêng .topnav-top.
+
+============================================================
+3. "+ Quét phiếu mới" / "Lịch sử xuất kho" bị gạch chân xấu
+============================================================
+NGUYÊN NHÂN: .tapbtn dùng cho cả <button> lẫn <Link> (render ra <a>)
+nhưng chưa reset text-decoration — trình duyệt tự thêm gạch chân mặc
+định của <a>. Đã thêm text-decoration:none + hover/active state.
+
+ĐÃ TỰ KIỂM TRA CẢ 3 LỖI BẰNG SỐ ĐO THẬT (esbuild bundle App.jsx thật
++ Playwright, đo bounding box/computed style trực tiếp từ DOM):
+1. Nút Gửi: width=68px vs ô nhập width=243px — xác nhận đúng tỉ lệ.
+2. Bottom nav: y=742/viewport 800px (đúng sát đáy) — trước khi sửa
+   backdrop-filter đo được y=-4 (dính trên), xác nhận lỗi có thật và
+   đã sửa đúng gốc. Desktop sidebar đo lại vẫn đúng x=0,width=241 —
+   không bị ảnh hưởng.
+3. Gạch chân: computed style textDecorationLine trả về "none".
+- Ảnh chụp trực quan xác nhận thêm: bottom nav 6 mục đẹp mắt, Chatbot
+  cân đối, nút "Lịch sử xuất kho" trông như chip thật.
+
+Đã dọn sạch 4 file stub tạm dùng để test (Overview.jsx được backup
+trước khi ghi đè tạm rồi khôi phục lại, xác nhận qua diff không lệch
+1 ký tự nào) trước khi đóng gói.
