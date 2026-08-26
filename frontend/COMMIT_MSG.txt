@@ -1,72 +1,81 @@
-feat(frontend): chuyển sang bố cục sidebar trái trên desktop — theo tham khảo giao diện ảnh mẫu
+feat(frontend): tách Nhập/Xuất kho riêng biệt + Lịch sử xuất kho + nối lại Chatbot AI
 
-Bối cảnh: bố cục tab ngang trên cùng ở màn hình rộng khiến nội dung
-dồn hết về bên trái, thừa nhiều khoảng trống bên phải, nhìn mất cân
-đối (đúng phản ánh từ ảnh chụp thật). Người dùng gửi 1 ảnh tham khảo
-(app quản lý HTCamera Schedule) có bố cục sidebar trái cố định + nội
-dung bên phải — cân đối hơn hẳn. Áp dụng đúng bố cục đó, GIỮ NGUYÊN
-màu cam thương hiệu (không đổi sang xanh dương như ảnh tham khảo).
+Bối cảnh: người dùng phát hiện 2 lỗ hổng thật — (1) Xuất kho không có
+lịch sử/phiếu để xem lại, khác Nhập kho; (2) Chatbot đã làm xong từ
+trước (mục 6.6 đề cương) nhưng chỉ tồn tại ở bản demo desktop cũ
+(static/index.html), CHƯA TỪNG được nối vào React PWA khi chuyển kiến
+trúc — bị "lạc mất" giữa chừng, không phải chưa làm.
 
-Quyết định kỹ thuật quan trọng: làm bằng CSS THUẦN, KHÔNG đổi cấu
-trúc component/JS của App.jsx (chỉ đổi TopNav.jsx thêm icon) — sidebar
-là chính TopNav cũ, chỉ đổi position từ sticky-top sang fixed-left ở
-breakpoint desktop (≥768px, khớp breakpoint desktop đã dùng nhất quán
-toàn app từ trước). Mobile (dưới 768px) GIỮ NGUYÊN 100% bố cục tab
-ngang cũ, không đổi gì — không có rủi ro phá vỡ trải nghiệm mobile đã
-test kỹ trước đó.
+============================================================
+1. Tách sidebar — Nhập kho / Xuất kho / Trợ lý AI riêng biệt
+============================================================
+- src/components/TopNav.jsx: TABS đổi từ 4 mục (gộp "Nhập/Xuất kho")
+  thành 6 mục riêng: Tổng quan, Sản phẩm, Nhập kho, Xuất kho, Trợ lý
+  AI, Cảnh báo — bỏ hẳn route trung gian /inout.
+- src/App.jsx: xoá import/route InOutChoice, thêm route
+  /export/history và /chatbot. File src/pages/InOutChoice.jsx không
+  còn được route tới nhưng CHƯA XOÁ file (để nguyên, không ảnh hưởng
+  gì nếu không dùng tới — an toàn hơn xoá nhầm nếu còn chỗ khác tham
+  chiếu mà mình chưa thấy).
+- src/pages/ExportFlow.jsx, ImportFlow.jsx: bỏ link "← Chọn Nhập/Xuất
+  kho" trỏ về /inout (route không còn tồn tại) — Xuất kho thêm nút
+  "🕘 Lịch sử xuất kho" ở đầu trang.
 
-File sửa:
-- src/components/TopNav.jsx
-  Thêm field "icon" (emoji) vào từng mục trong TABS, render icon
-  trước label — khớp đúng phong cách sidebar có icon của ảnh tham
-  khảo. Không đổi logic điều hướng/đếm cảnh báo nào khác.
+============================================================
+2. Lịch sử xuất kho (trang mới)
+============================================================
+- src/pages/ExportHistory.jsx (route mới /export/history)
+  Bảng chi tiết từng lượt xuất (thời gian, sản phẩm, lô, số lượng,
+  nguồn "Gõ tay"/"Qua camera", ghi chú) — dùng lại ĐÚNG style bảng
+  dashboard đã có (.adminTable, .tableScroll) cho nhất quán với trang
+  Sản phẩm. Có 2 thẻ tổng hợp phía trên (số lượt xuất, tổng số lượng)
+  + ô tìm kiếm theo tên sản phẩm.
+- src/api.js: thêm listExportHistory() — gọi endpoint mới bên backend.
 
-- src/styles/app.css (thêm vào ĐẦU khối @media (min-width: 768px) đã
-  có sẵn — không tạo breakpoint mới, không đụng các rule khác trong
-  cùng khối)
-  + .topnav: position fixed, left/top/bottom:0, width:240px, border
-    chuyển từ dưới sang phải, flex-direction column, overflow-y auto
-    (phòng khi danh sách mục điều hướng dài hơn chiều cao màn hình).
-  + .topnav-tabs: đổi flex-direction sang column, danh sách dọc thay
-    vì hàng ngang.
-  + .topnav-tab: bo góc đều 4 cạnh (thay vì chỉ bo trên), border trái
-    3px làm dấu hiệu active (thay cho border dưới) — đúng kiểu sidebar
-    item chuẩn.
-  + .topnav-tab-icon: cỡ chữ icon phù hợp.
-  + .page: thêm padding-left:240px — dịch TOÀN BỘ nội dung (Outlet)
-    sang phải đúng bằng chiều rộng sidebar, tránh bị che khuất phía
-    dưới sidebar fixed. .page-main bên trong đó vẫn tự căn giữa
-    (margin:0 auto có sẵn từ trước) — giờ căn giữa ĐÚNG trong phần
-    không gian còn lại sau sidebar, giải quyết đúng vấn đề "dồn về 1
-    bên" ban đầu.
+============================================================
+3. Chatbot AI (trang mới, nối lại)
+============================================================
+- src/pages/Chatbot.jsx (route mới /chatbot)
+  Giao diện chat: bong bóng hội thoại (người dùng phải/màu cam, bot
+  trái/trung tính), 3 câu hỏi gợi ý khi chưa có hội thoại, hiệu ứng
+  "đang gõ" (3 chấm nhấp nháy) trong lúc chờ, Enter để gửi (Shift+Enter
+  xuống dòng). Tự giữ "history" trả về từ mỗi lần gọi và gửi lại nguyên
+  vẹn ở lượt hỏi tiếp theo — không tự diễn giải cấu trúc bên trong của
+  history (thuộc về backend quản lý), chỉ đơn giản lưu và gửi lại.
+- src/api.js: thêm chatbotAsk(message, history).
+- src/styles/app.css: thêm toàn bộ CSS mới cho chatbot (.chatbot-*).
 
-ĐÃ TỰ KIỂM TRA KỸ (dựng môi trường test React + React Router THẬT lần
-3, do sandbox vẫn thiếu index.css/main.jsx/các trang thật khác —
-riêng lần này cần cài thêm react-router-dom UMD + 2 gói phụ thuộc của
-nó (react-router, @remix-run/router) vì đây là thay đổi ĐIỀU HƯỚNG
-thật, không thể test bằng React suông như 2 lần trước):
-1. esbuild xác nhận cú pháp TopNav.jsx + app.css hợp lệ.
-2. Test Playwright TRÊN CẢ 2 kích thước màn hình với ĐIỀU HƯỚNG THẬT
-   (react-router-dom thật, không phải giả lập chuyển trang):
-   - Desktop (1280px): sidebar hiện đúng cố định bên trái, đo chính
-     xác bounding box xác nhận nội dung bắt đầu ngay sau khi hết
-     sidebar (không đè lên nhau, không có khoảng hở/chồng lấn ngoài
-     1px do border — đã kiểm tra và xác nhận không phải lỗi thật).
-   - Bấm CHUYỂN TRANG thật (Tổng quan -> Sản phẩm): tab mới sáng đúng
-     màu cam + viền trái, nội dung đổi đúng — xác nhận cơ chế active
-     state dựa theo location.pathname vẫn hoạt động đúng sau khi đổi
-     CSS, không bị ảnh hưởng bởi thay đổi layout.
-   - Mobile (390px): xác nhận GIỮ NGUYÊN 100% bố cục tab ngang cũ,
-     chỉ thêm icon — không có thay đổi nào khác so với trước.
-3. Phát hiện và tự sửa 1 lỗi TRONG CHÍNH MÔI TRƯỜNG TEST (không phải
-   lỗi code thật): quên set background cho <body> trong file test
-   rút gọn khiến ảnh chụp đầu tiên ra nền trắng sai — đã nhận ra ngay
-   (do index.css thật của app đã có sẵn dòng này, chỉ thiếu trong bản
-   test rút gọn của mình), sửa lại và chụp lại xác nhận đúng.
+ĐÃ TỰ KIỂM TRA TÍCH HỢP ĐẦY ĐỦ (không chỉ test riêng lẻ từng file):
+Do sandbox thiếu 1 số trang khác (Overview, Alerts, ScanReceipt,
+CountingScreen) để chạy được Vite thật, đã dùng esbuild BUNDLE TRỰC
+TIẾP các file THẬT (App.jsx, TopNav.jsx, ExportFlow.jsx, ImportFlow.jsx,
+ExportHistory.jsx, Chatbot.jsx, api.js — không phải chép lại code vào
+môi trường test) thành 1 file ESM, viết shim ES module nối UMD
+React/ReactDOM/ReactRouterDOM (cài qua npm, không qua CDN) với import
+map, rồi chạy Playwright với API giả lập qua route interception:
+- Sidebar hiện ĐÚNG ĐỦ 6 mục mới, đúng thứ tự, badge cảnh báo đúng vị trí.
+- Điều hướng THẬT (không giả lập): bấm "Xuất kho" -> tab sáng đúng,
+  bấm "Lịch sử xuất kho" -> chuyển đúng trang, hiện đúng dữ liệu giả
+  lập (2 lượt xuất, TỔNG SỐ LƯỢNG TÍNH ĐÚNG 15+8=23 — xác nhận phép
+  cộng thật, không phải số cứng), đúng nhãn "Gõ tay"/"Qua camera".
+- Chatbot: bấm câu hỏi gợi ý -> gọi API thật (mock) -> hiện đúng bong
+  bóng user (phải) + bong bóng bot (trái) với ĐÚNG NỘI DUNG trả về từ
+  API, xác nhận bằng cách kiểm tra text thật xuất hiện trong DOM.
+- Đã dọn sạch 4 file stub tạm dùng để build test (Overview.jsx,
+  Alerts.jsx, ScanReceipt.jsx, CountingScreen.jsx) trước khi đóng gói
+  — xác nhận qua ls rằng chỉ còn đúng các file thật trong thư mục
+  trước khi zip, không lẫn file giả vào bản giao.
 
-Việc cần làm: đã có sẵn UnmappedLines.jsx (trang "Sản phẩm chưa gán")
-được nhắc tới ở các đợt sửa trước, nhưng file App.jsx bạn gửi lần này
-KHÔNG có route "/products/unmapped" — có thể route này đã bị mất ở 1
-lần merge nào đó. Không tự ý thêm lại trong commit này (ngoài phạm vi
-yêu cầu lần này), chỉ ghi chú để bạn biết và tự quyết định có cần
-thêm lại không.
+CHƯA làm/cần lưu ý:
+- src/pages/InOutChoice.jsx còn tồn tại nhưng không còn route nào trỏ
+  tới — có thể xoá hẳn nếu chắc chắn không dùng lại, hoặc giữ nguyên
+  không ảnh hưởng gì (không import ở đâu khác nên an toàn khi build).
+- Route /products/unmapped (trang "Sản phẩm chưa gán" làm ở đợt trước
+  đó) VẪN CHƯA có trong App.jsx lần này — đã nhắc ở commit trước,
+  nhắc lại lần nữa vì vẫn chưa được khôi phục, bạn tự quyết định có
+  cần thêm lại không.
+- Chưa nối Toast.jsx/ConfirmDialog.jsx (đã làm ở đợt trước) vào các
+  trang mới này — ExportHistory.jsx/Chatbot.jsx dùng cách báo lỗi cũ
+  (div màu đỏ) cho nhất quán với các trang khác hiện tại, chưa đồng
+  loạt chuyển sang Toast vì cần rà soát TOÀN BỘ app 1 lượt, ngoài
+  phạm vi yêu cầu lần này.

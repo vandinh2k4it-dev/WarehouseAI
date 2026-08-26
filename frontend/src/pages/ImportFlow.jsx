@@ -152,9 +152,6 @@ export default function ImportFlow() {
   // ---------- Danh sách phiếu nhập ----------
   return (
     <main className="page-main">
-      <Link to="/inout" className="backlink">
-        ← Chọn Nhập / Xuất kho
-      </Link>
       <div className="card">
         <div className="card-headRow">
           <h2>Chọn phiếu nhập</h2>

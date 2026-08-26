@@ -139,6 +139,19 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action, override_note: overrideNote }),
     }),
+
+  // Lịch sử xuất kho — đọc lại InventoryTransaction đã có sẵn (xem
+  // app/routers/inventory.py, endpoint export-history), không phải bảng mới.
+  listExportHistory: () => request("/inventory/export-history"),
+
+  // Chatbot AI (mục 6.6) — gửi kèm history (lấy từ response trước) để
+  // chatbot nhớ ngữ cảnh hội thoại; lần hỏi đầu tiên truyền history=null.
+  chatbotAsk: (message, history) =>
+    request("/chatbot/ask", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message, history }),
+    }),
 };
 
 export { API_BASE };

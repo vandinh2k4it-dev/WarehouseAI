@@ -3,9 +3,10 @@ import TopNav from "./components/TopNav";
 import Overview from "./pages/Overview";
 import Products from "./pages/Products";
 import Alerts from "./pages/Alerts";
-import InOutChoice from "./pages/InOutChoice";
 import ImportFlow from "./pages/ImportFlow";
 import ExportFlow from "./pages/ExportFlow";
+import ExportHistory from "./pages/ExportHistory";
+import Chatbot from "./pages/Chatbot";
 import ScanReceipt from "./pages/ScanReceipt";
 import "./styles/app.css";
 
@@ -30,10 +31,11 @@ export default function App() {
           <Route path="/" element={<Overview />} />
           <Route path="/products" element={<Products />} />
           <Route path="/alerts" element={<Alerts />} />
-          <Route path="/inout" element={<InOutChoice />} />
           <Route path="/import" element={<ImportFlow />} />
           <Route path="/import/scan" element={<ScanReceipt />} />
           <Route path="/export" element={<ExportFlow />} />
+          <Route path="/export/history" element={<ExportHistory />} />
+          <Route path="/chatbot" element={<Chatbot />} />
         </Route>
       </Routes>
     </HashRouter>

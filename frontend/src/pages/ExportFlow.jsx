@@ -73,9 +73,12 @@ export default function ExportFlow() {
 
   return (
     <main className="page-main">
-      <Link to="/inout" className="backlink">
-        ← Chọn Nhập / Xuất kho
-      </Link>
+      <div className="card-headRow" style={{ marginBottom: 14 }}>
+        <h2 style={{ margin: 0, fontSize: 20, textTransform: "none", color: "var(--text)" }}>Xuất kho</h2>
+        <Link to="/export/history" className="tapbtn">
+          🕘 Lịch sử xuất kho
+        </Link>
+      </div>
       <div className="card">
         <h2>Chọn sản phẩm cần xuất</h2>
         <label>Sản phẩm</label>

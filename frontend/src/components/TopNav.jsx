@@ -5,7 +5,9 @@ import { api } from "../api";
 const TABS = [
   { to: "/", label: "Tổng quan", icon: "📊", match: (p) => p === "/" },
   { to: "/products", label: "Sản phẩm", icon: "📦", match: (p) => p.startsWith("/products") },
-  { to: "/inout", label: "Nhập / Xuất kho", icon: "🔄", match: (p) => ["/inout", "/import", "/export"].some((x) => p.startsWith(x)) },
+  { to: "/import", label: "Nhập kho", icon: "⬇️", match: (p) => p.startsWith("/import") },
+  { to: "/export", label: "Xuất kho", icon: "⬆️", match: (p) => p.startsWith("/export") },
+  { to: "/chatbot", label: "Trợ lý AI", icon: "🤖", match: (p) => p.startsWith("/chatbot") },
   { to: "/alerts", label: "Cảnh báo", icon: "⚠️", match: (p) => p.startsWith("/alerts") },
 ];
 
