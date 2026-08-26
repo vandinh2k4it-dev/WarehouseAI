@@ -43,6 +43,46 @@ def expiring_soon(days: int = 30, db: Session = Depends(get_db)):
     )
 
 
+@router.get("/export-history", response_model=list[schemas.ExportHistoryItem])
+def export_history(limit: int = 100, db: Session = Depends(get_db)):
+    """Lịch sử xuất kho — KHÔNG cần bảng mới, đọc lại từ InventoryTransaction
+    (mỗi lần xuất kho, dù qua form gõ tay /inventory/export hay qua đếm camera
+    /camera-sessions/{id}/stop, đều đã tự ghi log ở đây từ trước qua
+    perform_fefo_export() — endpoint này chỉ đơn giản là ĐỌC LẠI đúng dữ liệu
+    đã có sẵn, join thêm tên sản phẩm/đơn vị/mã lô cho dễ đọc trên giao diện).
+    """
+    rows = (
+        db.query(
+            models.InventoryTransaction,
+            models.Inventory.product_id,
+            models.Inventory.batch_code,
+            models.Product.name,
+            models.Product.unit,
+        )
+        .join(models.Inventory, models.InventoryTransaction.inventory_id == models.Inventory.id)
+        .join(models.Product, models.Inventory.product_id == models.Product.id)
+        .filter(models.InventoryTransaction.transaction_type == "export")
+        .order_by(models.InventoryTransaction.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+    return [
+        schemas.ExportHistoryItem(
+            id=txn.id,
+            product_id=product_id,
+            product_name=product_name,
+            unit=unit,
+            batch_code=batch_code,
+            quantity=abs(float(txn.change_qty)),  # DB lưu âm (trừ kho) -> đổi dương cho dễ đọc
+            reference_type=txn.reference_type,
+            reference_id=txn.reference_id,
+            note=txn.note,
+            created_at=txn.created_at,
+        )
+        for txn, product_id, batch_code, product_name, unit in rows
+    ]
+
+
 @router.post("/export", response_model=schemas.ExportResult)
 def export_inventory(payload: schemas.ExportRequest, db: Session = Depends(get_db)):
     """Xuất kho (bán hàng / xuất huỷ...). Nếu chỉ định `batch_code`, trừ đúng lô

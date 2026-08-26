@@ -1,28 +1,37 @@
-feat(backend): thêm tham số conf cho endpoint /count-video — chỉnh được độ nhạy khi Quay video
+feat(backend): thêm endpoint lịch sử xuất kho — đọc lại dữ liệu có sẵn, không cần bảng mới
 
-Bối cảnh (bằng chứng thật từ ảnh chụp): sau khi có bộ lọc diện tích
-(commit trước), 1 trường hợp nhận nhầm vẫn lọt qua (id:57 carton_box
-0.56 — tấm cửa cuốn/vách, chỉ chiếm ~20-25% khung hình, dưới xa ngưỡng
-65% nên không bị lọc). Quan sát: độ tin cậy của khung sai này (0.56)
-THẤP HƠN rõ rệt so với khung đúng thật (0.85-0.90) — gợi ý dùng
-confidence threshold làm tín hiệu bổ sung, tách biệt với bộ lọc diện
-tích đã có.
+Bối cảnh: người dùng nhận ra Xuất kho thiếu đối xứng với Nhập kho —
+Nhập kho có hẳn hệ thống Phiếu để tra cứu lại, Xuất kho thì xuất xong
+là mất, không xem lại được.
 
-Thay đổi (app/routers/camera.py, endpoint /count-video):
-- Thêm tham số form conf (mặc định 0.5, khớp mặc định gốc của
-  count_boxes_in_video) — cho phép frontend GỬI KÈM ngưỡng confidence
-  mong muốn thay vì luôn dùng cứng giá trị mặc định.
-- Truyền thẳng vào count_boxes_in_video(conf=conf, ...) — hàm này đã
-  có sẵn tham số conf từ trước, chỉ chưa từng được expose ra API.
-- Ghi rõ trong docstring: tăng ngưỡng giúp lọc bớt nhận nhầm có độ tin
-  cậy thấp, NHƯNG không loại được hết mọi trường hợp — đã từng quan
-  sát có case nhận nhầm (tủ máy công nghiệp) lên tới 0.83, ngang khung
-  đúng, để không đặt kỳ vọng sai là tính năng này giải quyết triệt để.
+Phát hiện quan trọng khi rà lại models.py: MỌI lần xuất kho (dù qua
+form gõ tay /inventory/export hay qua đếm camera
+/camera-sessions/{id}/stop) đều ĐÃ TỰ GHI LOG từ trước vào bảng
+InventoryTransaction (transaction_type='export') qua hàm dùng chung
+perform_fefo_export() — chỉ là CHƯA CÓ API NÀO ĐỌC LẠI dữ liệu này.
+Do đó không cần tạo bảng "ExportReceipt" mới như ban đầu nghĩ tới —
+chỉ cần thêm 1 endpoint ĐỌC LẠI đúng dữ liệu đã có, join thêm tên sản
+phẩm/đơn vị/mã lô cho dễ hiển thị.
 
-ĐÃ TỰ KIỂM TRA: cú pháp Python hợp lệ (ast.parse thành công), Form đã
-có sẵn trong import (dùng chung với threshold_pct đã có từ trước,
-không cần thêm import mới).
+File sửa:
+- app/schemas.py — thêm ExportHistoryItem (id, product_id, product_name,
+  unit, batch_code, quantity, reference_type, reference_id, note,
+  created_at).
+- app/routers/inventory.py — thêm GET /inventory/export-history: join
+  InventoryTransaction + Inventory + Product, lọc transaction_type=
+  'export', sắp theo created_at giảm dần (mới nhất trước), đổi dấu
+  change_qty (lưu âm trong DB vì là trừ kho) thành số dương cho dễ đọc
+  trên giao diện.
 
-Việc cần làm: cần đi kèm bản sửa frontend (api.js + CountingScreen.jsx,
-gửi cùng đợt) — thiếu 1 trong 2 phía thì tham số conf sẽ không có tác
-dụng (backend nhận nhưng frontend không gửi, hoặc ngược lại).
+Không đổi models.py/chatbot.py/main.py — chatbot router đã đăng ký
+sẵn từ trước, không cần thêm gì phía backend cho phần chatbot (chỉ
+thiếu giao diện frontend, xem COMMIT_MSG.txt bên frontend).
+
+ĐÃ TỰ KIỂM TRA (dựng FastAPI app tối giản chỉ chứa router inventory +
+database thật SQLite, xuất kho THẬT qua đúng endpoint /inventory/export
+2 lần cho 2 sản phẩm khác nhau, rồi gọi endpoint mới):
+- Trả về đúng 2 bản ghi, đúng thứ tự.
+- product_name/unit join đúng ("Sữa Vinamilk 1L"/"thùng",
+  "Mì Hảo Hảo"/"thùng").
+- quantity đúng dấu dương (15.0 và 8.0, khớp đúng số đã xuất).
+- note và reference_type ("manual") giữ nguyên đúng giá trị đã gửi.

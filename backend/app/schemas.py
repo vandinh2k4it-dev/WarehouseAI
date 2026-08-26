@@ -186,6 +186,21 @@ class ExportResult(BaseModel):
     details: list[ExportBatchDetail]
 
 
+# ---------- Lịch sử xuất kho (đọc lại từ InventoryTransaction đã có sẵn —
+# không cần bảng mới, mỗi lần xuất kho đã tự ghi log qua perform_fefo_export) ----------
+class ExportHistoryItem(BaseModel):
+    id: int  # id của InventoryTransaction
+    product_id: int
+    product_name: str
+    unit: str
+    batch_code: str
+    quantity: float  # số dương (đã đổi dấu từ change_qty âm lưu trong DB cho dễ đọc)
+    reference_type: Optional[str] = None  # 'manual' (gõ tay qua form) | 'camera_session' (qua đếm camera)
+    reference_id: Optional[int] = None
+    note: Optional[str] = None
+    created_at: datetime
+
+
 # ---------- Alerts ----------
 class AlertOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
