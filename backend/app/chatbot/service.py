@@ -3,13 +3,16 @@ hỏi của nhân viên kho dựa trên dữ liệu THẬT trong Postgres — m�
 cương.
 
 ĐÃ CHUYỂN từ Claude (Anthropic) sang Gemini (Google) — lý do: Gemini có
-free tier THẬT (không cần thẻ tín dụng/nạp tiền) đủ dùng cho quy mô demo
-khóa luận (tra cứu đơn giản, không phải sản phẩm chạy quy mô lớn). Model
-dùng: gemini-2.5-flash — cân bằng tốt giữa miễn phí + đủ thông minh để
-dùng tool đúng cách. LƯU Ý: tên model AI thay đổi khá thường xuyên (Google
-hay ra bản mới/ngừng hỗ trợ bản cũ) — nếu sau này gặp lỗi kiểu "model not
-found", vào https://ai.google.dev/gemini-api/docs/models kiểm tra tên
-model hiện còn hỗ trợ free tier, cập nhật lại hằng số MODEL_NAME bên dưới.
+free tier THẬT (không cần thẻ tín dụng/nạp tiền) đủ dùng cho khối lượng
+dùng ở quy mô demo khóa luận, xem chi tiết bên dưới. Model dùng:
+gemini-3.6-flash — ĐÃ ĐỔI 1 LẦN từ gemini-2.5-flash vì Google ngừng hỗ trợ
+model đó cho user mới (lỗi 404 thật gặp phải: "This model
+models/gemini-2.5-flash is no longer available to new users. Please
+update your code to use models/gemini-3.6-flash") — XÁC NHẬN THỰC TẾ tên
+model AI của Google đổi RẤT NHANH, có thể lại đổi tiếp trong tương lai. Nếu
+gặp lỗi "404 NOT_FOUND" tương tự, đọc kỹ nội dung lỗi — Google THƯỜNG TỰ
+NÓI LUÔN tên model mới cần đổi sang ngay trong thông báo lỗi (như lần này),
+chỉ cần đổi đúng hằng số MODEL_NAME bên dưới, không cần sửa gì khác.
 
 SDK dùng: google-genai (SDK thống nhất mới của Google, KHÔNG PHẢI SDK cũ
 "google-generativeai" đã ngừng phát triển) — cài qua `pip install
@@ -26,7 +29,7 @@ from sqlalchemy.orm import Session
 from app.chatbot.tools import TOOLS, TOOL_FUNCTIONS
 from app.chatbot.mock_service import mock_ask
 
-MODEL_NAME = "gemini-2.5-flash"
+MODEL_NAME = "gemini-3.6-flash"
 MAX_TOOL_ROUNDS = 5  # chặn vòng lặp vô hạn nếu model cứ liên tục gọi tool
 
 SYSTEM_PROMPT = """Bạn là trợ lý AI của hệ thống quản lý kho hàng thông minh.

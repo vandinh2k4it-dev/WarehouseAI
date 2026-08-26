@@ -1,78 +1,24 @@
-feat(backend): chuyển chatbot từ Claude (Anthropic) sang Gemini (Google) — dùng free tier, không cần nạp tiền
+fix(backend): đổi tên model Gemini — gemini-2.5-flash bị Google ngừng hỗ trợ cho user mới
 
-Bối cảnh: chatbot đã hoạt động đúng với Claude nhưng cần nạp credit
-($5 tối thiểu) mới dùng được AI thật — người dùng chọn hướng đổi hẳn
-sang Gemini (có free tier THẬT, không cần thẻ) dù biết sẽ tốn công
-viết lại code, thay vì nạp tiền (đã được tư vấn rõ đánh đổi trước khi
-quyết định).
+Bối cảnh (bằng chứng thật, xác nhận NGAY tính hữu ích của bản vá chẩn
+đoán MOCK vừa làm ở commit trước): thử hỏi chatbot ra lỗi 404 rõ ràng
+ngay trong khung chat: "This model models/gemini-2.5-flash is no
+longer available to new users. Please update your code to use
+models/gemini-3.6-flash for the latest features and improvements."
+— đúng như đã cảnh báo trong code, tên model AI của Google đổi rất
+nhanh.
 
-============================================================
-Phát hiện quan trọng giúp việc chuyển đổi NHẸ NHÀNG hơn dự kiến
-============================================================
-SDK mới của Google (google-genai, KHÁC với SDK cũ đã ngừng phát triển
-"google-generativeai") có field "parameters_json_schema" nhận TRỰC
-TIẾP JSON Schema chuẩn — ĐÃ XÁC NHẬN THẬT bằng cách cài thử SDK và
-dựng thử FunctionDeclaration, không phải đọc tài liệu suông. Nghĩa là
-toàn bộ cấu trúc chi tiết bên trong mỗi tool (properties, required...)
-ở app/chatbot/tools.py GIỮ NGUYÊN 100%, chỉ cần đổi tên đúng 1 khoá
-"input_schema" -> "parameters_json_schema" — không phải viết lại từng
-tool một cách thủ công.
+Cách sửa: đổi đúng 1 dòng MODEL_NAME từ "gemini-2.5-flash" sang
+"gemini-3.6-flash" — ĐÚNG THEO CHỈ DẪN CỦA GOOGLE trong chính thông
+báo lỗi, không phải tự đoán tên model khác. Cập nhật lại comment đầu
+file ghi rõ lịch sử đổi model này, kèm hướng dẫn: lần sau gặp lỗi 404
+tương tự, đọc kỹ nội dung lỗi vì Google thường TỰ NÓI LUÔN tên model
+mới cần đổi sang ngay trong thông báo.
 
-============================================================
-File sửa
-============================================================
-- app/chatbot/tools.py
-  + Đổi "input_schema" -> "parameters_json_schema" ở cả 8 khai báo tool.
-  + Cập nhật docstring đầu file, không nhắc riêng Claude/Anthropic nữa.
-  + KHÔNG đổi bất kỳ hàm xử lý DB nào (search_products, get_total_stock...)
-    — các hàm này chỉ đọc Postgres, không phụ thuộc nhà cung cấp AI.
+Không cần test lại toàn bộ logic (đã test kỹ ở commit trước, chỉ đổi
+đúng 1 giá trị string, không đổi cấu trúc code) — chỉ xác nhận cú
+pháp hợp lệ.
 
-- app/chatbot/service.py (viết lại hoàn toàn logic gọi AI)
-  + Đổi từ anthropic.Anthropic sang google.genai.Client.
-  + Đổi biến môi trường ANTHROPIC_API_KEY -> GEMINI_API_KEY.
-  + MODEL_NAME = "gemini-2.5-flash" — cân bằng miễn phí + đủ thông
-    minh dùng tool đúng cách (đã tra cứu giá/free-tier hiện tại qua
-    web search, tránh dùng tên model cũ đã/sắp ngừng hỗ trợ). Có ghi
-    chú rõ trong code: tên model AI hay đổi, nếu sau này lỗi "model
-    not found" thì kiểm tra lại tên hiện hành trên trang Google.
-  + "history" đổi sang định dạng Gemini (list dict "role"+"parts",
-    dùng ContentDict/PartDict thuần — đã xác nhận SDK chấp nhận trực
-    tiếp dict) — vẫn giữ triết lý cũ: history JSON-serialize được,
-    client chỉ giữ và gửi lại nguyên vẹn.
-  + Giữ nguyên cơ chế 3 tầng fallback MOCK đã làm ở đợt trước, chỉ đổi
-    lớp exception bắt cho khớp SDK mới + thêm 1 lớp Exception chung
-    làm lưới an toàn cuối cùng (phòng lỗi mạng không được SDK bọc lại).
-
-============================================================
-VIỆC BẮT BUỘC PHẢI LÀM THÊM (không có trong 2 file gửi lần này)
-============================================================
-1. requirements.txt (không có trong lượt gửi này — tự thêm dòng
-   "google-genai", có thể bỏ dòng "anthropic" cũ nếu không dùng ở
-   chỗ nào khác trong dự án).
-2. Lấy GEMINI_API_KEY miễn phí tại https://aistudio.google.com/apikey
-   (chỉ cần tài khoản Google, không cần thẻ tín dụng cho free tier).
-3. Trên Railway -> service backend -> Variables: thêm GEMINI_API_KEY.
-   Có thể xoá ANTHROPIC_API_KEY (không bắt buộc).
-4. Đợi Railway build lại, thử hỏi lại chatbot.
-
-ĐÃ TỰ KIỂM TRA KỸ (cài thật SDK google-genai, đọc trực tiếp
-model_fields/signature của các class thật để xác nhận cấu trúc, rồi
-test với response object THẬT của SDK):
-1. Xác nhận parameters_json_schema build thành công FunctionDeclaration
-   cho ĐỦ CẢ 8 tool thật trong dự án.
-2. Test 4 tình huống chẩn đoán MOCK (CHATBOT_MOCK bật, thiếu key, lỗi
-   401 dùng đúng genai_errors.ClientError thật, lỗi mạng thô không
-   qua wrapper SDK) — cả 4 đúng tiền tố, không crash.
-3. Test TOÀN BỘ vòng lặp tool-use end-to-end: dựng response object
-   THẬT (types.GenerateContentResponse có function_call), chạy với
-   DATABASE SQLITE THẬT (seed 1 sản phẩm tồn kho 42 thùng) — xác nhận
-   tool đọc đúng DB ra đúng số 42, vòng lặp gửi lại đúng function_
-   response, output cuối khớp đúng toàn chuỗi xử lý.
-4. Test messages/history JSON-serialize thành công, parse lại đúng
-   thứ tự 4 lượt user->model->user(tool result)->model.
-
-CHƯA kiểm tra được (cần GEMINI_API_KEY thật): gọi THẬT tới Gemini
-qua mạng — mọi test trên dùng response giả lập TỪ ĐÚNG CẤU TRÚC OBJECT
-THẬT của SDK, xác nhận code xử lý đúng khi nhận response đúng định
-dạng, nhưng chưa xác nhận Gemini thật sự trả về đúng vậy khi gọi qua
-mạng thật. Cần bạn tự test 1 lần sau khi có key để chắc chắn 100%.
+Việc cần làm: push xong thử hỏi lại chatbot — nếu 3.6-flash cũng bị
+đổi/ngừng hỗ trợ trong tương lai, lặp lại đúng cách này (đọc lỗi 404,
+lấy tên model Google chỉ định, đổi MODEL_NAME).
