@@ -141,21 +141,33 @@ def _ask_gemini_real(db: Session, user_message: str, history: list[dict] | None 
     for _ in range(MAX_TOOL_ROUNDS):
         response = client.models.generate_content(model=MODEL_NAME, contents=contents, config=config)
 
+        # Dùng NGUYÊN content thật của response (model_dump), KHÔNG tự dựng
+        # lại parts từ đầu — Gemini 3 (bản 3.6-flash đang dùng) kèm theo
+        # "thought_signature" (bytes, mã hoá trạng thái suy luận nội bộ) vào
+        # từng function_call part, và BẮT BUỘC phải gửi lại NGUYÊN VẸN ở lượt
+        # sau, nếu không sẽ lỗi 400 "Function call is missing a
+        # thought_signature" (lỗi THẬT đã gặp — bản cũ tự dựng lại
+        # {"function_call": {...}} từ response.function_calls, vô tình làm
+        # rơi mất field này vì nó nằm ở cấp Part, không nằm trong FunctionCall).
+        # model_dump(mode="json") tự chuyển bytes -> chuỗi base64 để JSON-
+        # serialize được, và tự giải mã lại đúng khi SDK dựng lại Part từ
+        # dict này ở lượt gọi kế tiếp — ĐÃ TEST round-trip xác nhận đúng,
+        # không phải giả định suông.
+        model_content_dict = response.candidates[0].content.model_dump(mode="json", exclude_none=True)
+
         function_calls = response.function_calls  # property tiện ích của SDK, rỗng nếu model trả lời thẳng
         if not function_calls:
             final_text = response.text or ""
-            model_content = {"role": "model", "parts": [{"text": final_text}]}
             return {
                 "reply": final_text,
                 "tool_calls": tool_call_log,
-                "messages": contents + [model_content],
+                "messages": contents + [model_content_dict],
             }
 
-        # Model yêu cầu gọi 1 hoặc nhiều tool -> lưu đúng nguyên các
-        # function_call model vừa trả về vào lịch sử, rồi chạy thật, gửi
-        # kết quả lại dưới dạng function_response.
-        model_call_parts = [{"function_call": {"name": fc.name, "args": dict(fc.args or {})}} for fc in function_calls]
-        contents.append({"role": "model", "parts": model_call_parts})
+        # Model yêu cầu gọi 1 hoặc nhiều tool -> lưu đúng NGUYÊN content thật
+        # (đã bảo toàn thought_signature ở trên) vào lịch sử, rồi chạy tool
+        # thật, gửi kết quả lại dưới dạng function_response.
+        contents.append(model_content_dict)
 
         response_parts = []
         for fc in function_calls:

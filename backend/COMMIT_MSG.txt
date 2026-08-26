@@ -1,24 +1,62 @@
-fix(backend): đổi tên model Gemini — gemini-2.5-flash bị Google ngừng hỗ trợ cho user mới
+fix(backend): bảo toàn thought_signature khi model gọi tool — sửa lỗi 400 với Gemini 3.x
 
-Bối cảnh (bằng chứng thật, xác nhận NGAY tính hữu ích của bản vá chẩn
-đoán MOCK vừa làm ở commit trước): thử hỏi chatbot ra lỗi 404 rõ ràng
-ngay trong khung chat: "This model models/gemini-2.5-flash is no
-longer available to new users. Please update your code to use
-models/gemini-3.6-flash for the latest features and improvements."
-— đúng như đã cảnh báo trong code, tên model AI của Google đổi rất
-nhanh.
+Bối cảnh (lỗi thật gặp ngay sau khi đổi model sang gemini-3.6-flash):
+"Function call is missing a thought_signature in functionCall parts.
+This is required for tools to work correctly..." — model ĐÃ gọi tool
+thành công (thấy rõ trong lỗi: function call `search_products`), chỉ
+là lịch sử gửi lại lượt sau thiếu 1 trường bắt buộc.
 
-Cách sửa: đổi đúng 1 dòng MODEL_NAME từ "gemini-2.5-flash" sang
-"gemini-3.6-flash" — ĐÚNG THEO CHỈ DẪN CỦA GOOGLE trong chính thông
-báo lỗi, không phải tự đoán tên model khác. Cập nhật lại comment đầu
-file ghi rõ lịch sử đổi model này, kèm hướng dẫn: lần sau gặp lỗi 404
-tương tự, đọc kỹ nội dung lỗi vì Google thường TỰ NÓI LUÔN tên model
-mới cần đổi sang ngay trong thông báo.
+Nguyên nhân (đã tra cứu kỹ tài liệu chính thức của Google, không đoán
+mò): Gemini 3.x là model "thinking" — mỗi khi trả về function_call,
+Part đi kèm 1 trường "thought_signature" (bytes, mã hoá trạng thái suy
+luận nội bộ) mà Google YÊU CẦU BẮT BUỘC phải gửi lại NGUYÊN VẸN ở lượt
+gọi kế tiếp, nếu không sẽ lỗi 400. Tài liệu Google ghi rõ: "Thought
+signatures are handled automatically when you... append the FULL model
+response object directly to history" — tức là chỉ cần dùng ĐÚNG NGUYÊN
+response, không tự dựng lại parts từ đầu.
 
-Không cần test lại toàn bộ logic (đã test kỹ ở commit trước, chỉ đổi
-đúng 1 giá trị string, không đổi cấu trúc code) — chỉ xác nhận cú
-pháp hợp lệ.
+Code cũ tự dựng lại lịch sử bằng cách trích XUẤT RIÊNG name+args từ
+response.function_calls (property tiện ích chỉ chứa FunctionCall
+object, KHÔNG chứa thought_signature — trường này nằm ở cấp Part bao
+quanh, không nằm trong FunctionCall) rồi tự gói lại thành dict mới —
+vô tình làm RƠI MẤT thought_signature trong quá trình "dựng lại từ
+đầu" này.
 
-Việc cần làm: push xong thử hỏi lại chatbot — nếu 3.6-flash cũng bị
-đổi/ngừng hỗ trợ trong tương lai, lặp lại đúng cách này (đọc lỗi 404,
-lấy tên model Google chỉ định, đổi MODEL_NAME).
+Cách sửa (app/chatbot/service.py, hàm _ask_gemini_real):
+- Bỏ hẳn cách tự dựng lại model_call_parts từ response.function_calls.
+- Dùng response.candidates[0].content.model_dump(mode="json",
+  exclude_none=True) — lấy NGUYÊN VẸN toàn bộ content thật mà model
+  trả về (bảo toàn MỌI field, không chỉ thought_signature — phòng
+  trường hợp Google thêm field bắt buộc khác trong tương lai mà mình
+  không biết trước để mà trích riêng).
+- mode="json" tự chuyển bytes (thought_signature) thành chuỗi base64
+  để JSON-serialize được — quan trọng vì "history" phải gửi qua API
+  dạng JSON cho frontend giữ và gửi lại.
+- Áp dụng CÙNG cách này cho CẢ 2 nhánh (có gọi tool / trả lời thẳng
+  bằng text) — nhất quán, đề phòng cả trường hợp trả lời text cuối
+  cùng cũng có thể kèm thought_signature (tài liệu Google có nhắc tới
+  trường hợp này, dù không bắt buộc validate).
+
+ĐÃ TỰ KIỂM TRA (không chỉ đọc tài liệu suông — verify bằng code thật
+của SDK):
+1. Test round-trip serialize: dựng types.Part với thought_signature
+   là bytes giả -> model_dump(mode="json") -> xác nhận ra đúng chuỗi
+   base64, JSON-serialize thành công.
+2. Test round-trip deserialize: dựng lại types.Part(**dict) từ chính
+   dict có chuỗi base64 đó -> xác nhận thought_signature giải mã lại
+   ĐÚNG 100% bytes gốc ban đầu (so sánh bằng ==, không chỉ nhìn qua).
+3. Test TOÀN BỘ vòng lặp end-to-end với response giả lập THẬT có kèm
+   thought_signature (mô phỏng đúng tình huống lỗi thật đã gặp): chạy
+   qua service.ask_chatbot() với DB SQLite thật, CHỤP LẠI đúng nội
+   dung "contents" thực sự được gửi đi ở LẦN GỌI THỨ 2 (sau khi model
+   gọi tool xong) — xác nhận thought_signature CÓ MẶT trong đó, giải
+   mã base64 khớp đúng 100% với bytes gốc đã đưa vào response giả lập
+   ban đầu. Đây là bằng chứng trực tiếp nhất có thể tạo ra được mà
+   không cần gọi API Gemini thật qua mạng.
+
+CHƯA kiểm tra được (cần GEMINI_API_KEY thật + gọi qua mạng thật): liệu
+Gemini server thật có chấp nhận đúng định dạng dict snake_case này khi
+gửi qua HTTP thật hay không — về mặt cấu trúc đã khớp đúng ContentDict/
+PartDict mà chính SDK khai báo là định dạng hợp lệ (không phải suy
+đoán, đọc trực tiếp type hint của generate_content()), nên rủi ro thấp,
+nhưng vẫn cần bạn tự xác nhận bằng 1 lần hỏi thật sau khi deploy.
