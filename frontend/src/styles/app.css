@@ -341,11 +341,18 @@ button.ghost {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 12px;
+  flex-wrap: wrap; /* mobile hẹp: 2 nút + tiêu đề không đủ chỗ 1 hàng —
+  cho phép xuống dòng thay vì tràn ra ngoài (lỗi thật đã xảy ra khi thêm
+  nút "Tạo phiếu tay" cạnh "Quét phiếu mới", đủ 2 nút làm tràn màn 390px). */
+  gap: 10px 12px;
   margin-bottom: 12px;
 }
 .card-headRow h2 {
   margin: 0;
+}
+.card-headRow > div {
+  flex-wrap: wrap; /* riêng cụm nút bên trong cũng cho xuống dòng nếu vẫn
+  không đủ chỗ ở màn cực hẹp, tránh lặp lại đúng lỗi tràn lần nữa */
 }
 
 .text-muted {

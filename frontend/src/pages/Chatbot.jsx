@@ -108,7 +108,7 @@ export default function Chatbot() {
         <div className="chatbot-inputRow">
           <textarea
             className="chatbot-input"
-            placeholder="Nhập câu hỏi… (Enter để gửi, Shift+Enter xuống dòng)"
+            placeholder="Nhập câu hỏi cho trợ lý"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}

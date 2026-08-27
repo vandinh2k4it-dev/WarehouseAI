@@ -1,14 +1,24 @@
-fix(frontend): hiện đúng mã phiếu xuất (PX0001) thay vì số phiên thô
+fix(frontend): sửa nút "Quét phiếu mới" tràn màn hình mobile + rút gọn placeholder chatbot
 
-Nối theo backend cùng đợt (xem COMMIT_MSG.txt bên backend) — backend
-giờ tự sinh session_code dạng "PX0001" cho mỗi phiên đếm xuất, đại
-diện luôn cho mã phiếu xuất kho.
+Bối cảnh: sau khi thêm nút "Tạo phiếu tay" cạnh "Quét phiếu mới" ở
+đợt trước, 2 nút + tiêu đề "Chọn phiếu nhập" không đủ chỗ trên 1 hàng
+ở màn mobile hẹp — nút "Quét phiếu mới" bị tràn hẳn ra ngoài mép phải
+màn hình.
 
-- src/components/PrintExportReceipt.jsx: đổi hiển thị từ "Số phiên
-  đếm: #88" (raw session.id) sang "Số phiếu xuất: PX0001"
-  (session.session_code) — có fallback về "#id" nếu session_code cũ
-  chưa có (dữ liệu tạo trước khi có bản vá backend này, tránh hiện
-  "undefined" trên các phiên cũ).
+Cách sửa (src/styles/app.css):
+.card-headRow thêm flex-wrap:wrap — tiêu đề và cụm nút tự xuống dòng
+khi không đủ chỗ, thay vì tràn ra ngoài. Thêm flex-wrap:wrap cho cụm
+div chứa 2 nút bên trong luôn, phòng màn cực hẹp vẫn không đủ chỗ cho
+cả 2 nút cùng hàng.
 
-Đã kiểm tra cú pháp (esbuild), không cần test lại toàn bộ luồng vì
-chỉ đổi đúng 1 biểu thức hiển thị, không đổi logic gọi API/tính toán.
+ĐÃ TỰ KIỂM TRA bằng đo lường thật (Playwright, viewport 390px):
+- TRƯỚC khi sửa: scrollWidth=421px > clientWidth=390px — xác nhận
+  tràn ngang thật 31px.
+- SAU khi sửa: scrollWidth=390px = clientWidth=390px — hết tràn hoàn
+  toàn. Ảnh chụp xác nhận tiêu đề xuống dòng riêng, 2 nút xuống hàng
+  dưới, hiển thị trọn vẹn cả 2 chữ.
+
+Cách sửa 2 (src/pages/Chatbot.jsx):
+Rút gọn placeholder ô nhập chatbot từ "Nhập câu hỏi… (Enter để gửi,
+Shift+Enter xuống dòng)" thành "Nhập câu hỏi cho trợ lý" — theo đúng
+yêu cầu, chữ ngắn gọn hơn, đỡ chiếm chỗ trên màn hẹp.
