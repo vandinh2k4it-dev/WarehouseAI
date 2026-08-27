@@ -1,60 +1,66 @@
-fix(frontend): sửa 3 lỗi giao diện thật — nút Gửi to bất thường, bottom nav mobile, gạch chân link
+feat(frontend): tạo/sửa/xoá phiếu nhập bằng tay + in phiếu xuất kho
 
-Bối cảnh: 3 lỗi cụ thể từ ảnh chụp màn hình mobile thật.
+Nối vào backend đã có sẵn (xem COMMIT_MSG.txt bên backend cùng đợt).
 
-============================================================
-1. Nút "Gửi" ở Chatbot bị to hết cỡ, ép ô nhập bị bóp nhỏ vỡ layout
-============================================================
-NGUYÊN NHÂN THẬT (lỗi độ ưu tiên CSS): selector "button.primary" (2
-điều kiện: thẻ+class) có độ ưu tiên CAO HƠN ".chatbot-sendBtn" (1
-điều kiện). Bản cũ dùng ".chatbot-sendBtn { width: auto }" để ghi đè
-"button.primary { width: 100% }" nhưng vì độ ưu tiên THẤP HƠN nên
-KHÔNG ghi đè được, bất kể thứ tự viết trước/sau. Hậu quả: nút Gửi vẫn
-nhận width:100%, ép textarea (flex:1) co lại gần bằng 0 — đúng hiện
-tượng vỡ chữ thấy trong ảnh.
+File mới:
+- src/pages/CreateReceiptManual.jsx (route mới /import/create)
+  Form tạo phiếu nhập bằng tay — mã phiếu/nhà cung cấp (tuỳ chọn) +
+  danh sách dòng hàng động (thêm/xoá dòng ngay trên form), mỗi dòng
+  có tên sản phẩm/số lượng/mã lô/hạn sử dụng.
 
-Cách sửa (src/styles/app.css):
-- Đổi selector thành ".chatbot-inputRow button.primary" (độ ưu tiên
-  bằng "button.primary", đủ thắng theo thứ tự nguồn).
-- Thêm min-width:0 cho .chatbot-input để textarea co giãn đúng.
+- src/components/PrintExportReceipt.jsx
+  Modal xem trước + in phiếu xuất kho — tự động lọc đúng chi tiết
+  lượt xuất (theo reference_type=camera_session, reference_id=session.id)
+  từ endpoint export-history đã có, hiện bảng chi tiết theo từng lô +
+  khung chữ ký. Nút "In phiếu" gọi window.print() — không cần thư
+  viện tạo PDF riêng.
 
-============================================================
-2. Chuyển sang bottom nav kiểu Facebook trên mobile
-============================================================
-- .topnav-tabs (mobile): position:fixed, bottom:0, justify-content:
-  space-around — 6 mục dàn đều, icon trên/chữ dưới.
-- .page: tăng padding-bottom = calc(64px + safe-area-inset-bottom)
-  để nội dung không bị bottom nav che.
-- Khối desktop (≥768px): reset lại các thuộc tính mới cho mobile để
-  không phá vỡ sidebar đã làm ở đợt trước.
+File sửa:
+- src/api.js — thêm 7 hàm: createReceiptManual, updateReceipt,
+  deleteReceipt, addReceiptLine, updateReceiptLine, deleteReceiptLine,
+  getExportDetailsByReference.
 
-LỖI THẬT THỨ 2 TỰ PHÁT HIỆN (đo bounding box, không phải đọc code
-bằng mắt): sau khi đổi position:fixed, bottom nav vẫn dính ở TRÊN
-(y≈0) dù CSS đúng cú pháp. Nguyên nhân: .topnav (cha) có
-backdrop-filter:blur(10px) — hiệu ứng phụ ít người biết là filter/
-backdrop-filter/transform trên phần tử CHA tạo ra 1 khung chứa mới
-cho phần tử CON dùng position:fixed, khiến .topnav-tabs bị "giam"
-theo khung .topnav thay vì theo toàn màn hình. Đã sửa bằng cách
-chuyển backdrop-filter xuống riêng .topnav-top.
+- src/components/CountingScreen.jsx
+  Sau khi xuất kho khớp số (result.session.direction === "export" &&
+  matched), hiện nút "In phiếu xuất kho" mở modal PrintExportReceipt.
+  Hoạt động với cả 3 cách đếm (video/trực tiếp/nhập tay) vì tất cả
+  đều đi qua cùng luồng camera-session, cùng reference_type.
 
-============================================================
-3. "+ Quét phiếu mới" / "Lịch sử xuất kho" bị gạch chân xấu
-============================================================
-NGUYÊN NHÂN: .tapbtn dùng cho cả <button> lẫn <Link> (render ra <a>)
-nhưng chưa reset text-decoration — trình duyệt tự thêm gạch chân mặc
-định của <a>. Đã thêm text-decoration:none + hover/active state.
+- src/pages/ImportFlow.jsx
+  + Thêm nút "Tạo phiếu tay" cạnh "+ Quét phiếu mới".
+  + Thêm nút "Xoá" trên mỗi phiếu trong danh sách (gọi API, tự bắt
+    lỗi 409 nếu backend chặn).
+  + Mỗi dòng hàng: nếu counting_status === "not_started" (khớp đúng
+    điều kiện an toàn phía backend), hiện thêm nút "Sửa"/"Xoá" — bấm
+    Sửa chuyển dòng đó thành form inline, Lưu/Huỷ ngay tại chỗ.
+  + Thêm "+ Thêm dòng hàng" ở cuối danh sách dòng — form inline thêm
+    dòng mới vào phiếu đang xem.
+  + Badge "tay" hiện cạnh mã phiếu nếu source_type === "manual".
 
-ĐÃ TỰ KIỂM TRA CẢ 3 LỖI BẰNG SỐ ĐO THẬT (esbuild bundle App.jsx thật
-+ Playwright, đo bounding box/computed style trực tiếp từ DOM):
-1. Nút Gửi: width=68px vs ô nhập width=243px — xác nhận đúng tỉ lệ.
-2. Bottom nav: y=742/viewport 800px (đúng sát đáy) — trước khi sửa
-   backdrop-filter đo được y=-4 (dính trên), xác nhận lỗi có thật và
-   đã sửa đúng gốc. Desktop sidebar đo lại vẫn đúng x=0,width=241 —
-   không bị ảnh hưởng.
-3. Gạch chân: computed style textDecorationLine trả về "none".
-- Ảnh chụp trực quan xác nhận thêm: bottom nav 6 mục đẹp mắt, Chatbot
-  cân đối, nút "Lịch sử xuất kho" trông như chip thật.
+- src/App.jsx — thêm route /import/create.
 
-Đã dọn sạch 4 file stub tạm dùng để test (Overview.jsx được backup
-trước khi ghi đè tạm rồi khôi phục lại, xác nhận qua diff không lệch
-1 ký tự nào) trước khi đóng gói.
+- src/styles/app.css — CSS cho .manualLineRow (form dòng hàng),
+  .lineCard-editing (dòng đang sửa inline), .printReceipt-* (modal in
+  phiếu) + @media print (ẩn toàn bộ giao diện app khi in, chỉ hiện
+  đúng nội dung phiếu).
+
+ĐÃ TỰ KIỂM TRA TÍCH HỢP (esbuild bundle CHÍNH file thật + Playwright,
+không phải chép lại code vào môi trường test):
+1. CreateReceiptManual.jsx: điền form thật (mã phiếu, nhà cung cấp, 2
+   dòng hàng qua nút "+ Thêm dòng hàng"), bấm nút "Tạo phiếu nhập"
+   (dùng đúng get_by_role để tránh nhầm với tiêu đề cùng chữ) — CHỤP
+   LẠI đúng payload gửi lên backend, xác nhận khớp 100% dữ liệu đã
+   điền (cả 2 dòng, đúng tên/số lượng/mã lô).
+2. PrintExportReceipt.jsx: giả lập response export-history có 2 lô
+   (12 + 8 thùng) — xác nhận hiện đúng số phiên (#88), đúng cả 2 mã
+   lô, TỰ TÍNH ĐÚNG tổng cộng 20 (phép cộng thật, không phải số cứng
+   gõ sẵn). Ảnh chụp xác nhận bố cục đúng kiểu chứng từ (bảng + chữ
+   ký), không lỗi layout.
+3. Cả 2 test trên đều PHÁT HIỆN VÀ TỰ SỬA 1 lỗi trong chính kịch bản
+   test (không phải lỗi code): lần đầu dùng selector "text=..." mơ hồ
+   khớp nhầm cả tiêu đề lẫn nút cùng chữ, gây lỗi "strict mode
+   violation" — đã sửa dùng get_by_role chính xác hơn, chạy lại xác
+   nhận đúng.
+
+Việc cần làm: npm run build trên máy bạn trước khi deploy (sandbox
+thiếu Vite đầy đủ nên chưa tự chạy được build thật lần này).

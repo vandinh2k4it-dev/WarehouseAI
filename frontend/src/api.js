@@ -65,6 +65,45 @@ export const api = {
   listReceipts: (status) => request(`/receipts${status ? `?status=${status}` : ""}`),
   getLinesProgress: (receiptId) => request(`/receipts/${receiptId}/lines-progress`),
 
+  // Tạo phiếu nhập BẰNG TAY (không quét ảnh) — dùng khi không có ảnh phiếu giấy
+  createReceiptManual: (payload) =>
+    request("/receipts/manual", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }),
+
+  // Sửa thông tin chung của phiếu (không sửa dòng hàng ở đây)
+  updateReceipt: (receiptId, payload) =>
+    request(`/receipts/${receiptId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }),
+
+  // Xoá hẳn 1 phiếu — backend tự chặn nếu đã có dòng nào được đếm rồi
+  deleteReceipt: (receiptId) => request(`/receipts/${receiptId}`, { method: "DELETE" }),
+
+  // Thêm 1 dòng hàng mới vào phiếu đã có
+  addReceiptLine: (receiptId, payload) =>
+    request(`/receipts/${receiptId}/lines`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }),
+
+  // Sửa 1 dòng hàng — backend tự chặn nếu dòng đó đã được đếm rồi
+  updateReceiptLine: (receiptId, lineId, payload) =>
+    request(`/receipts/${receiptId}/lines/${lineId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }),
+
+  // Xoá 1 dòng hàng — backend tự chặn nếu dòng đó đã được đếm rồi
+  deleteReceiptLine: (receiptId, lineId) =>
+    request(`/receipts/${receiptId}/lines/${lineId}`, { method: "DELETE" }),
+
   // Quét phiếu nhập bằng ảnh chụp từ camera — backend chạy OCR (PaddleOCR +
   // VietOCR) ngay khi nhận ảnh, trả về phiếu đã tạo kèm các dòng hàng đã
   // trích xuất (tự động so khớp với danh mục sản phẩm nếu tên khớp đủ gần).
@@ -143,6 +182,12 @@ export const api = {
   // Lịch sử xuất kho — đọc lại InventoryTransaction đã có sẵn (xem
   // app/routers/inventory.py, endpoint export-history), không phải bảng mới.
   listExportHistory: () => request("/inventory/export-history"),
+
+  // Chi tiết ĐÚNG 1 lượt xuất cụ thể (theo camera_session hoặc manual) —
+  // dùng để in phiếu xuất kho ngay sau khi xuất xong, không cần API mới,
+  // chỉ lọc lại đúng dữ liệu export-history đã có.
+  getExportDetailsByReference: (referenceType, referenceId) =>
+    request(`/inventory/export-history?reference_type=${referenceType}&reference_id=${referenceId}`),
 
   // Chatbot AI (mục 6.6) — gửi kèm history (lấy từ response trước) để
   // chatbot nhớ ngữ cảnh hội thoại; lần hỏi đầu tiên truyền history=null.

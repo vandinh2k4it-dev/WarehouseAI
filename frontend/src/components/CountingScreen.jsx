@@ -1,6 +1,7 @@
 import { useState, useRef } from "react";
 import { api, API_BASE } from "../api";
 import LiveCountingScreen from "./LiveCountingScreen";
+import PrintExportReceipt from "./PrintExportReceipt";
 
 // Màn hình đếm dùng chung cho cả nhập và xuất — nhận session đã tạo sẵn
 // (từ start-import hoặc start-export). Có 3 cách đối chiếu:
@@ -18,6 +19,7 @@ export default function CountingScreen({ session, expectedQuantity, label, onDon
   const [errorMsg, setErrorMsg] = useState("");
   const inputRef = useRef(null);
   const [videoConf, setVideoConf] = useState(0.5); // độ nhạy phát hiện cho chế độ Quay video — khớp mặc định 0.5 bên backend
+  const [showPrintReceipt, setShowPrintReceipt] = useState(false);
 
   async function handleFileSelected(e) {
     const file = e.target.files?.[0];
@@ -224,10 +226,25 @@ export default function CountingScreen({ session, expectedQuantity, label, onDon
             </div>
           )}
 
+          {result.session.direction === "export" && matched && (
+            <button className="ghost" onClick={() => setShowPrintReceipt(true)}>
+              🖨️ In phiếu xuất kho
+            </button>
+          )}
+
           <button className="primary" onClick={() => onDone(result)}>
             Xong — chọn loại tiếp theo
           </button>
         </>
+      )}
+
+      {showPrintReceipt && (
+        <PrintExportReceipt
+          session={result.session}
+          productLabel={label}
+          expectedQuantity={expectedQuantity}
+          onClose={() => setShowPrintReceipt(false)}
+        />
       )}
     </div>
   );

@@ -4,6 +4,7 @@ import Overview from "./pages/Overview";
 import Products from "./pages/Products";
 import Alerts from "./pages/Alerts";
 import ImportFlow from "./pages/ImportFlow";
+import CreateReceiptManual from "./pages/CreateReceiptManual";
 import ExportFlow from "./pages/ExportFlow";
 import ExportHistory from "./pages/ExportHistory";
 import Chatbot from "./pages/Chatbot";
@@ -32,6 +33,7 @@ export default function App() {
           <Route path="/products" element={<Products />} />
           <Route path="/alerts" element={<Alerts />} />
           <Route path="/import" element={<ImportFlow />} />
+          <Route path="/import/create" element={<CreateReceiptManual />} />
           <Route path="/import/scan" element={<ScanReceipt />} />
           <Route path="/export" element={<ExportFlow />} />
           <Route path="/export/history" element={<ExportHistory />} />

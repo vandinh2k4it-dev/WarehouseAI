@@ -1468,3 +1468,172 @@ button.ghost {
   white-space: nowrap;
 }
 
+/* ==========================================================
+   FORM DÒNG HÀNG — dùng chung cho tạo phiếu tay + thêm/sửa dòng
+   ========================================================== */
+.manualLineRow {
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+  margin-top: 10px;
+}
+.manualLineRow-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.manualLineRow-remove {
+  width: auto;
+  margin-top: 0;
+  padding: 4px 10px;
+  font-size: 12px;
+  color: var(--danger);
+  border-color: var(--danger);
+}
+.manualLineRow-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.lineCard-editing {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--surface-raised);
+  border: 1px solid var(--accent);
+  border-radius: 12px;
+  padding: 12px;
+}
+.lineCard-smallBtn {
+  width: auto;
+  margin-top: 0;
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
+/* ==========================================================
+   PHIẾU XUẤT KHO — modal xem trước + in (window.print())
+   ========================================================== */
+.printReceipt-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+  overflow-y: auto;
+}
+.printReceipt-box {
+  background: #fff;
+  color: #111;
+  width: 100%;
+  max-width: 700px;
+  border-radius: 12px;
+  overflow: hidden;
+}
+.printReceipt-toolbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 14px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.printReceipt-toolbar button {
+  width: auto;
+  margin-top: 0;
+}
+.printReceipt-content {
+  padding: 28px;
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+.printReceipt-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 20px;
+}
+.printReceipt-company {
+  font-weight: 700;
+  font-size: 15px;
+}
+.printReceipt-sub {
+  font-size: 12px;
+  color: #555;
+  margin-top: 4px;
+}
+.printReceipt-title {
+  text-align: right;
+  font-weight: 700;
+  font-size: 16px;
+}
+.printReceipt-meta {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  font-size: 13px;
+}
+.printReceipt-blank {
+  border-bottom: 1px dotted #999;
+}
+.printReceipt-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 24px;
+}
+.printReceipt-table th,
+.printReceipt-table td {
+  border: 1px solid #ccc;
+  padding: 8px 10px;
+  text-align: left;
+  font-size: 13px;
+}
+.printReceipt-table th {
+  background: #f2f2f2;
+}
+.printReceipt-signatures {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  text-align: center;
+  margin-top: 30px;
+}
+.printReceipt-sigTitle {
+  font-weight: 700;
+}
+.printReceipt-sigHint {
+  font-size: 11px;
+  color: #666;
+  margin-bottom: 60px;
+}
+
+/* Khi in (Ctrl+P / nút In phiếu) — ẩn TOÀN BỘ giao diện app, chỉ hiện đúng
+   nội dung phiếu, không có overlay/toolbar/nền tối. */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .printReceipt-box,
+  .printReceipt-box * {
+    visibility: visible;
+  }
+  .printReceipt-overlay {
+    position: absolute;
+    inset: auto;
+    background: none;
+    padding: 0;
+  }
+  .printReceipt-box {
+    max-width: 100%;
+  }
+  .noPrint {
+    display: none !important;
+  }
+}
+
