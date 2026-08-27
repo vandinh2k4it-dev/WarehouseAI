@@ -44,14 +44,26 @@ def expiring_soon(days: int = 30, db: Session = Depends(get_db)):
 
 
 @router.get("/export-history", response_model=list[schemas.ExportHistoryItem])
-def export_history(limit: int = 100, db: Session = Depends(get_db)):
+def export_history(
+    limit: int = 100,
+    reference_type: Optional[str] = None,
+    reference_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+):
     """Lịch sử xuất kho — KHÔNG cần bảng mới, đọc lại từ InventoryTransaction
     (mỗi lần xuất kho, dù qua form gõ tay /inventory/export hay qua đếm camera
     /camera-sessions/{id}/stop, đều đã tự ghi log ở đây từ trước qua
     perform_fefo_export() — endpoint này chỉ đơn giản là ĐỌC LẠI đúng dữ liệu
     đã có sẵn, join thêm tên sản phẩm/đơn vị/mã lô cho dễ đọc trên giao diện).
+
+    reference_type/reference_id: lọc đúng 1 LƯỢT xuất cụ thể — dùng để in
+    phiếu xuất kho ngay sau khi xuất xong qua đếm camera (reference_type=
+    'camera_session', reference_id=<session.id>, xem app/routers/camera.py
+    dòng gọi perform_fefo_export() — đã xác nhận 2 chỗ export qua camera
+    đều truyền đúng 2 giá trị này). KHÔNG cần sửa camera.py để thêm tính
+    năng in phiếu — chỉ cần đọc lại đúng dữ liệu đã ghi log sẵn từ trước.
     """
-    rows = (
+    query = (
         db.query(
             models.InventoryTransaction,
             models.Inventory.product_id,
@@ -62,10 +74,13 @@ def export_history(limit: int = 100, db: Session = Depends(get_db)):
         .join(models.Inventory, models.InventoryTransaction.inventory_id == models.Inventory.id)
         .join(models.Product, models.Inventory.product_id == models.Product.id)
         .filter(models.InventoryTransaction.transaction_type == "export")
-        .order_by(models.InventoryTransaction.created_at.desc())
-        .limit(limit)
-        .all()
     )
+    if reference_type:
+        query = query.filter(models.InventoryTransaction.reference_type == reference_type)
+    if reference_id is not None:
+        query = query.filter(models.InventoryTransaction.reference_id == reference_id)
+
+    rows = query.order_by(models.InventoryTransaction.created_at.desc()).limit(limit).all()
     return [
         schemas.ExportHistoryItem(
             id=txn.id,

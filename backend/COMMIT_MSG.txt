@@ -1,62 +1,86 @@
-fix(backend): bảo toàn thought_signature khi model gọi tool — sửa lỗi 400 với Gemini 3.x
+feat(backend): tạo/sửa/xoá phiếu nhập bằng tay + in phiếu xuất kho + database demo đầy đủ
 
-Bối cảnh (lỗi thật gặp ngay sau khi đổi model sang gemini-3.6-flash):
-"Function call is missing a thought_signature in functionCall parts.
-This is required for tools to work correctly..." — model ĐÃ gọi tool
-thành công (thấy rõ trong lỗi: function call `search_products`), chỉ
-là lịch sử gửi lại lượt sau thiếu 1 trường bắt buộc.
+Bối cảnh: 3 yêu cầu lớn — (1) xoá database cũ, thay bằng bộ data mới
+đầy đủ chi tiết kèm hướng dẫn demo; (2) cho phép tạo phiếu nhập bằng
+tay (không cần quét ảnh), sửa/xoá phiếu và dòng hàng; (3) in phiếu
+xuất kho khi xuất hàng xong.
 
-Nguyên nhân (đã tra cứu kỹ tài liệu chính thức của Google, không đoán
-mò): Gemini 3.x là model "thinking" — mỗi khi trả về function_call,
-Part đi kèm 1 trường "thought_signature" (bytes, mã hoá trạng thái suy
-luận nội bộ) mà Google YÊU CẦU BẮT BUỘC phải gửi lại NGUYÊN VẸN ở lượt
-gọi kế tiếp, nếu không sẽ lỗi 400. Tài liệu Google ghi rõ: "Thought
-signatures are handled automatically when you... append the FULL model
-response object directly to history" — tức là chỉ cần dùng ĐÚNG NGUYÊN
-response, không tự dựng lại parts từ đầu.
+============================================================
+1. Tạo/sửa/xoá phiếu nhập bằng tay
+============================================================
+- app/models.py
+  + ImportReceipt.image_path đổi thành nullable=True (phiếu tạo tay
+    không có ảnh gốc để lưu).
+  + Thêm ImportReceipt.source_type ('ocr' mặc định | 'manual') — phân
+    biệt nguồn gốc phiếu, hiển thị badge "tay" trên giao diện.
 
-Code cũ tự dựng lại lịch sử bằng cách trích XUẤT RIÊNG name+args từ
-response.function_calls (property tiện ích chỉ chứa FunctionCall
-object, KHÔNG chứa thought_signature — trường này nằm ở cấp Part bao
-quanh, không nằm trong FunctionCall) rồi tự gói lại thành dict mới —
-vô tình làm RƠI MẤT thought_signature trong quá trình "dựng lại từ
-đầu" này.
+- app/schemas.py
+  + ReceiptOut.image_path đổi Optional (khớp models.py).
+  + Thêm ReceiptManualCreate, ReceiptLineItemManualCreate (tạo phiếu
+    tay), ReceiptUpdateRequest (sửa thông tin chung phiếu),
+    ReceiptLineItemCreateRequest (thêm dòng mới), ReceiptLineItem
+    UpdateRequest (sửa dòng đã có).
 
-Cách sửa (app/chatbot/service.py, hàm _ask_gemini_real):
-- Bỏ hẳn cách tự dựng lại model_call_parts từ response.function_calls.
-- Dùng response.candidates[0].content.model_dump(mode="json",
-  exclude_none=True) — lấy NGUYÊN VẸN toàn bộ content thật mà model
-  trả về (bảo toàn MỌI field, không chỉ thought_signature — phòng
-  trường hợp Google thêm field bắt buộc khác trong tương lai mà mình
-  không biết trước để mà trích riêng).
-- mode="json" tự chuyển bytes (thought_signature) thành chuỗi base64
-  để JSON-serialize được — quan trọng vì "history" phải gửi qua API
-  dạng JSON cho frontend giữ và gửi lại.
-- Áp dụng CÙNG cách này cho CẢ 2 nhánh (có gọi tool / trả lời thẳng
-  bằng text) — nhất quán, đề phòng cả trường hợp trả lời text cuối
-  cùng cũng có thể kèm thought_signature (tài liệu Google có nhắc tới
-  trường hợp này, dù không bắt buộc validate).
+- app/routers/receipts.py — thêm 6 endpoint:
+  + POST /receipts/manual — tạo phiếu hoàn toàn bằng tay, KHÔNG qua
+    OCR, KHÔNG tự động so khớp tên sản phẩm (khác /upload) — người
+    dùng tự chọn đúng product_id ngay lúc nhập.
+  + PUT /receipts/{id} — sửa thông tin chung (mã phiếu, nhà cung cấp).
+  + DELETE /receipts/{id} — xoá cả phiếu, CHẶN nếu bất kỳ dòng nào đã
+    có phiên đếm (bảo vệ dữ liệu tồn kho đã cập nhật thật khỏi bị mất
+    dấu vết).
+  + POST /receipts/{id}/lines — thêm dòng hàng mới (luôn an toàn).
+  + PUT/DELETE /receipts/{id}/lines/{line_id} — sửa/xoá 1 dòng, CHẶN
+    nếu dòng đó đã có phiên đếm (CameraCountSession) dù ở bất kỳ
+    trạng thái nào (kể cả đang đếm dở) — tránh sửa số lượng SAU KHI
+    tồn kho đã cộng dựa trên số cũ, gây sai lệch âm thầm.
 
-ĐÃ TỰ KIỂM TRA (không chỉ đọc tài liệu suông — verify bằng code thật
-của SDK):
-1. Test round-trip serialize: dựng types.Part với thought_signature
-   là bytes giả -> model_dump(mode="json") -> xác nhận ra đúng chuỗi
-   base64, JSON-serialize thành công.
-2. Test round-trip deserialize: dựng lại types.Part(**dict) từ chính
-   dict có chuỗi base64 đó -> xác nhận thought_signature giải mã lại
-   ĐÚNG 100% bytes gốc ban đầu (so sánh bằng ==, không chỉ nhìn qua).
-3. Test TOÀN BỘ vòng lặp end-to-end với response giả lập THẬT có kèm
-   thought_signature (mô phỏng đúng tình huống lỗi thật đã gặp): chạy
-   qua service.ask_chatbot() với DB SQLite thật, CHỤP LẠI đúng nội
-   dung "contents" thực sự được gửi đi ở LẦN GỌI THỨ 2 (sau khi model
-   gọi tool xong) — xác nhận thought_signature CÓ MẶT trong đó, giải
-   mã base64 khớp đúng 100% với bytes gốc đã đưa vào response giả lập
-   ban đầu. Đây là bằng chứng trực tiếp nhất có thể tạo ra được mà
-   không cần gọi API Gemini thật qua mạng.
+============================================================
+2. In phiếu xuất kho
+============================================================
+- app/routers/inventory.py
+  + Endpoint export-history (đã có từ trước) thêm 2 query param tuỳ
+    chọn: reference_type, reference_id — lọc đúng 1 LƯỢT xuất cụ thể.
+  + XÁC NHẬN QUA ĐỌC CODE camera.py: mọi lượt xuất qua đếm camera
+    (video/trực tiếp/nhập tay trong màn hình đếm) đều gọi
+    perform_fefo_export với reference_type="camera_session",
+    reference_id=session.id — nghĩa là tính năng in phiếu CHỈ CẦN đọc
+    lại đúng dữ liệu này, KHÔNG CẦN sửa gì trong camera.py.
 
-CHƯA kiểm tra được (cần GEMINI_API_KEY thật + gọi qua mạng thật): liệu
-Gemini server thật có chấp nhận đúng định dạng dict snake_case này khi
-gửi qua HTTP thật hay không — về mặt cấu trúc đã khớp đúng ContentDict/
-PartDict mà chính SDK khai báo là định dạng hợp lệ (không phải suy
-đoán, đọc trực tiếp type hint của generate_content()), nên rủi ro thấp,
-nhưng vẫn cần bạn tự xác nhận bằng 1 lần hỏi thật sau khi deploy.
+ĐÃ TỰ KIỂM TRA (SQLite thật qua TestClient, không phải chỉ đọc code):
+1. Tạo phiếu tay -> đúng source_type='manual', status='ocr_done'.
+2. Sửa thông tin chung phiếu -> đúng giá trị mới.
+3. Thêm dòng mới -> đúng line_no tự tăng.
+4. Sửa dòng CHƯA đếm -> THÀNH CÔNG.
+5. Giả lập dòng ĐÃ đếm (tạo CameraCountSession completed) -> sửa dòng
+   đó BỊ CHẶN 409, xoá dòng đó BỊ CHẶN 409, xoá CẢ PHIẾU chứa dòng đó
+   cũng BỊ CHẶN 409 — xác nhận đủ 3 lớp bảo vệ đều đúng.
+6. Xoá phiếu KHÔNG có dòng nào đã đếm -> THÀNH CÔNG.
+7. Lọc export-history theo reference_type=camera_session&reference_id=77
+   (giả lập) -> CHỈ trả về đúng 1 lượt xuất khớp, không lẫn lượt khác.
+
+============================================================
+3. Database demo đầy đủ (db/seed_main.py — viết lại toàn bộ)
+============================================================
+Mở rộng từ 3 phiếu lên 7 phiếu, phủ ĐỦ MỌI trạng thái + cả 2 nguồn
+tạo (OCR/tay): 2 phiếu hoàn chỉnh OCR, 1 phiếu OCR có dòng lệch, 1
+phiếu tạo tay hoàn chỉnh, 1 phiếu tạo tay CHƯA đếm gì (để demo sửa/
+xoá), 1 phiếu đang chờ OCR, 1 phiếu OCR hoàn chỉnh bổ sung. Thêm 5
+lượt xuất kho có sẵn (3 qua camera, 2 gõ tay) để trang Lịch sử xuất
+kho có dữ liệu ngay khi demo. Thêm tình huống hàng ĐÃ HẾT HẠN nhưng
+còn tồn kho (~11% lô) — khác "sắp hết hạn", note rõ đây là hạn chế/
+hướng phát triển cho báo cáo.
+
+ĐÃ TỰ KIỂM TRA (chạy thật, không chỉ đọc code):
+- Chạy seed thành công, đúng số liệu tóm tắt in ra.
+- Phiếu "chưa đếm gì" (PN-2026-005) xác nhận ĐÚNG 0 phiên đếm ở CẢ 3
+  dòng hàng (test từng dòng riêng, không chỉ tin theo status phiếu).
+- Phiếu "pending_ocr" (PN-2026-006) đúng 0 dòng hàng.
+- XÁC NHẬN KHÔNG có cảnh báo expiring_soon nào gắn nhầm cho lô ĐÃ hết
+  hạn (đúng bản sửa lỗi trước đó ở tools.py, áp dụng nhất quán trong
+  seed_main.py) — kiểm tra toàn bộ lô đã hết hạn thật trong data, xác
+  nhận không lô nào có cảnh báo sai.
+- Đúng 5 giao dịch xuất kho được tạo, khớp export_specs khai báo.
+
+Việc cần làm: chạy python -m db.seed_main trên máy có kết nối
+database thật (sẽ XOÁ SẠCH data cũ) để áp dụng bộ data mới.

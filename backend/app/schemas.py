@@ -33,11 +33,59 @@ class ReceiptOut(BaseModel):
     id: int
     receipt_code: Optional[str]
     store_location: Optional[str]
-    image_path: str
+    image_path: Optional[str] = None
     ocr_confidence: Optional[float]
     status: str
+    source_type: str = "ocr"
     received_at: Optional[datetime]
     line_items: List[LineItemOut] = []
+
+
+# ---------- Tạo / sửa phiếu nhập BẰNG TAY (không qua OCR) ----------
+class ReceiptLineItemManualCreate(BaseModel):
+    product_name_raw: str
+    product_id: Optional[int] = None  # để trống nếu chưa có trong danh mục — vẫn tạo được dòng, gán sau ở /products/unmapped-lines
+    quantity: float
+    batch_code: Optional[str] = None
+    expiry_date: Optional[date] = None
+
+
+class ReceiptManualCreate(BaseModel):
+    receipt_code: Optional[str] = None
+    store_location: Optional[str] = None
+    received_at: Optional[datetime] = None
+    line_items: List[ReceiptLineItemManualCreate]
+
+
+class ReceiptUpdateRequest(BaseModel):
+    """Sửa thông tin CHUNG của phiếu — KHÔNG sửa dòng hàng ở đây (xem riêng
+    ReceiptLineItemUpdateRequest), vì sửa dòng hàng cần kiểm tra an toàn
+    theo từng dòng (dòng đã đếm rồi thì không cho sửa số lượng nữa)."""
+    receipt_code: Optional[str] = None
+    store_location: Optional[str] = None
+    received_at: Optional[datetime] = None
+
+
+class ReceiptLineItemCreateRequest(BaseModel):
+    """Thêm 1 dòng hàng MỚI vào phiếu đã có sẵn — luôn an toàn vì là dòng
+    hoàn toàn mới, không đụng tới dữ liệu tồn kho/đếm nào đã có."""
+    product_name_raw: str
+    product_id: Optional[int] = None
+    quantity: float
+    batch_code: Optional[str] = None
+    expiry_date: Optional[date] = None
+
+
+class ReceiptLineItemUpdateRequest(BaseModel):
+    """Sửa 1 dòng hàng đã có — CHỈ cho phép nếu dòng đó CHƯA từng được đếm
+    (chưa có CameraCountSession nào) — xem kiểm tra an toàn trong
+    app/routers/receipts.py, tránh sửa số lượng sau khi tồn kho đã được
+    cộng dựa trên số cũ, gây sai lệch dữ liệu âm thầm."""
+    product_name_raw: Optional[str] = None
+    product_id: Optional[int] = None
+    quantity: Optional[float] = None
+    batch_code: Optional[str] = None
+    expiry_date: Optional[date] = None
 
 
 # ---------- Camera session (nhận từ pipeline YOLOv8 + ByteTrack) ----------

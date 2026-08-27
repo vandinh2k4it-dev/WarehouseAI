@@ -31,18 +31,25 @@ class ImportReceipt(Base):
     id = Column(Integer, primary_key=True)
     receipt_code = Column(String(64), unique=True, nullable=True)
     store_location = Column(String(255))
-    image_path = Column(String(512), nullable=False)
+    # Cho phép NULL — phiếu tạo bằng tay (không quét ảnh, xem
+    # app/routers/receipts.py endpoint /manual) không có ảnh gốc để lưu.
+    image_path = Column(String(512), nullable=True)
     ocr_raw_text = Column(Text)
     ocr_confidence = Column(Numeric(5, 4))
     status = Column(String(20), nullable=False, default="pending_ocr")
     received_at = Column(TIMESTAMP(timezone=True))
     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
+    # 'ocr' (quét ảnh, mặc định — khớp dữ liệu cũ) hoặc 'manual' (nhập tay
+    # toàn bộ, không qua OCR) — dùng để UI hiện đúng ngữ cảnh (vd không hiện
+    # link xem ảnh gốc cho phiếu manual) và để chặn sửa/xoá an toàn hơn.
+    source_type = Column(String(20), nullable=False, default="ocr")
 
     __table_args__ = (
         CheckConstraint(
             "status IN ('pending_ocr','ocr_done','reconciled','flagged')",
             name="ck_receipt_status",
         ),
+        CheckConstraint("source_type IN ('ocr','manual')", name="ck_receipt_source_type"),
     )
 
     line_items = relationship(

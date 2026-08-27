@@ -111,6 +111,203 @@ def upload_receipt(
     return receipt
 
 
+@router.post("/manual", response_model=schemas.ReceiptOut)
+def create_receipt_manual(payload: schemas.ReceiptManualCreate, db: Session = Depends(get_db)):
+    """Tạo phiếu nhập BẰNG TAY — dùng khi không có ảnh phiếu giấy để quét
+    (vd nhân viên tự gõ lại theo phiếu giấy, hoặc nhập bổ sung/điều chỉnh).
+    KHÔNG qua OCR, không tự động so khớp sản phẩm bằng tên gần đúng (khác
+    /upload) — người dùng tự chọn đúng product_id ngay lúc nhập nếu sản
+    phẩm đã có trong danh mục, để trống nếu chưa có (xử lý sau ở
+    /products/unmapped-lines, giống hệt luồng OCR khi không khớp được)."""
+    if not payload.line_items:
+        raise HTTPException(status_code=400, detail="Phiếu phải có ít nhất 1 dòng hàng")
+
+    receipt = models.ImportReceipt(
+        receipt_code=payload.receipt_code,
+        store_location=payload.store_location,
+        image_path=None,
+        status="ocr_done",  # bỏ qua bước "pending_ocr" vì không có OCR nào để chạy
+        source_type="manual",
+        received_at=payload.received_at or datetime.now(timezone.utc),
+    )
+    db.add(receipt)
+    db.flush()
+
+    for i, line in enumerate(payload.line_items, start=1):
+        db.add(models.ReceiptLineItem(
+            receipt_id=receipt.id,
+            line_no=i,
+            product_name_raw=line.product_name_raw,
+            product_id=line.product_id,
+            quantity=line.quantity,
+            batch_code=line.batch_code,
+            expiry_date=line.expiry_date,
+            match_score=1.0 if line.product_id else None,  # đã tự chọn đúng sản phẩm -> coi như khớp tuyệt đối
+        ))
+
+    db.commit()
+    db.refresh(receipt)
+    return receipt
+
+
+@router.put("/{receipt_id}", response_model=schemas.ReceiptOut)
+def update_receipt(receipt_id: int, payload: schemas.ReceiptUpdateRequest, db: Session = Depends(get_db)):
+    """Sửa thông tin chung của phiếu (mã phiếu, nhà cung cấp, ngày nhận) —
+    KHÔNG sửa dòng hàng ở đây, xem riêng /receipts/{id}/lines (POST) và
+    /receipts/{id}/lines/{line_id} (PUT/DELETE)."""
+    receipt = db.get(models.ImportReceipt, receipt_id)
+    if not receipt:
+        raise HTTPException(status_code=404, detail="Không tìm thấy phiếu nhập")
+
+    if payload.receipt_code is not None:
+        receipt.receipt_code = payload.receipt_code
+    if payload.store_location is not None:
+        receipt.store_location = payload.store_location
+    if payload.received_at is not None:
+        receipt.received_at = payload.received_at
+
+    db.commit()
+    db.refresh(receipt)
+    return receipt
+
+
+@router.delete("/{receipt_id}")
+def delete_receipt(receipt_id: int, db: Session = Depends(get_db)):
+    """Xoá hẳn 1 phiếu nhập — CHỈ CHO PHÉP nếu KHÔNG có dòng hàng nào đã bắt
+    đầu đếm (chưa có CameraCountSession nào gắn với bất kỳ dòng nào của
+    phiếu này). Chặn xoá nếu đã có đếm, dù mới đếm 1 dòng — vì việc đếm đã
+    có thể làm thay đổi tồn kho thật (dòng đã khớp), xoá phiếu lúc này sẽ
+    làm "mồ côi" dữ liệu tồn kho/giao dịch đã phát sinh, không phản ánh
+    đúng lịch sử thật nữa."""
+    receipt = db.get(models.ImportReceipt, receipt_id)
+    if not receipt:
+        raise HTTPException(status_code=404, detail="Không tìm thấy phiếu nhập")
+
+    line_ids = [li.id for li in receipt.line_items]
+    if line_ids:
+        has_sessions = (
+            db.query(models.CameraCountSession)
+            .filter(models.CameraCountSession.receipt_line_item_id.in_(line_ids))
+            .first()
+        )
+        if has_sessions:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Không thể xoá — phiếu này đã có ít nhất 1 dòng hàng được đếm rồi "
+                    "(có thể đã cập nhật tồn kho thật). Xoá lúc này sẽ làm mất dấu vết "
+                    "giao dịch đã xảy ra. Nếu thực sự cần xoá, hãy liên hệ người quản trị "
+                    "để xử lý thủ công trực tiếp trên cơ sở dữ liệu."
+                ),
+            )
+
+    db.delete(receipt)  # cascade="all, delete-orphan" trên line_items tự xoá kèm theo
+    db.commit()
+    return {"deleted": True, "receipt_id": receipt_id}
+
+
+@router.post("/{receipt_id}/lines", response_model=schemas.LineItemOut)
+def add_receipt_line(receipt_id: int, payload: schemas.ReceiptLineItemCreateRequest, db: Session = Depends(get_db)):
+    """Thêm 1 dòng hàng MỚI vào phiếu đã có — luôn an toàn (dòng hoàn toàn
+    mới, không đụng dữ liệu đã có), dùng khi phát hiện thiếu dòng lúc nhập
+    tay hoặc bổ sung sau khi quét OCR bị sót dòng."""
+    receipt = db.get(models.ImportReceipt, receipt_id)
+    if not receipt:
+        raise HTTPException(status_code=404, detail="Không tìm thấy phiếu nhập")
+
+    max_line_no = max([li.line_no for li in receipt.line_items], default=0)
+    line = models.ReceiptLineItem(
+        receipt_id=receipt_id,
+        line_no=max_line_no + 1,
+        product_name_raw=payload.product_name_raw,
+        product_id=payload.product_id,
+        quantity=payload.quantity,
+        batch_code=payload.batch_code,
+        expiry_date=payload.expiry_date,
+        match_score=1.0 if payload.product_id else None,
+    )
+    db.add(line)
+    db.commit()
+    db.refresh(line)
+    return line
+
+
+def _get_line_counting_status(db: Session, line_id: int) -> str | None:
+    """Trả về status của phiên đếm MỚI NHẤT gắn với dòng này, hoặc None nếu
+    dòng chưa từng được đếm lần nào — dùng chung cho cả sửa lẫn xoá dòng để
+    quyết định có an toàn để sửa/xoá không."""
+    latest = (
+        db.query(models.CameraCountSession)
+        .filter(models.CameraCountSession.receipt_line_item_id == line_id)
+        .order_by(models.CameraCountSession.id.desc())
+        .first()
+    )
+    return latest.status if latest else None
+
+
+@router.put("/{receipt_id}/lines/{line_id}", response_model=schemas.LineItemOut)
+def update_receipt_line(
+    receipt_id: int, line_id: int, payload: schemas.ReceiptLineItemUpdateRequest, db: Session = Depends(get_db),
+):
+    """Sửa 1 dòng hàng — CHỈ cho phép nếu dòng CHƯA từng được đếm (không có
+    CameraCountSession nào, kể cả đã 'completed' hay đang 'counting') —
+    tránh sửa số lượng SAU KHI tồn kho đã được cộng dựa trên số cũ, gây sai
+    lệch âm thầm giữa "số ghi trên phiếu" và "số thực đã cộng vào kho"."""
+    line = db.get(models.ReceiptLineItem, line_id)
+    if not line or line.receipt_id != receipt_id:
+        raise HTTPException(status_code=404, detail="Không tìm thấy dòng hàng này trong phiếu")
+
+    existing_status = _get_line_counting_status(db, line_id)
+    if existing_status is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Không thể sửa — dòng hàng này đã có phiên đếm (trạng thái '{existing_status}'). "
+                "Sửa lúc này có thể làm sai lệch tồn kho đã cập nhật. Nếu đếm bị sai, dùng chức năng "
+                "'Đếm lại' thay vì sửa trực tiếp dòng hàng."
+            ),
+        )
+
+    if payload.product_name_raw is not None:
+        line.product_name_raw = payload.product_name_raw
+    if payload.product_id is not None:
+        line.product_id = payload.product_id
+        line.match_score = 1.0
+    if payload.quantity is not None:
+        line.quantity = payload.quantity
+    if payload.batch_code is not None:
+        line.batch_code = payload.batch_code
+    if payload.expiry_date is not None:
+        line.expiry_date = payload.expiry_date
+
+    db.commit()
+    db.refresh(line)
+    return line
+
+
+@router.delete("/{receipt_id}/lines/{line_id}")
+def delete_receipt_line(receipt_id: int, line_id: int, db: Session = Depends(get_db)):
+    """Xoá 1 dòng hàng — CHỈ cho phép nếu dòng CHƯA từng được đếm, cùng lý
+    do an toàn như update_receipt_line ở trên."""
+    line = db.get(models.ReceiptLineItem, line_id)
+    if not line or line.receipt_id != receipt_id:
+        raise HTTPException(status_code=404, detail="Không tìm thấy dòng hàng này trong phiếu")
+
+    existing_status = _get_line_counting_status(db, line_id)
+    if existing_status is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Không thể xoá — dòng hàng này đã có phiên đếm (trạng thái '{existing_status}'). "
+                "Xoá lúc này sẽ làm mất dấu vết giao dịch đã xảy ra."
+            ),
+        )
+
+    db.delete(line)
+    db.commit()
+    return {"deleted": True, "line_id": line_id}
+
+
 @router.get("/{receipt_id}", response_model=schemas.ReceiptOut)
 def get_receipt(receipt_id: int, db: Session = Depends(get_db)):
     receipt = db.get(models.ImportReceipt, receipt_id)
