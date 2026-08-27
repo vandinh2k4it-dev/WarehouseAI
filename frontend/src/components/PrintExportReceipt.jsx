@@ -52,7 +52,7 @@ export default function PrintExportReceipt({ session, productLabel, expectedQuan
 
           <div className="printReceipt-meta">
             <div>
-              Số phiên đếm: <b className="mono">#{session.id}</b>
+              Số phiếu xuất: <b className="mono">{session.session_code || `#${session.id}`}</b>
             </div>
             <div>
               Người nhận hàng: <span className="printReceipt-blank">.............................</span>

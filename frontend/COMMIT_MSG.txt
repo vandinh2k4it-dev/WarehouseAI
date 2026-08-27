@@ -1,66 +1,14 @@
-feat(frontend): tạo/sửa/xoá phiếu nhập bằng tay + in phiếu xuất kho
+fix(frontend): hiện đúng mã phiếu xuất (PX0001) thay vì số phiên thô
 
-Nối vào backend đã có sẵn (xem COMMIT_MSG.txt bên backend cùng đợt).
+Nối theo backend cùng đợt (xem COMMIT_MSG.txt bên backend) — backend
+giờ tự sinh session_code dạng "PX0001" cho mỗi phiên đếm xuất, đại
+diện luôn cho mã phiếu xuất kho.
 
-File mới:
-- src/pages/CreateReceiptManual.jsx (route mới /import/create)
-  Form tạo phiếu nhập bằng tay — mã phiếu/nhà cung cấp (tuỳ chọn) +
-  danh sách dòng hàng động (thêm/xoá dòng ngay trên form), mỗi dòng
-  có tên sản phẩm/số lượng/mã lô/hạn sử dụng.
+- src/components/PrintExportReceipt.jsx: đổi hiển thị từ "Số phiên
+  đếm: #88" (raw session.id) sang "Số phiếu xuất: PX0001"
+  (session.session_code) — có fallback về "#id" nếu session_code cũ
+  chưa có (dữ liệu tạo trước khi có bản vá backend này, tránh hiện
+  "undefined" trên các phiên cũ).
 
-- src/components/PrintExportReceipt.jsx
-  Modal xem trước + in phiếu xuất kho — tự động lọc đúng chi tiết
-  lượt xuất (theo reference_type=camera_session, reference_id=session.id)
-  từ endpoint export-history đã có, hiện bảng chi tiết theo từng lô +
-  khung chữ ký. Nút "In phiếu" gọi window.print() — không cần thư
-  viện tạo PDF riêng.
-
-File sửa:
-- src/api.js — thêm 7 hàm: createReceiptManual, updateReceipt,
-  deleteReceipt, addReceiptLine, updateReceiptLine, deleteReceiptLine,
-  getExportDetailsByReference.
-
-- src/components/CountingScreen.jsx
-  Sau khi xuất kho khớp số (result.session.direction === "export" &&
-  matched), hiện nút "In phiếu xuất kho" mở modal PrintExportReceipt.
-  Hoạt động với cả 3 cách đếm (video/trực tiếp/nhập tay) vì tất cả
-  đều đi qua cùng luồng camera-session, cùng reference_type.
-
-- src/pages/ImportFlow.jsx
-  + Thêm nút "Tạo phiếu tay" cạnh "+ Quét phiếu mới".
-  + Thêm nút "Xoá" trên mỗi phiếu trong danh sách (gọi API, tự bắt
-    lỗi 409 nếu backend chặn).
-  + Mỗi dòng hàng: nếu counting_status === "not_started" (khớp đúng
-    điều kiện an toàn phía backend), hiện thêm nút "Sửa"/"Xoá" — bấm
-    Sửa chuyển dòng đó thành form inline, Lưu/Huỷ ngay tại chỗ.
-  + Thêm "+ Thêm dòng hàng" ở cuối danh sách dòng — form inline thêm
-    dòng mới vào phiếu đang xem.
-  + Badge "tay" hiện cạnh mã phiếu nếu source_type === "manual".
-
-- src/App.jsx — thêm route /import/create.
-
-- src/styles/app.css — CSS cho .manualLineRow (form dòng hàng),
-  .lineCard-editing (dòng đang sửa inline), .printReceipt-* (modal in
-  phiếu) + @media print (ẩn toàn bộ giao diện app khi in, chỉ hiện
-  đúng nội dung phiếu).
-
-ĐÃ TỰ KIỂM TRA TÍCH HỢP (esbuild bundle CHÍNH file thật + Playwright,
-không phải chép lại code vào môi trường test):
-1. CreateReceiptManual.jsx: điền form thật (mã phiếu, nhà cung cấp, 2
-   dòng hàng qua nút "+ Thêm dòng hàng"), bấm nút "Tạo phiếu nhập"
-   (dùng đúng get_by_role để tránh nhầm với tiêu đề cùng chữ) — CHỤP
-   LẠI đúng payload gửi lên backend, xác nhận khớp 100% dữ liệu đã
-   điền (cả 2 dòng, đúng tên/số lượng/mã lô).
-2. PrintExportReceipt.jsx: giả lập response export-history có 2 lô
-   (12 + 8 thùng) — xác nhận hiện đúng số phiên (#88), đúng cả 2 mã
-   lô, TỰ TÍNH ĐÚNG tổng cộng 20 (phép cộng thật, không phải số cứng
-   gõ sẵn). Ảnh chụp xác nhận bố cục đúng kiểu chứng từ (bảng + chữ
-   ký), không lỗi layout.
-3. Cả 2 test trên đều PHÁT HIỆN VÀ TỰ SỬA 1 lỗi trong chính kịch bản
-   test (không phải lỗi code): lần đầu dùng selector "text=..." mơ hồ
-   khớp nhầm cả tiêu đề lẫn nút cùng chữ, gây lỗi "strict mode
-   violation" — đã sửa dùng get_by_role chính xác hơn, chạy lại xác
-   nhận đúng.
-
-Việc cần làm: npm run build trên máy bạn trước khi deploy (sandbox
-thiếu Vite đầy đủ nên chưa tự chạy được build thật lần này).
+Đã kiểm tra cú pháp (esbuild), không cần test lại toàn bộ luồng vì
+chỉ đổi đúng 1 biểu thức hiển thị, không đổi logic gọi API/tính toán.
