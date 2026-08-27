@@ -331,11 +331,17 @@ def seed_main(wipe: bool = True):
 
         receipts_created = []
         receipts_created.append(make_reconciled_receipt("PN-2026-001", SUPPLIERS[0], ["SP-001", "SP-004", "SP-017", "SP-026"]))
+        db.commit()
         receipts_created.append(make_reconciled_receipt("PN-2026-002", SUPPLIERS[1], ["SP-011", "SP-013", "SP-014", "SP-016"]))
+        db.commit()
         receipts_created.append(make_flagged_receipt("PN-2026-003", SUPPLIERS[2], ["SP-021", "SP-023", "SP-025"]))
+        db.commit()
         receipts_created.append(make_reconciled_receipt("PN-2026-004", SUPPLIERS[3], ["SP-002", "SP-006", "SP-009"], source_type="manual"))
+        db.commit()
         receipts_created.append(make_not_started_receipt("PN-2026-005", SUPPLIERS[4], ["SP-018", "SP-019", "SP-027"], source_type="manual"))
+        db.commit()
         receipts_created.append(make_reconciled_receipt("PN-2026-007", SUPPLIERS[0], ["SP-003", "SP-010", "SP-030"]))
+        db.commit()
 
         # Phiếu "pending_ocr" — demo trạng thái đang chờ xử lý (chưa có dòng
         # hàng nào vì thực tế OCR chưa chạy xong/chưa được duyệt).

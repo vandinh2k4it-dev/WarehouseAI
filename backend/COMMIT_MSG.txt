@@ -1,86 +1,19 @@
-feat(backend): tạo/sửa/xoá phiếu nhập bằng tay + in phiếu xuất kho + database demo đầy đủ
+fix(backend): seed_main.py commit sau mỗi phiếu — tránh mất công làm lại khi mạng chập chờn
 
-Bối cảnh: 3 yêu cầu lớn — (1) xoá database cũ, thay bằng bộ data mới
-đầy đủ chi tiết kèm hướng dẫn demo; (2) cho phép tạo phiếu nhập bằng
-tay (không cần quét ảnh), sửa/xoá phiếu và dòng hàng; (3) in phiếu
-xuất kho khi xuất hàng xong.
+Bối cảnh thật: chạy seed qua đường hầm SSH (railway connect
+--tunnel-only) bị rớt giữa chừng với lỗi "SSL error: unexpected eof
+while reading" ngay khi đang tạo phiếu PN-2026-003 — do TOÀN BỘ 7
+phiếu trước đó gộp chung 1 giao dịch (chỉ có đúng 1 db.commit() sau
+khi tạo xong tất cả), khiến kết nối phải giữ liên tục qua nhiều câu
+lệnh SQL, dễ bị đường hầm ngắt giữa chừng hơn.
 
-============================================================
-1. Tạo/sửa/xoá phiếu nhập bằng tay
-============================================================
-- app/models.py
-  + ImportReceipt.image_path đổi thành nullable=True (phiếu tạo tay
-    không có ảnh gốc để lưu).
-  + Thêm ImportReceipt.source_type ('ocr' mặc định | 'manual') — phân
-    biệt nguồn gốc phiếu, hiển thị badge "tay" trên giao diện.
+Cách sửa: thêm db.commit() ngay sau MỖI phiếu được tạo (7 lần commit
+riêng biệt thay vì 1 lần duy nhất ở cuối) — nếu mạng rớt giữa chừng,
+chỉ mất đúng phiếu đang làm dở, các phiếu trước đó đã lưu thật, chạy
+lại (mặc định wipe=True) vẫn an toàn dù có tốn công làm lại từ đầu,
+nhưng RỦI RO RỚT GIỮA CHỪNG giảm hẳn vì mỗi giao dịch giờ ngắn hơn
+nhiều.
 
-- app/schemas.py
-  + ReceiptOut.image_path đổi Optional (khớp models.py).
-  + Thêm ReceiptManualCreate, ReceiptLineItemManualCreate (tạo phiếu
-    tay), ReceiptUpdateRequest (sửa thông tin chung phiếu),
-    ReceiptLineItemCreateRequest (thêm dòng mới), ReceiptLineItem
-    UpdateRequest (sửa dòng đã có).
-
-- app/routers/receipts.py — thêm 6 endpoint:
-  + POST /receipts/manual — tạo phiếu hoàn toàn bằng tay, KHÔNG qua
-    OCR, KHÔNG tự động so khớp tên sản phẩm (khác /upload) — người
-    dùng tự chọn đúng product_id ngay lúc nhập.
-  + PUT /receipts/{id} — sửa thông tin chung (mã phiếu, nhà cung cấp).
-  + DELETE /receipts/{id} — xoá cả phiếu, CHẶN nếu bất kỳ dòng nào đã
-    có phiên đếm (bảo vệ dữ liệu tồn kho đã cập nhật thật khỏi bị mất
-    dấu vết).
-  + POST /receipts/{id}/lines — thêm dòng hàng mới (luôn an toàn).
-  + PUT/DELETE /receipts/{id}/lines/{line_id} — sửa/xoá 1 dòng, CHẶN
-    nếu dòng đó đã có phiên đếm (CameraCountSession) dù ở bất kỳ
-    trạng thái nào (kể cả đang đếm dở) — tránh sửa số lượng SAU KHI
-    tồn kho đã cộng dựa trên số cũ, gây sai lệch âm thầm.
-
-============================================================
-2. In phiếu xuất kho
-============================================================
-- app/routers/inventory.py
-  + Endpoint export-history (đã có từ trước) thêm 2 query param tuỳ
-    chọn: reference_type, reference_id — lọc đúng 1 LƯỢT xuất cụ thể.
-  + XÁC NHẬN QUA ĐỌC CODE camera.py: mọi lượt xuất qua đếm camera
-    (video/trực tiếp/nhập tay trong màn hình đếm) đều gọi
-    perform_fefo_export với reference_type="camera_session",
-    reference_id=session.id — nghĩa là tính năng in phiếu CHỈ CẦN đọc
-    lại đúng dữ liệu này, KHÔNG CẦN sửa gì trong camera.py.
-
-ĐÃ TỰ KIỂM TRA (SQLite thật qua TestClient, không phải chỉ đọc code):
-1. Tạo phiếu tay -> đúng source_type='manual', status='ocr_done'.
-2. Sửa thông tin chung phiếu -> đúng giá trị mới.
-3. Thêm dòng mới -> đúng line_no tự tăng.
-4. Sửa dòng CHƯA đếm -> THÀNH CÔNG.
-5. Giả lập dòng ĐÃ đếm (tạo CameraCountSession completed) -> sửa dòng
-   đó BỊ CHẶN 409, xoá dòng đó BỊ CHẶN 409, xoá CẢ PHIẾU chứa dòng đó
-   cũng BỊ CHẶN 409 — xác nhận đủ 3 lớp bảo vệ đều đúng.
-6. Xoá phiếu KHÔNG có dòng nào đã đếm -> THÀNH CÔNG.
-7. Lọc export-history theo reference_type=camera_session&reference_id=77
-   (giả lập) -> CHỈ trả về đúng 1 lượt xuất khớp, không lẫn lượt khác.
-
-============================================================
-3. Database demo đầy đủ (db/seed_main.py — viết lại toàn bộ)
-============================================================
-Mở rộng từ 3 phiếu lên 7 phiếu, phủ ĐỦ MỌI trạng thái + cả 2 nguồn
-tạo (OCR/tay): 2 phiếu hoàn chỉnh OCR, 1 phiếu OCR có dòng lệch, 1
-phiếu tạo tay hoàn chỉnh, 1 phiếu tạo tay CHƯA đếm gì (để demo sửa/
-xoá), 1 phiếu đang chờ OCR, 1 phiếu OCR hoàn chỉnh bổ sung. Thêm 5
-lượt xuất kho có sẵn (3 qua camera, 2 gõ tay) để trang Lịch sử xuất
-kho có dữ liệu ngay khi demo. Thêm tình huống hàng ĐÃ HẾT HẠN nhưng
-còn tồn kho (~11% lô) — khác "sắp hết hạn", note rõ đây là hạn chế/
-hướng phát triển cho báo cáo.
-
-ĐÃ TỰ KIỂM TRA (chạy thật, không chỉ đọc code):
-- Chạy seed thành công, đúng số liệu tóm tắt in ra.
-- Phiếu "chưa đếm gì" (PN-2026-005) xác nhận ĐÚNG 0 phiên đếm ở CẢ 3
-  dòng hàng (test từng dòng riêng, không chỉ tin theo status phiếu).
-- Phiếu "pending_ocr" (PN-2026-006) đúng 0 dòng hàng.
-- XÁC NHẬN KHÔNG có cảnh báo expiring_soon nào gắn nhầm cho lô ĐÃ hết
-  hạn (đúng bản sửa lỗi trước đó ở tools.py, áp dụng nhất quán trong
-  seed_main.py) — kiểm tra toàn bộ lô đã hết hạn thật trong data, xác
-  nhận không lô nào có cảnh báo sai.
-- Đúng 5 giao dịch xuất kho được tạo, khớp export_specs khai báo.
-
-Việc cần làm: chạy python -m db.seed_main trên máy có kết nối
-database thật (sẽ XOÁ SẠCH data cũ) để áp dụng bộ data mới.
+Đã test lại toàn bộ bằng SQLite local — kết quả tóm tắt giống hệt
+bản trước (30 sản phẩm, 54 lô, 7 phiếu, 5 lượt xuất, 16 cảnh báo) —
+xác nhận việc chia nhỏ giao dịch không làm thay đổi logic/kết quả.
