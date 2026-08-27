@@ -12,6 +12,7 @@ from app import models, schemas
 from app import push_service
 from app.routers.reconciliation import apply_line_import
 from app.routers.inventory import perform_fefo_export
+from app.code_generator import generate_next_code
 
 router = APIRouter(prefix="/camera-sessions", tags=["camera"])
 
@@ -94,6 +95,7 @@ def start_import_segment(payload: schemas.CameraSegmentStartImport, db: Session 
             pass
 
     session = models.CameraCountSession(
+        session_code=generate_next_code(db, models.CameraCountSession, "session_code", "DEM"),
         direction="import",
         linked_receipt_id=line.receipt_id,
         receipt_line_item_id=line.id,
@@ -121,6 +123,12 @@ def start_export_segment(payload: schemas.CameraSegmentStartExport, db: Session 
         raise HTTPException(status_code=400, detail="Số lượng dự kiến xuất phải lớn hơn 0")
 
     session = models.CameraCountSession(
+        # Tiền tố "PX" (Phiếu Xuất) thay vì "DEM" như bên nhập — phiên đếm
+        # xuất KHÔNG chỉ là 1 lượt đếm đơn thuần, mà đại diện luôn cho
+        # CHÍNH phiếu xuất kho (1 phiên = 1 lượt xuất hoàn chỉnh, không có
+        # khái niệm "nhiều dòng trên 1 phiếu xuất" như bên nhập) — dùng
+        # session_code này trực tiếp làm mã phiếu xuất khi in phiếu.
+        session_code=generate_next_code(db, models.CameraCountSession, "session_code", "PX"),
         direction="export",
         product_id=product.id,
         expected_quantity=payload.expected_quantity,

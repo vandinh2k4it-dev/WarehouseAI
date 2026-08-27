@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app import models, schemas
+from app.code_generator import generate_next_code
 from ocr.ocr_engine import ReceiptOCREngine
 from ocr.postprocess import match_product_name
 
@@ -44,6 +45,7 @@ def upload_receipt(
         shutil.copyfileobj(file.file, out)
 
     receipt = models.ImportReceipt(
+        receipt_code=generate_next_code(db, models.ImportReceipt, "receipt_code", "PN"),
         store_location=store_location,
         image_path=saved_path,
         status="pending_ocr",
@@ -123,7 +125,7 @@ def create_receipt_manual(payload: schemas.ReceiptManualCreate, db: Session = De
         raise HTTPException(status_code=400, detail="Phiếu phải có ít nhất 1 dòng hàng")
 
     receipt = models.ImportReceipt(
-        receipt_code=payload.receipt_code,
+        receipt_code=payload.receipt_code or generate_next_code(db, models.ImportReceipt, "receipt_code", "PN"),
         store_location=payload.store_location,
         image_path=None,
         status="ocr_done",  # bỏ qua bước "pending_ocr" vì không có OCR nào để chạy

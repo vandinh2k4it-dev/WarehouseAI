@@ -1,19 +1,58 @@
-fix(backend): seed_main.py commit sau mỗi phiếu — tránh mất công làm lại khi mạng chập chờn
+feat(backend): tự động sinh mã phiếu/phiên đếm tăng dần (PN0001, DEM0001, PX0001)
 
-Bối cảnh thật: chạy seed qua đường hầm SSH (railway connect
---tunnel-only) bị rớt giữa chừng với lỗi "SSL error: unexpected eof
-while reading" ngay khi đang tạo phiếu PN-2026-003 — do TOÀN BỘ 7
-phiếu trước đó gộp chung 1 giao dịch (chỉ có đúng 1 db.commit() sau
-khi tạo xong tất cả), khiến kết nối phải giữ liên tục qua nhiều câu
-lệnh SQL, dễ bị đường hầm ngắt giữa chừng hơn.
+Bối cảnh: mã phiếu nhập (receipt_code) trước đây phải tự gõ tay hoặc
+để trống; mã phiên đếm (session_code) CHƯA TỪNG được gán (luôn NULL)
+dù cột đã có sẵn từ trước. Cần đồng bộ 3 loại mã theo đúng quy trình:
+phiếu nhập, phiếu xuất, phiên đếm — mỗi loại 1 dãy số tăng dần riêng.
 
-Cách sửa: thêm db.commit() ngay sau MỖI phiếu được tạo (7 lần commit
-riêng biệt thay vì 1 lần duy nhất ở cuối) — nếu mạng rớt giữa chừng,
-chỉ mất đúng phiếu đang làm dở, các phiếu trước đó đã lưu thật, chạy
-lại (mặc định wipe=True) vẫn an toàn dù có tốn công làm lại từ đầu,
-nhưng RỦI RO RỚT GIỮA CHỪNG giảm hẳn vì mỗi giao dịch giờ ngắn hơn
-nhiều.
+============================================================
+File mới: app/code_generator.py
+============================================================
+Hàm generate_next_code(db, model, code_column_name, prefix, pad_width)
+dùng chung cho cả 3 loại mã — tìm mã lớn nhất hiện có cùng tiền tố,
+tách lấy phần số bằng regex (không dùng MAX() chuỗi trực tiếp trên
+SQL vì sắp xếp chuỗi không đúng thứ tự số học nếu độ dài số khác
+nhau), +1, đệm đủ số 0.
 
-Đã test lại toàn bộ bằng SQLite local — kết quả tóm tắt giống hệt
-bản trước (30 sản phẩm, 54 lô, 7 phiếu, 5 lượt xuất, 16 cảnh báo) —
-xác nhận việc chia nhỏ giao dịch không làm thay đổi logic/kết quả.
+============================================================
+File sửa
+============================================================
+- app/routers/receipts.py
+  + Endpoint /upload (quét OCR): tự sinh receipt_code = "PN0001",
+    "PN0002"... mỗi lần tạo phiếu mới.
+  + Endpoint /manual (tạo tay): NẾU người dùng tự gõ mã thì GIỮ
+    NGUYÊN mã đó, chỉ tự sinh khi để trống.
+
+- app/routers/camera.py
+  + start-import: tự sinh session_code = "DEM0001", "DEM0002"...
+  + start-export: tự sinh session_code = "PX0001", "PX0002"... —
+    LƯU Ý: phiên đếm xuất đại diện luôn cho CHÍNH phiếu xuất kho
+    (1 phiên = 1 lượt xuất hoàn chỉnh) nên dùng session_code này
+    làm mã phiếu xuất khi in phiếu, không cần bảng/cột riêng.
+  + Sửa lỗi thao tác tự phát hiện: lúc đầu vô tình THAY THẾ nhầm
+    dòng import perform_fefo_export bằng dòng import code_generator
+    mới — phát hiện qua grep kiểm tra lại, sửa đúng trước khi giao.
+
+- db/seed_main.py — đồng bộ dữ liệu demo theo chuẩn mã mới: đổi
+  "PN-2026-001".."PN-2026-007" thành "PN0001".."PN0007"; đổi
+  session_code kiểu "cam-{code}-L{i}" thành "DEM0001".. tăng dần liên
+  tục; thêm session_code "PX0001".."PX0003" cho các lượt xuất qua
+  camera trong dữ liệu demo (trước đây bỏ trống).
+
+- src/components/PrintExportReceipt.jsx (frontend) — hiện đúng
+  session.session_code ("PX0001") thay vì raw session id ("#88"),
+  có fallback về #id nếu session_code cũ chưa có (dữ liệu tạo trước
+  khi có bản vá này).
+
+ĐÃ TỰ KIỂM TRA (SQLite thật qua TestClient, gọi ĐÚNG endpoint thật):
+1. generate_next_code(): 4 tình huống (chưa có mã -> PN0001; đã có
+   PN0001 -> PN0002; 2 model/cột khác nhau không lẫn số đếm; vượt
+   mốc 9999 -> 10000 không bị cắt chữ số).
+2. POST /receipts/manual 2 lần không gõ mã -> đúng PN0001, PN0002;
+   lần 3 có gõ mã riêng -> giữ nguyên, không bị ghi đè.
+3. POST /camera-sessions/start-export 2 lần -> đúng PX0001, PX0002.
+4. POST /camera-sessions/start-import -> đúng DEM0001 — xác nhận DEM
+   và PX là 2 dãy số ĐỘC LẬP dù chung 1 bảng CameraCountSession.
+5. Chạy lại toàn bộ seed_main.py bằng SQLite local — kết quả tóm tắt
+   giống hệt bản trước, đọc lại DB xác nhận đúng PN0001-PN0007 (đúng
+   thứ tự tạo) và DEM0001-DEM00xx tăng dần liên tục không đứt quãng.

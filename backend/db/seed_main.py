@@ -13,16 +13,16 @@ TÓM TẮT DATA TẠO RA (xem đủ chi tiết ở cuối file lúc chạy):
   - 30 sản phẩm, 6 ngành hàng
   - ~45 lô tồn kho — có sẵn tình huống sắp hết hàng / sắp hết hạn / hết hạn hẳn
   - 7 phiếu nhập — đủ mọi trạng thái + cả 2 nguồn gốc (quét OCR / tạo tay):
-      PN-2026-001  quét OCR, đã đối chiếu xong toàn bộ (reconciled)
-      PN-2026-002  quét OCR, đã đối chiếu xong toàn bộ (reconciled)
-      PN-2026-003  quét OCR, có 1 dòng LỆCH cần xử lý (ocr_done, flagged)
-      PN-2026-004  TẠO TAY, đã đối chiếu xong toàn bộ (reconciled)
-      PN-2026-005  TẠO TAY, CHƯA đếm dòng nào (ocr_done, not_started hết)
-      PN-2026-006  quét OCR, đang chờ xử lý OCR (pending_ocr — demo trạng thái lỗi/đang xử lý)
-      PN-2026-007  quét OCR, đã đối chiếu xong toàn bộ (reconciled)
+      PN0001  quét OCR, đã đối chiếu xong toàn bộ (reconciled)
+      PN0002  quét OCR, đã đối chiếu xong toàn bộ (reconciled)
+      PN0003  quét OCR, có 1 dòng LỆCH cần xử lý (ocr_done, flagged)
+      PN0004  TẠO TAY, đã đối chiếu xong toàn bộ (reconciled)
+      PN0005  TẠO TAY, CHƯA đếm dòng nào (ocr_done, not_started hết)
+      PN0006  quét OCR, đang chờ xử lý OCR (pending_ocr — demo trạng thái lỗi/đang xử lý)
+      PN0007  quét OCR, đã đối chiếu xong toàn bộ (reconciled)
   - 5 lượt xuất kho đã có sẵn trong Lịch sử xuất kho (3 qua camera, 2 gõ tay)
   - Cảnh báo tự sinh: low_stock + expiring_soon theo đúng data tồn kho, cộng
-    1 cảnh báo discrepancy từ phiếu PN-2026-003
+    1 cảnh báo discrepancy từ phiếu PN0003
 """
 import argparse
 import random
@@ -108,6 +108,21 @@ def seed_main(wipe: bool = True):
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     used_batch_codes: set[str] = set()
+    dem_counter = [0]  # bộ đếm mã "DEM" dùng chung xuyên suốt toàn bộ hàm
+    # tạo phiếu (không reset theo từng phiếu) — khớp đúng cách hoạt động
+    # thật của generate_next_code() bên app/code_generator.py (số tăng dần
+    # liên tục theo toàn hệ thống, không phải theo từng phiếu riêng).
+
+    def next_dem_code() -> str:
+        dem_counter[0] += 1
+        return f"DEM{str(dem_counter[0]).zfill(4)}"
+
+    px_counter = [0]
+
+    def next_px_code() -> str:
+        px_counter[0] += 1
+        return f"PX{str(px_counter[0]).zfill(4)}"
+
     try:
         if wipe:
             wipe_all(db)
@@ -194,7 +209,7 @@ def seed_main(wipe: bool = True):
 
                 started = receipt.received_at
                 session = models.CameraCountSession(
-                    session_code=f"cam-{code}-L{i}", camera_id="cam-01",
+                    session_code=next_dem_code(), camera_id="cam-01",
                     direction="import", linked_receipt_id=receipt.id,
                     receipt_line_item_id=li.id, product_id=li.product_id,
                     expected_quantity=li.quantity, counted_quantity=int(li.quantity),
@@ -260,7 +275,7 @@ def seed_main(wipe: bool = True):
                 counted_qty = li.quantity - random.randint(15, 40) if is_flagged else li.quantity
                 started = receipt.received_at
                 session = models.CameraCountSession(
-                    session_code=f"cam-{code}-L{idx+1}", camera_id="cam-01",
+                    session_code=next_dem_code(), camera_id="cam-01",
                     direction="import", linked_receipt_id=receipt.id,
                     receipt_line_item_id=li.id, product_id=li.product_id,
                     expected_quantity=li.quantity, counted_quantity=counted_qty,
@@ -330,24 +345,24 @@ def seed_main(wipe: bool = True):
             return receipt
 
         receipts_created = []
-        receipts_created.append(make_reconciled_receipt("PN-2026-001", SUPPLIERS[0], ["SP-001", "SP-004", "SP-017", "SP-026"]))
+        receipts_created.append(make_reconciled_receipt("PN0001", SUPPLIERS[0], ["SP-001", "SP-004", "SP-017", "SP-026"]))
         db.commit()
-        receipts_created.append(make_reconciled_receipt("PN-2026-002", SUPPLIERS[1], ["SP-011", "SP-013", "SP-014", "SP-016"]))
+        receipts_created.append(make_reconciled_receipt("PN0002", SUPPLIERS[1], ["SP-011", "SP-013", "SP-014", "SP-016"]))
         db.commit()
-        receipts_created.append(make_flagged_receipt("PN-2026-003", SUPPLIERS[2], ["SP-021", "SP-023", "SP-025"]))
+        receipts_created.append(make_flagged_receipt("PN0003", SUPPLIERS[2], ["SP-021", "SP-023", "SP-025"]))
         db.commit()
-        receipts_created.append(make_reconciled_receipt("PN-2026-004", SUPPLIERS[3], ["SP-002", "SP-006", "SP-009"], source_type="manual"))
+        receipts_created.append(make_reconciled_receipt("PN0004", SUPPLIERS[3], ["SP-002", "SP-006", "SP-009"], source_type="manual"))
         db.commit()
-        receipts_created.append(make_not_started_receipt("PN-2026-005", SUPPLIERS[4], ["SP-018", "SP-019", "SP-027"], source_type="manual"))
+        receipts_created.append(make_not_started_receipt("PN0005", SUPPLIERS[4], ["SP-018", "SP-019", "SP-027"], source_type="manual"))
         db.commit()
-        receipts_created.append(make_reconciled_receipt("PN-2026-007", SUPPLIERS[0], ["SP-003", "SP-010", "SP-030"]))
+        receipts_created.append(make_reconciled_receipt("PN0007", SUPPLIERS[0], ["SP-003", "SP-010", "SP-030"]))
         db.commit()
 
         # Phiếu "pending_ocr" — demo trạng thái đang chờ xử lý (chưa có dòng
         # hàng nào vì thực tế OCR chưa chạy xong/chưa được duyệt).
         receipt_pending = models.ImportReceipt(
-            receipt_code="PN-2026-006", store_location=SUPPLIERS[2],
-            image_path="./uploads/receipts/seed_PN-2026-006.jpg",
+            receipt_code="PN0006", store_location=SUPPLIERS[2],
+            image_path="./uploads/receipts/seed_PN0006.jpg",
             status="pending_ocr", source_type="ocr",
             received_at=datetime.now(timezone.utc) - timedelta(hours=2),
         )
@@ -383,6 +398,7 @@ def seed_main(wipe: bool = True):
             fake_session_id = None
             if ref_type == "camera_session":
                 sess = models.CameraCountSession(
+                    session_code=next_px_code(),
                     direction="export", product_id=product.id, expected_quantity=qty,
                     counted_quantity=qty, status="completed",
                     started_at=batches.last_updated, ended_at=batches.last_updated,
