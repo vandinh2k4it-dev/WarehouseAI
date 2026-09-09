@@ -59,6 +59,21 @@ def start_import_segment(payload: schemas.CameraSegmentStartImport, db: Session 
     if not line:
         raise HTTPException(status_code=404, detail="Không tìm thấy dòng hàng trên phiếu")
 
+    # Chặn TỪ SỚM nếu dòng chưa map sản phẩm — nếu để lọt xuống dưới, nhân
+    # viên sẽ mất công đếm cả video/số lượng xong mới phát hiện ở bước
+    # /stop không thể cập nhật tồn kho được (lỗi thật đã xảy ra: 500 lúc
+    # /stop, phía trên gây hiểu nhầm thành lỗi CORS trên trình duyệt).
+    # Báo NGAY từ bước đầu tiên, đỡ tốn công đếm vô ích.
+    if line.product_id is None:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Dòng hàng '{line.product_name_raw}' chưa được gán vào sản phẩm nào trong danh mục — "
+                "cần gán sản phẩm trước khi đếm (vào trang Sản phẩm chưa gán, hoặc sửa lại dòng này "
+                "và chọn đúng sản phẩm có sẵn)."
+            ),
+        )
+
     already_done = (
         db.query(models.CameraCountSession)
         .filter(
@@ -237,6 +252,23 @@ def _finalize_stop(
         session.status = "completed"
         if session.direction == "import":
             line = line_for_name or db.get(models.ReceiptLineItem, session.receipt_line_item_id)
+            # Lưới an toàn CUỐI CÙNG — về lý thuyết đã chặn từ /start-import
+            # (dòng chưa map sản phẩm không được bắt đầu đếm), nhưng phòng
+            # trường hợp hiếm: sản phẩm bị xoá/bỏ map GIỮA LÚC đang đếm (vd
+            # 2 tab trình duyệt, hoặc admin sửa dữ liệu song song) — nếu để
+            # lọt, apply_line_import() sẽ raise ValueError không được bắt,
+            # gây crash 500 KHÓ HIỂU (lỗi thật đã xảy ra, trình duyệt hiểu
+            # nhầm thành lỗi CORS). Chặn tại đây, trả lỗi RÕ NGHĨA thay vì
+            # để crash mù mờ.
+            if line.product_id is None:
+                db.rollback()
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"Dòng hàng '{line.product_name_raw}' chưa được gán sản phẩm — không thể cập nhật "
+                        "tồn kho. Đã đếm được số lượng nhưng CHƯA lưu — gán sản phẩm cho dòng này rồi đếm lại."
+                    ),
+                )
             apply_line_import(db, line)
             _maybe_complete_receipt(db, line.receipt_id)
         else:  # export
@@ -579,6 +611,14 @@ def resolve_segment(session_id: int, payload: schemas.CameraSegmentResolveReques
 
         if session.direction == "import":
             line = db.get(models.ReceiptLineItem, session.receipt_line_item_id)
+            if line.product_id is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"Dòng hàng '{line.product_name_raw}' chưa được gán sản phẩm — không thể ghi đè "
+                        "cập nhật tồn kho. Gán sản phẩm cho dòng này trước."
+                    ),
+                )
             apply_line_import(db, line, qty_override=session.counted_quantity)
             _maybe_complete_receipt(db, line.receipt_id)
         else:

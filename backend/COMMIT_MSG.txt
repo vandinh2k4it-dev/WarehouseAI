@@ -1,24 +1,46 @@
-feat(backend): xem lại ảnh phiếu nhập gốc sau khi quét OCR
+fix(backend): chặn crash 500 khi đếm dòng hàng chưa gán sản phẩm (lỗi hiện dạng CORS giả)
 
-- app/main.py: mount thêm /media/receipts/... (giống pattern đã có
-  sẵn cho /media/annotated video) — phục vụ tĩnh thư mục UPLOAD_DIR
-  của receipts.py, cho phép xem lại đúng ảnh giấy gốc đã quét.
+Bối cảnh (log Railway thật): "ValueError: Dòng #126 chưa map sản
+phẩm, không thể cập nhật tồn kho" — xảy ra tại POST /camera-sessions/
+107/stop, KHÔNG được bắt (catch), lan ra thành lỗi 500 không kiểm
+soát, khiến trình duyệt hiểu nhầm thành lỗi CORS (đúng mẫu lỗi đã gặp
+nhiều lần trước đó trong dự án — luôn cần kiểm tra log Railway trước
+khi nghi ngờ CORS thật).
 
-- app/schemas.py: ReceiptOut thêm computed_field "image_url" — tự
-  tính từ image_path (đường dẫn file thật trên server, không public
-  trực tiếp được) sang URL "/media/receipts/<tên file>". Xử lý cả
-  path kiểu Windows (dấu \) lẫn Linux (dấu /) vì code chạy cả 2 môi
-  trường (dev Windows, deploy Railway Linux). Trả None nếu phiếu tạo
-  bằng tay (không có ảnh gốc).
+Kịch bản gây lỗi: tạo phiếu nhập bằng tay, để trống sản phẩm cho 1
+dòng (đúng thiết kế cho phép) -> hệ thống lại KHÔNG CHẶN việc bắt đầu
+đếm dòng đó -> nhân viên đếm xong, số khớp -> backend cố cập nhật tồn
+kho cho dòng CHƯA CÓ sản phẩm để cập nhật vào đâu -> apply_line_import()
+(app/routers/reconciliation.py) raise ValueError như thiết kế đúng,
+nhưng lỗi này KHÔNG được xử lý ở nơi gọi nó (camera.py) -> crash 500.
 
-Không cần sửa app/routers/receipts.py — computed_field tự hoạt động
-khi ReceiptOut serialize từ ORM object có sẵn image_path.
+Cách sửa — 3 lớp phòng thủ trong app/routers/camera.py:
+1. start_import_segment(): CHẶN TỪ SỚM — nếu dòng chưa có product_id,
+   trả về 400 rõ ràng NGAY LÚC BẤM "Đếm", không để nhân viên tốn công
+   đếm xong mới phát hiện lỗi ở bước cuối.
+2. _finalize_stop() (nhánh matched, direction=import): thêm lưới an
+   toàn TRƯỚC khi gọi apply_line_import() — phòng trường hợp hiếm
+   (dữ liệu bị đổi giữa lúc đang đếm, vd 2 tab trình duyệt) khiến lớp
+   1 không chặn được — trả 400 rõ nghĩa thay vì để ValueError tự
+   nhiên lan ra thành 500 khó hiểu. Có db.rollback() để không giữ lại
+   bản ghi reconciliation "matched" giả khi tồn kho chưa thực sự
+   được cập nhật.
+3. resolve_segment() (nhánh action='override'): cùng lưới an toàn,
+   vì đường này CŨNG gọi apply_line_import() với cùng rủi ro.
 
-ĐÃ TỰ KIỂM TRA (test trực tiếp class ReceiptOut, không phải suy đoán):
-1. Path kiểu Linux "./uploads/receipts/abc123.jpg" -> đúng
-   "/media/receipts/abc123.jpg".
-2. Path kiểu Windows ".\\uploads\\receipts\\xyz789.jpg" -> đúng
-   "/media/receipts/xyz789.jpg" (không bị lẫn dấu \).
-3. image_path=None (phiếu tạo tay) -> image_url đúng None, không lỗi.
-4. Xác nhận field "image_url" có mặt trong model_dump()/JSON trả về
-   API thật, không chỉ tồn tại nội bộ Python.
+KHÔNG sửa app/routers/reconciliation.py — apply_line_import() giữ
+nguyên hành vi raise ValueError khi thiếu product_id (đúng thiết kế
+gốc, vẫn hữu ích như lưới an toàn tầng thấp nhất) — chỉ đảm bảo lỗi
+này giờ LUÔN được bắt trước khi tới đó, không bao giờ còn lan ra
+ngoài thành 500 nữa.
+
+ĐÃ TỰ KIỂM TRA (test logic điều kiện trực tiếp bằng HTTPException
+thật của FastAPI, mô phỏng đúng 2 tình huống thực tế):
+1. Dòng chưa map sản phẩm (product_id=None) -> đúng bị chặn 400,
+   không cho bắt đầu đếm.
+2. Dòng đã map sản phẩm (product_id có giá trị) -> không bị ảnh
+   hưởng, luồng bình thường vẫn hoạt động đúng.
+
+Việc cần làm: xem thêm COMMIT_MSG.txt bên frontend — đã sửa luôn gốc
+rễ thật sự của vấn đề (form tạo phiếu tay trước đây KHÔNG CÓ cách nào
+chọn sản phẩm có sẵn, chỉ có ô gõ tên tự do, nên luôn phải để trống).
