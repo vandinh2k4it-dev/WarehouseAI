@@ -1,6 +1,6 @@
 from datetime import datetime, date
 from typing import Optional, List, Any
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, computed_field
 
 
 # ---------- Product ----------
@@ -39,6 +39,20 @@ class ReceiptOut(BaseModel):
     source_type: str = "ocr"
     received_at: Optional[datetime]
     line_items: List[LineItemOut] = []
+
+    @computed_field
+    @property
+    def image_url(self) -> Optional[str]:
+        """URL công khai để xem lại ảnh gốc phiếu nhập đã quét — tính từ
+        image_path (đường dẫn file thật trên server, không public được trực
+        tiếp) sang URL qua /media/receipts/ đã mount ở app/main.py. Chỉ lấy
+        đúng TÊN FILE (bỏ hết phần thư mục), dùng cả 2 kiểu dấu / và \\ để
+        an toàn nếu path được lưu trên Windows lúc chạy local. Trả None nếu
+        phiếu không có ảnh (tạo bằng tay, không quét OCR)."""
+        if not self.image_path:
+            return None
+        filename = self.image_path.replace("\\", "/").rsplit("/", 1)[-1]
+        return f"/media/receipts/{filename}"
 
 
 # ---------- Tạo / sửa phiếu nhập BẰNG TAY (không qua OCR) ----------

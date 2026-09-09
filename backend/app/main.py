@@ -83,3 +83,10 @@ else:
 _annotated_dir = Path(__file__).resolve().parent.parent / "uploads" / "annotated_videos"
 _annotated_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/media/annotated", StaticFiles(directory=str(_annotated_dir)), name="annotated-videos")
+
+# Phục vụ ảnh gốc Phiếu nhập hàng đã quét OCR (xem app/routers/receipts.py,
+# UPLOAD_DIR) qua URL /media/receipts/... — cho phép xem lại đúng ảnh giấy
+# gốc ngay trên giao diện, không chỉ xem kết quả OCR trích xuất được.
+_receipts_dir = Path(__file__).resolve().parent.parent / "uploads" / "receipts"
+_receipts_dir.mkdir(parents=True, exist_ok=True)
+app.mount("/media/receipts", StaticFiles(directory=str(_receipts_dir)), name="receipt-images")

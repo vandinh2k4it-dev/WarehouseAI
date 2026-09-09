@@ -1,58 +1,24 @@
-feat(backend): tự động sinh mã phiếu/phiên đếm tăng dần (PN0001, DEM0001, PX0001)
+feat(backend): xem lại ảnh phiếu nhập gốc sau khi quét OCR
 
-Bối cảnh: mã phiếu nhập (receipt_code) trước đây phải tự gõ tay hoặc
-để trống; mã phiên đếm (session_code) CHƯA TỪNG được gán (luôn NULL)
-dù cột đã có sẵn từ trước. Cần đồng bộ 3 loại mã theo đúng quy trình:
-phiếu nhập, phiếu xuất, phiên đếm — mỗi loại 1 dãy số tăng dần riêng.
+- app/main.py: mount thêm /media/receipts/... (giống pattern đã có
+  sẵn cho /media/annotated video) — phục vụ tĩnh thư mục UPLOAD_DIR
+  của receipts.py, cho phép xem lại đúng ảnh giấy gốc đã quét.
 
-============================================================
-File mới: app/code_generator.py
-============================================================
-Hàm generate_next_code(db, model, code_column_name, prefix, pad_width)
-dùng chung cho cả 3 loại mã — tìm mã lớn nhất hiện có cùng tiền tố,
-tách lấy phần số bằng regex (không dùng MAX() chuỗi trực tiếp trên
-SQL vì sắp xếp chuỗi không đúng thứ tự số học nếu độ dài số khác
-nhau), +1, đệm đủ số 0.
+- app/schemas.py: ReceiptOut thêm computed_field "image_url" — tự
+  tính từ image_path (đường dẫn file thật trên server, không public
+  trực tiếp được) sang URL "/media/receipts/<tên file>". Xử lý cả
+  path kiểu Windows (dấu \) lẫn Linux (dấu /) vì code chạy cả 2 môi
+  trường (dev Windows, deploy Railway Linux). Trả None nếu phiếu tạo
+  bằng tay (không có ảnh gốc).
 
-============================================================
-File sửa
-============================================================
-- app/routers/receipts.py
-  + Endpoint /upload (quét OCR): tự sinh receipt_code = "PN0001",
-    "PN0002"... mỗi lần tạo phiếu mới.
-  + Endpoint /manual (tạo tay): NẾU người dùng tự gõ mã thì GIỮ
-    NGUYÊN mã đó, chỉ tự sinh khi để trống.
+Không cần sửa app/routers/receipts.py — computed_field tự hoạt động
+khi ReceiptOut serialize từ ORM object có sẵn image_path.
 
-- app/routers/camera.py
-  + start-import: tự sinh session_code = "DEM0001", "DEM0002"...
-  + start-export: tự sinh session_code = "PX0001", "PX0002"... —
-    LƯU Ý: phiên đếm xuất đại diện luôn cho CHÍNH phiếu xuất kho
-    (1 phiên = 1 lượt xuất hoàn chỉnh) nên dùng session_code này
-    làm mã phiếu xuất khi in phiếu, không cần bảng/cột riêng.
-  + Sửa lỗi thao tác tự phát hiện: lúc đầu vô tình THAY THẾ nhầm
-    dòng import perform_fefo_export bằng dòng import code_generator
-    mới — phát hiện qua grep kiểm tra lại, sửa đúng trước khi giao.
-
-- db/seed_main.py — đồng bộ dữ liệu demo theo chuẩn mã mới: đổi
-  "PN-2026-001".."PN-2026-007" thành "PN0001".."PN0007"; đổi
-  session_code kiểu "cam-{code}-L{i}" thành "DEM0001".. tăng dần liên
-  tục; thêm session_code "PX0001".."PX0003" cho các lượt xuất qua
-  camera trong dữ liệu demo (trước đây bỏ trống).
-
-- src/components/PrintExportReceipt.jsx (frontend) — hiện đúng
-  session.session_code ("PX0001") thay vì raw session id ("#88"),
-  có fallback về #id nếu session_code cũ chưa có (dữ liệu tạo trước
-  khi có bản vá này).
-
-ĐÃ TỰ KIỂM TRA (SQLite thật qua TestClient, gọi ĐÚNG endpoint thật):
-1. generate_next_code(): 4 tình huống (chưa có mã -> PN0001; đã có
-   PN0001 -> PN0002; 2 model/cột khác nhau không lẫn số đếm; vượt
-   mốc 9999 -> 10000 không bị cắt chữ số).
-2. POST /receipts/manual 2 lần không gõ mã -> đúng PN0001, PN0002;
-   lần 3 có gõ mã riêng -> giữ nguyên, không bị ghi đè.
-3. POST /camera-sessions/start-export 2 lần -> đúng PX0001, PX0002.
-4. POST /camera-sessions/start-import -> đúng DEM0001 — xác nhận DEM
-   và PX là 2 dãy số ĐỘC LẬP dù chung 1 bảng CameraCountSession.
-5. Chạy lại toàn bộ seed_main.py bằng SQLite local — kết quả tóm tắt
-   giống hệt bản trước, đọc lại DB xác nhận đúng PN0001-PN0007 (đúng
-   thứ tự tạo) và DEM0001-DEM00xx tăng dần liên tục không đứt quãng.
+ĐÃ TỰ KIỂM TRA (test trực tiếp class ReceiptOut, không phải suy đoán):
+1. Path kiểu Linux "./uploads/receipts/abc123.jpg" -> đúng
+   "/media/receipts/abc123.jpg".
+2. Path kiểu Windows ".\\uploads\\receipts\\xyz789.jpg" -> đúng
+   "/media/receipts/xyz789.jpg" (không bị lẫn dấu \).
+3. image_path=None (phiếu tạo tay) -> image_url đúng None, không lỗi.
+4. Xác nhận field "image_url" có mặt trong model_dump()/JSON trả về
+   API thật, không chỉ tồn tại nội bộ Python.
