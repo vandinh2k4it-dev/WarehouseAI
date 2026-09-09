@@ -1,27 +1,46 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 
-// Chatbot AI — nối vào API /chatbot/ask ĐÃ CÓ SẴN trên backend từ trước (mục
-// 6.6 đề cương, dùng Claude function-calling truy vấn DB thật). Trang này
-// trước đây chỉ tồn tại ở bản demo desktop cũ (static/index.html), chưa
-// từng được nối vào React PWA — đây là lần đầu có giao diện chat cho nó ở
-// đây.
+// Chatbot AI — nối vào API /chatbot/ask ĐÃ CÓ SẴN trên backend (mục 6.6 đề
+// cương, dùng Gemini function-calling truy vấn DB thật).
 //
-// LƯU Ý VỀ "history": backend tự quản lý định dạng lịch sử hội thoại nội bộ
-// (khớp với Anthropic Messages API) — frontend chỉ cần GIỮ NGUYÊN state trả
-// về từ mỗi lần gọi và gửi lại y hệt ở lần hỏi tiếp theo, KHÔNG cần hiểu/
-// đụng vào cấu trúc bên trong. Danh sách hiển thị trên màn hình (messages)
-// là state RIÊNG, tự xây dựng từ câu hỏi + câu trả lời mỗi lượt, độc lập
-// với "history" gửi lên server.
+// LƯU LỊCH SỬ QUA localStorage: cả "messages" (hiển thị trên màn hình) lẫn
+// "history" (trạng thái nội bộ backend cần gửi lại nguyên vẹn mỗi lượt hỏi
+// tiếp theo) đều được lưu lại — tải lại trang / thoát vào lại KHÔNG mất
+// cuộc hội thoại đang dở, khác với trước đây (chỉ tồn tại trong state React,
+// mất ngay khi rời trang). Đây là localStorage của TRÌNH DUYỆT THẬT (ứng
+// dụng web PWA đang chạy thật cho người dùng), khác với artifact demo trong
+// khung chat — hoàn toàn hợp lệ để dùng ở đây.
+const STORAGE_KEY_MESSAGES = "warehouse_chatbot_messages";
+const STORAGE_KEY_HISTORY = "warehouse_chatbot_history";
+
 const SUGGESTED_QUESTIONS = [
   "Sản phẩm nào sắp hết hàng?",
   "Lô hàng nào sắp hết hạn trong 30 ngày tới?",
   "Có bao nhiêu cảnh báo đang mở?",
 ];
 
+function loadSavedMessages() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_MESSAGES);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return []; // dữ liệu cũ hỏng/không đọc được -> coi như chưa có gì, không crash cả trang
+  }
+}
+
+function loadSavedHistory() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_HISTORY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
 export default function Chatbot() {
-  const [messages, setMessages] = useState([]); // [{role: 'user'|'assistant', text}]
-  const [history, setHistory] = useState(null); // trạng thái nội bộ backend, gửi lại nguyên vẹn
+  const [messages, setMessages] = useState(loadSavedMessages); // [{role: 'user'|'assistant', text}]
+  const [history, setHistory] = useState(loadSavedHistory); // trạng thái nội bộ backend, gửi lại nguyên vẹn
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
@@ -30,6 +49,26 @@ export default function Chatbot() {
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, sending]);
+
+  // Lưu lại MỖI KHI messages/history đổi — không cần nút "Lưu" riêng, tự
+  // động lưu ngay sau mỗi câu hỏi/trả lời.
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY_MESSAGES, JSON.stringify(messages));
+  }, [messages]);
+
+  useEffect(() => {
+    if (history != null) {
+      localStorage.setItem(STORAGE_KEY_HISTORY, JSON.stringify(history));
+    }
+  }, [history]);
+
+  function clearHistory() {
+    if (!window.confirm("Xoá toàn bộ lịch sử trò chuyện? Không thể hoàn tác.")) return;
+    setMessages([]);
+    setHistory(null);
+    localStorage.removeItem(STORAGE_KEY_MESSAGES);
+    localStorage.removeItem(STORAGE_KEY_HISTORY);
+  }
 
   async function send(text) {
     const question = (text ?? input).trim();
@@ -61,7 +100,14 @@ export default function Chatbot() {
   return (
     <main className="page-main chatbot-main">
       <div className="card chatbot-card">
-        <h2>🤖 Trợ lý AI — tra cứu kho hàng</h2>
+        <div className="card-headRow" style={{ marginBottom: 0 }}>
+          <h2 style={{ margin: 0 }}>🤖 Trợ lý AI — tra cứu kho hàng</h2>
+          {messages.length > 0 && (
+            <button className="ghost lineCard-smallBtn" onClick={clearHistory}>
+              Xoá lịch sử
+            </button>
+          )}
+        </div>
 
         <div className="chatbot-scroll">
           {messages.length === 0 && (

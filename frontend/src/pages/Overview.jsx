@@ -79,10 +79,18 @@ export default function Overview() {
       {errorMsg && <div className="empty" style={{ color: "var(--danger)" }}>{errorMsg}</div>}
 
       <div className="statGrid">
-        <StatCard value={totalProducts} label="Tổng sản phẩm" />
-        <StatCard value={totalStock != null ? totalStock.toLocaleString("vi-VN") : null} label="Tổng tồn kho (đơn vị)" accent />
-        <StatCard value={openAlertCount} label="Cảnh báo đang mở" danger={openAlertCount > 0} />
-        <StatCard value={pendingOcrCount} label="Phiếu chờ xử lý OCR" />
+        <Link to="/products" className="statCard-link">
+          <StatCard value={totalProducts} label="Tổng sản phẩm" />
+        </Link>
+        <Link to="/products" className="statCard-link">
+          <StatCard value={totalStock != null ? totalStock.toLocaleString("vi-VN") : null} label="Tổng tồn kho (đơn vị)" accent />
+        </Link>
+        <Link to="/alerts" className="statCard-link">
+          <StatCard value={openAlertCount} label="Cảnh báo đang mở" danger={openAlertCount > 0} />
+        </Link>
+        <Link to="/import" className="statCard-link">
+          <StatCard value={pendingOcrCount} label="Phiếu chờ xử lý OCR" />
+        </Link>
       </div>
 
       <div className="dashGrid">

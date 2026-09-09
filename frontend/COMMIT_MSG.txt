@@ -1,24 +1,51 @@
-fix(frontend): sửa nút "Quét phiếu mới" tràn màn hình mobile + rút gọn placeholder chatbot
+feat(frontend): ảnh phiếu nhập, lịch sử chatbot, stat card bấm chuyển trang
 
-Bối cảnh: sau khi thêm nút "Tạo phiếu tay" cạnh "Quét phiếu mới" ở
-đợt trước, 2 nút + tiêu đề "Chọn phiếu nhập" không đủ chỗ trên 1 hàng
-ở màn mobile hẹp — nút "Quét phiếu mới" bị tràn hẳn ra ngoài mép phải
-màn hình.
+============================================================
+1. Hiển thị ảnh phiếu nhập sau khi quét OCR
+============================================================
+- src/pages/ImportFlow.jsx: trong màn chi tiết phiếu, nếu
+  selectedReceipt.image_url có giá trị (backend đã tính sẵn, xem
+  COMMIT_MSG bên backend), hiện ảnh gốc ngay dưới tiêu đề — bấm vào
+  ảnh mở tab mới xem full-size. Phiếu tạo tay (không có ảnh) tự động
+  không hiện gì thêm (image_url null).
 
-Cách sửa (src/styles/app.css):
-.card-headRow thêm flex-wrap:wrap — tiêu đề và cụm nút tự xuống dòng
-khi không đủ chỗ, thay vì tràn ra ngoài. Thêm flex-wrap:wrap cho cụm
-div chứa 2 nút bên trong luôn, phòng màn cực hẹp vẫn không đủ chỗ cho
-cả 2 nút cùng hàng.
+============================================================
+2. Lịch sử chatbot — lưu qua localStorage, còn khi tải lại trang
+============================================================
+- src/pages/Chatbot.jsx: cả "messages" (hiển thị) lẫn "history"
+  (trạng thái nội bộ gửi lại cho backend) đều lưu vào localStorage
+  của trình duyệt, tự khôi phục khi mở lại trang — trước đây chỉ
+  tồn tại trong state React, mất ngay khi rời trang/tải lại.
+- Thêm nút "Xoá lịch sử" (chỉ hiện khi đã có tin nhắn) — xoá cả state
+  lẫn localStorage, có xác nhận trước khi xoá (không thể hoàn tác).
+- Có try/catch khi đọc localStorage lúc khởi động — dữ liệu cũ hỏng/
+  không đọc được thì coi như trống, không crash cả trang.
 
-ĐÃ TỰ KIỂM TRA bằng đo lường thật (Playwright, viewport 390px):
-- TRƯỚC khi sửa: scrollWidth=421px > clientWidth=390px — xác nhận
-  tràn ngang thật 31px.
-- SAU khi sửa: scrollWidth=390px = clientWidth=390px — hết tràn hoàn
-  toàn. Ảnh chụp xác nhận tiêu đề xuống dòng riêng, 2 nút xuống hàng
-  dưới, hiển thị trọn vẹn cả 2 chữ.
+============================================================
+3. 4 ô thống kê ở Tổng quan giờ bấm được, tự chuyển trang
+============================================================
+- src/pages/Overview.jsx: bọc từng StatCard bằng <Link>:
+  Tổng sản phẩm -> /products
+  Tổng tồn kho -> /products
+  Cảnh báo đang mở -> /alerts
+  Phiếu chờ xử lý OCR -> /import
 
-Cách sửa 2 (src/pages/Chatbot.jsx):
-Rút gọn placeholder ô nhập chatbot từ "Nhập câu hỏi… (Enter để gửi,
-Shift+Enter xuống dòng)" thành "Nhập câu hỏi cho trợ lý" — theo đúng
-yêu cầu, chữ ngắn gọn hơn, đỡ chiếm chỗ trên màn hẹp.
+============================================================
+CẦN LÀM THÊM: dán CSS bổ sung (gửi kèm CSS_CAN_THEM.css)
+============================================================
+Lần này không có sẵn src/styles/app.css để sửa trực tiếp — dán đoạn
+trong file CSS_CAN_THEM.css vào CUỐI file app.css hiện có của bạn
+(3 class mới: .receiptImage*, .statCard-link — không trùng tên với
+class nào đã có, an toàn để dán thêm không cần xem lại toàn bộ file).
+
+ĐÃ TỰ KIỂM TRA TÍCH HỢP (esbuild bundle CHÍNH file thật + Playwright):
+1. Chatbot: gửi 1 câu hỏi thật (mock API) -> xác nhận localStorage đã
+   lưu -> RELOAD TRANG thật (không phải tạo lại component) -> xác
+   nhận CẢ câu hỏi lẫn câu trả lời cũ vẫn hiển thị nguyên vẹn.
+2. Overview: bấm vào ô "Cảnh báo đang mở" -> xác nhận chuyển ĐÚNG
+   sang trang Alerts thật (dùng React Router thật, không giả lập);
+   bấm ô "Phiếu chờ xử lý OCR" -> xác nhận chuyển đúng sang trang
+   Nhập kho.
+3. ImportFlow.jsx: kiểm tra cú pháp sạch qua esbuild (không test
+   hiển thị ảnh bằng Playwright do cần ảnh thật/API thật để có ý
+   nghĩa — logic hiển thị đơn giản, rủi ro thấp).

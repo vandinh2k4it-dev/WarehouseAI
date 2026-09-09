@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { api } from "../api";
+import { api, API_BASE } from "../api";
 import CountingScreen from "../components/CountingScreen";
 
 const LINE_STATUS_LABEL = {
@@ -182,6 +182,15 @@ export default function ImportFlow() {
             {selectedReceipt.receipt_code || `Phiếu #${selectedReceipt.id}`}
             {selectedReceipt.store_location ? ` — ${selectedReceipt.store_location}` : ""}
           </h2>
+
+          {selectedReceipt.image_url && (
+            <div className="receiptImage">
+              <div className="receiptImage-label">📷 Ảnh phiếu gốc đã quét</div>
+              <a href={`${API_BASE}${selectedReceipt.image_url}`} target="_blank" rel="noreferrer">
+                <img src={`${API_BASE}${selectedReceipt.image_url}`} alt="Ảnh phiếu nhập gốc" className="receiptImage-img" />
+              </a>
+            </div>
+          )}
 
           {!lines && !errorMsg && <div className="empty">Đang tải…</div>}
           {errorMsg && <div className="empty" style={{ color: "var(--danger)" }}>{errorMsg}</div>}
