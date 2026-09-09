@@ -30,9 +30,14 @@ export default function ImportFlow() {
   const [errorMsg, setErrorMsg] = useState("");
   const [activeSession, setActiveSession] = useState(null); // { session, expected, label }
   const [editingLineId, setEditingLineId] = useState(null);
-  const [editDraft, setEditDraft] = useState({ product_name_raw: "", quantity: "", batch_code: "" });
+  const [editDraft, setEditDraft] = useState({ product_name_raw: "", product_id: "", quantity: "", batch_code: "" });
   const [addingLine, setAddingLine] = useState(false);
   const [newLineDraft, setNewLineDraft] = useState({ product_name_raw: "", quantity: "", batch_code: "" });
+  const [products, setProducts] = useState([]);
+
+  useEffect(() => {
+    api.listProducts().then(setProducts).catch(() => {});
+  }, []);
 
   useEffect(() => {
     loadReceipts();
@@ -104,6 +109,7 @@ export default function ImportFlow() {
     setEditingLineId(line.line_id);
     setEditDraft({
       product_name_raw: line.product_name_raw,
+      product_id: line.product_id != null ? String(line.product_id) : "",
       quantity: String(line.declared_quantity),
       batch_code: "",
     });
@@ -113,6 +119,7 @@ export default function ImportFlow() {
     try {
       await api.updateReceiptLine(selectedReceipt.id, lineId, {
         product_name_raw: editDraft.product_name_raw,
+        product_id: editDraft.product_id ? parseInt(editDraft.product_id, 10) : null,
         quantity: parseFloat(editDraft.quantity),
         batch_code: editDraft.batch_code || null,
       });
@@ -211,6 +218,29 @@ export default function ImportFlow() {
                         onChange={(e) => setEditDraft((d) => ({ ...d, product_name_raw: e.target.value }))}
                         placeholder="Tên sản phẩm"
                       />
+                      <label className="text-muted" style={{ fontSize: 12 }}>
+                        Sản phẩm trong danh mục
+                      </label>
+                      <select
+                        value={editDraft.product_id}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          const p = products.find((pp) => pp.id === parseInt(val, 10));
+                          setEditDraft((d) => ({
+                            ...d,
+                            product_id: val,
+                            product_name_raw: p ? p.name : d.product_name_raw,
+                          }));
+                        }}
+                      >
+                        <option value="">— Chưa có trong danh mục —</option>
+                        {products.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name}
+                            {p.sku ? ` (${p.sku})` : ""}
+                          </option>
+                        ))}
+                      </select>
                       <div className="manualLineRow-grid">
                         <input
                           type="number"
@@ -245,6 +275,11 @@ export default function ImportFlow() {
                         Cần {line.declared_quantity}
                         {line.counted_quantity != null ? ` · camera đếm ${line.counted_quantity}` : ""}
                       </div>
+                      {line.product_id == null && (
+                        <div className="stockHint-warn" style={{ marginTop: 4, fontSize: 12 }}>
+                          ⚠ Chưa gán sản phẩm — cần sửa dòng này và chọn sản phẩm trước khi đếm
+                        </div>
+                      )}
                     </div>
                     <div className="lineCard-actions">
                       <span className={`badge ${line.counting_status}`}>
@@ -263,7 +298,12 @@ export default function ImportFlow() {
                       {(line.counting_status === "not_started" ||
                         line.counting_status === "needs_review" ||
                         line.counting_status === "counting") && (
-                        <button className="tapbtn" onClick={() => beginLine(line)}>
+                        <button
+                          className="tapbtn"
+                          onClick={() => beginLine(line)}
+                          disabled={line.product_id == null}
+                          title={line.product_id == null ? "Cần gán sản phẩm trước khi đếm" : undefined}
+                        >
                           {line.counting_status === "counting" ? "Đếm lại" : "Đếm"}
                         </button>
                       )}

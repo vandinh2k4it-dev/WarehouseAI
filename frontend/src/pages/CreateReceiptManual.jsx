@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api";
 
-const EMPTY_LINE = { product_name_raw: "", quantity: "", batch_code: "", expiry_date: "" };
+const EMPTY_LINE = { product_name_raw: "", product_id: "", quantity: "", batch_code: "", expiry_date: "" };
 
 export default function CreateReceiptManual() {
   const navigate = useNavigate();
@@ -11,9 +11,27 @@ export default function CreateReceiptManual() {
   const [lines, setLines] = useState([{ ...EMPTY_LINE }]);
   const [errorMsg, setErrorMsg] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [products, setProducts] = useState([]);
+
+  useEffect(() => {
+    api.listProducts().then(setProducts).catch(() => {});
+  }, []);
 
   function updateLine(idx, field, value) {
-    setLines((prev) => prev.map((l, i) => (i === idx ? { ...l, [field]: value } : l)));
+    setLines((prev) =>
+      prev.map((l, i) => {
+        if (i !== idx) return l;
+        const updated = { ...l, [field]: value };
+        // Khi chọn 1 sản phẩm có sẵn từ dropdown, TỰ ĐIỀN LUÔN tên chuẩn vào
+        // product_name_raw — tránh tình huống người dùng chọn đúng sản phẩm
+        // nhưng lại gõ tên khác đi (2 nguồn dữ liệu lệch nhau không cần thiết).
+        if (field === "product_id" && value) {
+          const p = products.find((pp) => pp.id === parseInt(value, 10));
+          if (p) updated.product_name_raw = p.name;
+        }
+        return updated;
+      })
+    );
   }
 
   function addLine() {
@@ -38,6 +56,7 @@ export default function CreateReceiptManual() {
       store_location: storeLocation.trim() || null,
       line_items: validLines.map((l) => ({
         product_name_raw: l.product_name_raw.trim(),
+        product_id: l.product_id ? parseInt(l.product_id, 10) : null,
         quantity: parseFloat(l.quantity),
         batch_code: l.batch_code.trim() || null,
         expiry_date: l.expiry_date || null,
@@ -98,6 +117,24 @@ export default function CreateReceiptManual() {
               value={line.product_name_raw}
               onChange={(e) => updateLine(idx, "product_name_raw", e.target.value)}
             />
+            <label className="text-muted" style={{ fontSize: 12, marginTop: 6 }}>
+              Chọn đúng sản phẩm trong danh mục (bắt buộc để đếm được sau này)
+            </label>
+            <select value={line.product_id} onChange={(e) => updateLine(idx, "product_id", e.target.value)}>
+              <option value="">— Chưa có trong danh mục —</option>
+              {products.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                  {p.sku ? ` (${p.sku})` : ""}
+                </option>
+              ))}
+            </select>
+            {!line.product_id && (
+              <div className="stockHint-warn" style={{ marginTop: 6, fontSize: 12.5 }}>
+                ⚠ Chưa chọn sản phẩm — dòng này sẽ KHÔNG đếm được cho tới khi được gán sản phẩm
+                (ở trang "Sản phẩm chưa gán"). Nếu đây là sản phẩm đã có sẵn, hãy chọn đúng ở danh sách trên.
+              </div>
+            )}
             <div className="manualLineRow-grid">
               <input
                 type="number"

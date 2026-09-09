@@ -1,51 +1,48 @@
-feat(frontend): ảnh phiếu nhập, lịch sử chatbot, stat card bấm chuyển trang
+fix(frontend): sửa tận gốc — thêm dropdown chọn sản phẩm còn thiếu ở form tạo phiếu tay + khoá nút Đếm khi thiếu sản phẩm
+
+Bối cảnh: log Railway cho thấy lỗi 500 (hiện dạng CORS giả) khi đếm 1
+dòng hàng chưa được gán sản phẩm. Đọc kỹ CreateReceiptManual.jsx phát
+hiện GỐC RỄ THẬT: form tạo phiếu tay CHỈ CÓ Ô GÕ TÊN TỰ DO
+(product_name_raw), HOÀN TOÀN KHÔNG CÓ cách nào chọn 1 sản phẩm có
+sẵn trong danh mục — nghĩa là product_id LUÔN bị gửi rỗng (null) một
+cách không tránh khỏi, không phải do người dùng quên chọn, mà do
+KHÔNG CÓ GÌ ĐỂ CHỌN. Backend đã có sẵn thiết kế đúng (cho phép
+product_id=null, xử lý sau ở /products/unmapped-lines) nhưng frontend
+chưa từng tận dụng đúng thiết kế đó.
 
 ============================================================
-1. Hiển thị ảnh phiếu nhập sau khi quét OCR
+1. src/pages/CreateReceiptManual.jsx — thêm dropdown chọn sản phẩm
 ============================================================
-- src/pages/ImportFlow.jsx: trong màn chi tiết phiếu, nếu
-  selectedReceipt.image_url có giá trị (backend đã tính sẵn, xem
-  COMMIT_MSG bên backend), hiện ảnh gốc ngay dưới tiêu đề — bấm vào
-  ảnh mở tab mới xem full-size. Phiếu tạo tay (không có ảnh) tự động
-  không hiện gì thêm (image_url null).
+- Gọi api.listProducts() lúc mở trang, hiện dropdown "Chọn đúng sản
+  phẩm trong danh mục" cho MỖI dòng hàng, cạnh ô gõ tên tự do.
+- Chọn 1 sản phẩm có sẵn -> TỰ ĐỘNG ĐIỀN tên chuẩn vào ô tên.
+- Vẫn giữ lựa chọn "— Chưa có trong danh mục —" cho sản phẩm THỰC SỰ
+  mới — nhưng giờ có DÒNG CẢNH BÁO RÕ RÀNG ngay dưới dropdown: "Chưa
+  chọn sản phẩm — dòng này sẽ KHÔNG đếm được cho tới khi được gán sản
+  phẩm" — người dùng biết trước hậu quả.
+- submit() giờ gửi kèm product_id (trước đây hoàn toàn không có).
 
 ============================================================
-2. Lịch sử chatbot — lưu qua localStorage, còn khi tải lại trang
+2. src/pages/ImportFlow.jsx — khoá nút "Đếm" nếu dòng thiếu sản phẩm
 ============================================================
-- src/pages/Chatbot.jsx: cả "messages" (hiển thị) lẫn "history"
-  (trạng thái nội bộ gửi lại cho backend) đều lưu vào localStorage
-  của trình duyệt, tự khôi phục khi mở lại trang — trước đây chỉ
-  tồn tại trong state React, mất ngay khi rời trang/tải lại.
-- Thêm nút "Xoá lịch sử" (chỉ hiện khi đã có tin nhắn) — xoá cả state
-  lẫn localStorage, có xác nhận trước khi xoá (không thể hoàn tác).
-- Có try/catch khi đọc localStorage lúc khởi động — dữ liệu cũ hỏng/
-  không đọc được thì coi như trống, không crash cả trang.
+- Mỗi dòng hàng: nếu line.product_id == null, hiện dòng cảnh báo đỏ
+  "Chưa gán sản phẩm — cần sửa dòng này và chọn sản phẩm trước khi
+  đếm" ngay dưới tên dòng hàng.
+- Nút "Đếm"/"Đếm lại" bị disabled (mờ đi, có tooltip) khi thiếu sản
+  phẩm — khớp đúng với chặn phía backend, tránh bấm vào rồi mới nhận
+  lỗi từ server.
+- Form "Sửa" dòng hàng giờ CŨNG có dropdown chọn sản phẩm y hệt
+  CreateReceiptManual.jsx — trước đây CHỈ sửa được tên/số lượng/mã
+  lô, KHÔNG có cách gán sản phẩm cho dòng đã lỡ tạo thiếu — nghĩa là
+  không có đường thoát nào khác ngoài xoá làm lại. Giờ sửa trực tiếp
+  được, không cần xoá.
 
-============================================================
-3. 4 ô thống kê ở Tổng quan giờ bấm được, tự chuyển trang
-============================================================
-- src/pages/Overview.jsx: bọc từng StatCard bằng <Link>:
-  Tổng sản phẩm -> /products
-  Tổng tồn kho -> /products
-  Cảnh báo đang mở -> /alerts
-  Phiếu chờ xử lý OCR -> /import
-
-============================================================
-CẦN LÀM THÊM: dán CSS bổ sung (gửi kèm CSS_CAN_THEM.css)
-============================================================
-Lần này không có sẵn src/styles/app.css để sửa trực tiếp — dán đoạn
-trong file CSS_CAN_THEM.css vào CUỐI file app.css hiện có của bạn
-(3 class mới: .receiptImage*, .statCard-link — không trùng tên với
-class nào đã có, an toàn để dán thêm không cần xem lại toàn bộ file).
-
-ĐÃ TỰ KIỂM TRA TÍCH HỢP (esbuild bundle CHÍNH file thật + Playwright):
-1. Chatbot: gửi 1 câu hỏi thật (mock API) -> xác nhận localStorage đã
-   lưu -> RELOAD TRANG thật (không phải tạo lại component) -> xác
-   nhận CẢ câu hỏi lẫn câu trả lời cũ vẫn hiển thị nguyên vẹn.
-2. Overview: bấm vào ô "Cảnh báo đang mở" -> xác nhận chuyển ĐÚNG
-   sang trang Alerts thật (dùng React Router thật, không giả lập);
-   bấm ô "Phiếu chờ xử lý OCR" -> xác nhận chuyển đúng sang trang
-   Nhập kho.
-3. ImportFlow.jsx: kiểm tra cú pháp sạch qua esbuild (không test
-   hiển thị ảnh bằng Playwright do cần ảnh thật/API thật để có ý
-   nghĩa — logic hiển thị đơn giản, rủi ro thấp).
+ĐÃ TỰ KIỂM TRA TÍCH HỢP (esbuild bundle CHÍNH file thật + Playwright,
+API giả lập nhưng CHỤP LẠI đúng payload thật gửi đi):
+1. CreateReceiptManual: chọn "Nước suối Aquafina 500ml" từ dropdown
+   -> ô tên tự điền đúng -> submit -> chụp lại payload thật -> xác
+   nhận product_id=5 và tên đều đúng.
+2. ImportFlow: giả lập 2 dòng (1 thiếu sản phẩm, 1 đã có) -> đo trực
+   tiếp thuộc tính disabled của cả 2 nút "Đếm" -> xác nhận CHỈ ĐÚNG
+   dòng thiếu sản phẩm bị khoá, dòng kia vẫn bấm được bình thường —
+   kèm ảnh chụp xác nhận cảnh báo đỏ hiển thị đúng vị trí.
