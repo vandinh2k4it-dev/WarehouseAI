@@ -1,4 +1,5 @@
 import os
+import asyncio
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -17,27 +18,40 @@ async def lifespan(app: FastAPI):
     # dùng `alembic upgrade head` thay thế để không mất lịch sử migration.
     Base.metadata.create_all(bind=engine)
 
-    # Tải sẵn model OCR (PaddleOCR + VietOCR) NGAY LÚC SERVER KHỞI ĐỘNG,
-    # thay vì đợi tới request /receipts/upload ĐẦU TIÊN mới tải (lazy load
-    # mặc định của get_ocr_engine()) — LỖI THẬT ĐÃ XẢY RA: model nặng
-    # (VietOCR ~550MB + 3 model PaddleOCR) tải mất HƠN 1 PHÚT, khiến người
-    # dùng đầu tiên quét phiếu bị hết thời gian chờ (timeout) NGAY GIỮA lúc
-    # server đang âm thầm tải model — trình duyệt hiển thị lỗi y hệt CORS
-    # (ERR_FAILED), dù thực chất không phải lỗi CORS/code, chỉ là chưa kịp
-    # trả response vì bận tải model lần đầu.
+    # Tải sẵn model OCR (PaddleOCR + VietOCR) sau khi server khởi động —
+    # CHẠY Ở NỀN (background task), KHÔNG chặn lifespan trước "yield".
     #
-    # Tải sẵn ở đây nghĩa là: người CHỜ LÂU HƠN LÚC NÀY là Railway lúc khởi
-    # động container (không ai đang đứng chờ, không sao) — thay vì người
-    # DÙNG THẬT đứng chờ lúc quét phiếu (rất tệ). Bọc try/except để nếu
-    # tải model lỗi (vd mất mạng lúc khởi động), server VẪN khởi động được
-    # bình thường — request /receipts/upload đầu tiên sau đó sẽ tự tải lại
-    # (rơi về đúng hành vi lazy-load cũ), chỉ là mất lợi ích "tải sẵn" này.
-    try:
-        print("⏳ Đang tải sẵn model OCR (PaddleOCR + VietOCR) lúc khởi động — có thể mất 1-2 phút lần đầu...")
-        receipts.get_ocr_engine()
-        print("✅ Đã tải xong model OCR — sẵn sàng xử lý quét phiếu ngay từ request đầu tiên.")
-    except Exception as e:  # noqa: BLE001 — không để lỗi tải model làm sập cả server
-        print(f"⚠️ Tải sẵn model OCR lúc khởi động thất bại ({e!r}) — sẽ tự thử lại ở request /receipts/upload đầu tiên.")
+    # BÀI HỌC THẬT (lỗi do chính bản vá trước gây ra — đã xác nhận qua log
+    # Railway thật: deploy báo "Crashed/Failed", KHÔNG PHẢI crash-loop):
+    # bản đầu tiên gọi get_ocr_engine() TRỰC TIẾP, ĐỒNG BỘ, NGAY TRONG
+    # lifespan TRƯỚC dòng "yield" — nghĩa là toàn bộ server KHÔNG PHẢN HỒI
+    # BẤT KỲ REQUEST NÀO (kể cả /health) cho tới khi tải xong >550MB dữ
+    # liệu (1-2 phút). Railway có giới hạn thời gian chờ server "khoẻ
+    # mạnh" (healthcheck) lúc deploy — NGẮN HƠN thời gian tải model này —
+    # nên Railway kết luận server bị treo, đánh dấu deploy "Failed" và
+    # DỪNG LUÔN container, dù code không hề có lỗi logic nào.
+    #
+    # Cách sửa ĐÚNG: "yield" (báo server đã sẵn sàng nhận request) được
+    # gọi NGAY LẬP TỨC, không đợi tải model xong. Việc tải model đẩy hẳn
+    # sang 1 thread riêng qua loop.run_in_executor() — vì get_ocr_engine()
+    # là hàm ĐỒNG BỘ, chạy NẶNG (CPU-bound + tải file lớn); nếu chỉ bọc
+    # asyncio.create_task() suông mà không đẩy sang executor, code đồng
+    # bộ nặng đó VẪN sẽ chặn event loop chính (asyncio không tự tách code
+    # sync ra thread nền), khiến /health vẫn có thể bị treo y hệt vấn đề
+    # cũ. Nhờ vậy Railway healthcheck thấy server phản hồi tức thì, đánh
+    # dấu deploy thành công bình thường — model vẫn được tải sẵn đúng ý
+    # đồ ban đầu (giảm khả năng người dùng thật phải chờ), chỉ khác là
+    # tải NGẦM ở thread riêng thay vì tải CHẶN CỨNG event loop chính.
+    async def _preload_ocr_in_background():
+        loop = asyncio.get_event_loop()
+        try:
+            print("⏳ [nền] Đang tải sẵn model OCR (PaddleOCR + VietOCR) — có thể mất 1-2 phút lần đầu, KHÔNG chặn server nhận request khác trong lúc này...")
+            await loop.run_in_executor(None, receipts.get_ocr_engine)
+            print("✅ [nền] Đã tải xong model OCR — sẵn sàng xử lý quét phiếu nhanh từ giờ trở đi.")
+        except Exception as e:  # noqa: BLE001 — lỗi tải model KHÔNG được làm sập task nền/server
+            print(f"⚠️ [nền] Tải sẵn model OCR thất bại ({e!r}) — request /receipts/upload đầu tiên sẽ tự thử tải lại (lazy-load).")
+
+    asyncio.create_task(_preload_ocr_in_background())
 
     yield
 
