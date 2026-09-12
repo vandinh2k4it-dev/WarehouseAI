@@ -16,6 +16,29 @@ async def lifespan(app: FastAPI):
     # Dev only: tự tạo bảng nếu chưa có. Khi có Alembic thì bỏ dòng này,
     # dùng `alembic upgrade head` thay thế để không mất lịch sử migration.
     Base.metadata.create_all(bind=engine)
+
+    # Tải sẵn model OCR (PaddleOCR + VietOCR) NGAY LÚC SERVER KHỞI ĐỘNG,
+    # thay vì đợi tới request /receipts/upload ĐẦU TIÊN mới tải (lazy load
+    # mặc định của get_ocr_engine()) — LỖI THẬT ĐÃ XẢY RA: model nặng
+    # (VietOCR ~550MB + 3 model PaddleOCR) tải mất HƠN 1 PHÚT, khiến người
+    # dùng đầu tiên quét phiếu bị hết thời gian chờ (timeout) NGAY GIỮA lúc
+    # server đang âm thầm tải model — trình duyệt hiển thị lỗi y hệt CORS
+    # (ERR_FAILED), dù thực chất không phải lỗi CORS/code, chỉ là chưa kịp
+    # trả response vì bận tải model lần đầu.
+    #
+    # Tải sẵn ở đây nghĩa là: người CHỜ LÂU HƠN LÚC NÀY là Railway lúc khởi
+    # động container (không ai đang đứng chờ, không sao) — thay vì người
+    # DÙNG THẬT đứng chờ lúc quét phiếu (rất tệ). Bọc try/except để nếu
+    # tải model lỗi (vd mất mạng lúc khởi động), server VẪN khởi động được
+    # bình thường — request /receipts/upload đầu tiên sau đó sẽ tự tải lại
+    # (rơi về đúng hành vi lazy-load cũ), chỉ là mất lợi ích "tải sẵn" này.
+    try:
+        print("⏳ Đang tải sẵn model OCR (PaddleOCR + VietOCR) lúc khởi động — có thể mất 1-2 phút lần đầu...")
+        receipts.get_ocr_engine()
+        print("✅ Đã tải xong model OCR — sẵn sàng xử lý quét phiếu ngay từ request đầu tiên.")
+    except Exception as e:  # noqa: BLE001 — không để lỗi tải model làm sập cả server
+        print(f"⚠️ Tải sẵn model OCR lúc khởi động thất bại ({e!r}) — sẽ tự thử lại ở request /receipts/upload đầu tiên.")
+
     yield
 
 

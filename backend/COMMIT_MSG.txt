@@ -1,46 +1,53 @@
-fix(backend): chặn crash 500 khi đếm dòng hàng chưa gán sản phẩm (lỗi hiện dạng CORS giả)
+fix(backend): tải sẵn model OCR lúc khởi động server — sửa lỗi hết thời gian chờ (hiện dạng CORS giả) khi quét phiếu lần đầu
 
-Bối cảnh (log Railway thật): "ValueError: Dòng #126 chưa map sản
-phẩm, không thể cập nhật tồn kho" — xảy ra tại POST /camera-sessions/
-107/stop, KHÔNG được bắt (catch), lan ra thành lỗi 500 không kiểm
-soát, khiến trình duyệt hiểu nhầm thành lỗi CORS (đúng mẫu lỗi đã gặp
-nhiều lần trước đó trong dự án — luôn cần kiểm tra log Railway trước
-khi nghi ngờ CORS thật).
+Bối cảnh (đọc log Railway thật): upload phiếu nhập bị lỗi
+"blocked by CORS policy" trên trình duyệt — NHƯNG log Railway không
+hề có dòng lỗi/exception nào. Thay vào đó, log cho thấy server đang
+TẢI MODEL OCR (VietOCR ~550MB từ pytorch.org + 3 model PaddleOCR từ
+paddleocr.bj.bcebos.com) — quá trình này mất HƠN 1 PHÚT. Log bị "cắt
+ngang" giữa chừng lúc đang tải, không có dòng "POST /receipts/upload
+... " nào ở cuối — nghĩa là request đó vẫn đang treo, CHƯA HỀ hoàn
+tất, không phải do lỗi code.
 
-Kịch bản gây lỗi: tạo phiếu nhập bằng tay, để trống sản phẩm cho 1
-dòng (đúng thiết kế cho phép) -> hệ thống lại KHÔNG CHẶN việc bắt đầu
-đếm dòng đó -> nhân viên đếm xong, số khớp -> backend cố cập nhật tồn
-kho cho dòng CHƯA CÓ sản phẩm để cập nhật vào đâu -> apply_line_import()
-(app/routers/reconciliation.py) raise ValueError như thiết kế đúng,
-nhưng lỗi này KHÔNG được xử lý ở nơi gọi nó (camera.py) -> crash 500.
+Nguyên nhân gốc: app/routers/receipts.py dùng "lazy load" — hàm
+get_ocr_engine() CHỈ khởi tạo ReceiptOCREngine() (kích hoạt toàn bộ
+việc tải model) ở LẦN GỌI ĐẦU TIÊN, tức đúng lúc CÓ NGƯỜI DÙNG THẬT
+đang upload phiếu và chờ kết quả. Việc tải >550MB dữ liệu mất hơn 1
+phút, RẤT DỄ vượt quá thời gian chờ tối đa của trình duyệt/proxy
+Railway, khiến client bỏ cuộc giữa chừng — trình duyệt hiển thị lỗi
+kết nối thất bại, dễ nhầm thành lỗi CORS (đúng mẫu lỗi đã gặp nhiều
+lần trước đây trong dự án: luôn cần đọc log Railway trước khi kết
+luận CORS thật).
 
-Cách sửa — 3 lớp phòng thủ trong app/routers/camera.py:
-1. start_import_segment(): CHẶN TỪ SỚM — nếu dòng chưa có product_id,
-   trả về 400 rõ ràng NGAY LÚC BẤM "Đếm", không để nhân viên tốn công
-   đếm xong mới phát hiện lỗi ở bước cuối.
-2. _finalize_stop() (nhánh matched, direction=import): thêm lưới an
-   toàn TRƯỚC khi gọi apply_line_import() — phòng trường hợp hiếm
-   (dữ liệu bị đổi giữa lúc đang đếm, vd 2 tab trình duyệt) khiến lớp
-   1 không chặn được — trả 400 rõ nghĩa thay vì để ValueError tự
-   nhiên lan ra thành 500 khó hiểu. Có db.rollback() để không giữ lại
-   bản ghi reconciliation "matched" giả khi tồn kho chưa thực sự
-   được cập nhật.
-3. resolve_segment() (nhánh action='override'): cùng lưới an toàn,
-   vì đường này CŨNG gọi apply_line_import() với cùng rủi ro.
+Cách sửa (app/main.py, hàm lifespan): gọi receipts.get_ocr_engine()
+NGAY LÚC SERVER KHỞI ĐỘNG (trong lifespan, trước "yield") thay vì đợi
+tới request đầu tiên. Người "chờ lâu hơn" giờ là Railway lúc khởi
+động container (không ai đứng chờ trực tiếp, chấp nhận được) — thay
+vì người dùng thật đứng chờ lúc quét phiếu (rất tệ, gây đúng lỗi
+timeout đã xảy ra). Bọc try/except quanh việc tải: nếu thất bại (vd
+mất mạng lúc khởi động), server VẪN khởi động bình thường, không bị
+sập cả ứng dụng chỉ vì OCR tải lỗi — request /receipts/upload đầu
+tiên sau đó sẽ tự thử tải lại (rơi về đúng hành vi lazy-load cũ).
 
-KHÔNG sửa app/routers/reconciliation.py — apply_line_import() giữ
-nguyên hành vi raise ValueError khi thiếu product_id (đúng thiết kế
-gốc, vẫn hữu ích như lưới an toàn tầng thấp nhất) — chỉ đảm bảo lỗi
-này giờ LUÔN được bắt trước khi tới đó, không bao giờ còn lan ra
-ngoài thành 500 nữa.
+ĐÃ TỰ KIỂM TRA (dùng TestClient với context manager "with
+TestClient(app) as client" để kích hoạt ĐÚNG lifespan thật, không
+phải gọi tay hàm riêng lẻ — cùng cách FastAPI thật sự chạy lifespan
+lúc khởi động; stub ReceiptOCREngine tối giản để không cần cài
+paddleocr/torch thật rất nặng, nhưng vẫn test ĐÚNG logic lifespan gọi
+get_ocr_engine() vào đúng thời điểm):
+1. Model "tải" thành công lúc khởi động -> xác nhận đúng thứ tự log
+   in ra (đang tải -> model tải xong -> đã tải xong), server khởi
+   động bình thường, GET /health trả 200 OK.
+2. Giả lập model tải THẤT BẠI lúc khởi động (RuntimeError, mô phỏng
+   mất mạng) -> xác nhận server VẪN khởi động bình thường (không bị
+   sập), GET /health vẫn trả 200 OK — đúng thiết kế try/except không
+   để lỗi tải model kéo sập toàn bộ ứng dụng.
 
-ĐÃ TỰ KIỂM TRA (test logic điều kiện trực tiếp bằng HTTPException
-thật của FastAPI, mô phỏng đúng 2 tình huống thực tế):
-1. Dòng chưa map sản phẩm (product_id=None) -> đúng bị chặn 400,
-   không cho bắt đầu đếm.
-2. Dòng đã map sản phẩm (product_id có giá trị) -> không bị ảnh
-   hưởng, luồng bình thường vẫn hoạt động đúng.
-
-Việc cần làm: xem thêm COMMIT_MSG.txt bên frontend — đã sửa luôn gốc
-rễ thật sự của vấn đề (form tạo phiếu tay trước đây KHÔNG CÓ cách nào
-chọn sản phẩm có sẵn, chỉ có ô gõ tên tự do, nên luôn phải để trống).
+Việc cần làm sau khi deploy: LẦN DEPLOY ĐẦU TIÊN sau khi áp dụng bản
+vá này, thời gian Railway báo "healthcheck" có thể lâu hơn bình
+thường 1-2 phút (do tải model ngay lúc khởi động) — đây là điều BÌNH
+THƯỜNG, không phải deploy bị treo, cứ đợi qua giai đoạn tải model là
+xong. Các lần khởi động SAU (không phải deploy mới, chỉ là container
+tự khởi động lại) cũng sẽ mất thêm 1-2 phút này mỗi lần — đánh đổi
+chấp nhận được để đổi lấy việc người dùng KHÔNG BAO GIỜ phải chờ lâu
+lúc thao tác thật.
