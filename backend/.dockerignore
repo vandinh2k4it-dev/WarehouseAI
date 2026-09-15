@@ -1,0 +1,21 @@
+# Không đưa các thứ này vào Docker build context khi push lên HF Spaces
+.git
+__pycache__
+**/__pycache__
+*.pyc
+.venv
+venv
+
+# File môi trường thật (nếu Em lỡ tạo lại .env khi dev local) — TUYỆT ĐỐI
+# không để lọt vào image, dù image này để ở chế độ Private trên HF.
+.env
+
+# Dữ liệu upload thật lúc dev/test local — không cần thiết trong image,
+# HF Space sẽ tự tạo lại các thư mục này lúc chạy (xem app/main.py).
+uploads/receipts/*
+uploads/annotated_videos/*
+
+# File test & tài liệu nội bộ, không cần thiết để server chạy
+test/
+test_video_local.py
+PROJECT_CONTEXT.md

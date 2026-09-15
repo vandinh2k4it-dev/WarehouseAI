@@ -1,68 +1,16 @@
-fix(backend): SỬA LỖI DO BẢN VÁ TRƯỚC GÂY RA — tải model OCR ở nền (background), không chặn healthcheck của Railway
+feat(dashboard): thêm Dashboard báo cáo/phân tích — Nhóm B (mục an toàn nhất)
 
-BỐI CẢNH — THỪA NHẬN SAI SÓT: commit trước ("tải sẵn model OCR lúc
-khởi động") đã VÔ TÌNH GÂY RA lỗi mới, nặng hơn lỗi cũ. Xác nhận qua
-log Railway thật: sau khi áp dụng bản vá trước, deployment chuyển
-thẳng sang trạng thái "Crashed/Failed" (không phải crash-loop lặp
-lại nhiều lần — xác nhận "Starting Container" chỉ xuất hiện đúng 1
-lần trong log). Nguyên nhân: bản trước gọi get_ocr_engine() TRỰC
-TIẾP, ĐỒNG BỘ, NGAY TRONG lifespan TRƯỚC dòng "yield" — server hoàn
-toàn KHÔNG PHẢN HỒI bất kỳ request nào (kể cả GET /health) trong suốt
-1-2 phút tải model. Railway có giới hạn thời gian chờ server "khoẻ
-mạnh" lúc deploy (healthcheck) — NGẮN HƠN thời gian tải model — nên
-Railway kết luận nhầm server bị treo, đánh dấu deploy thất bại và
-dừng hẳn container, dù code không có lỗi logic nào.
+Chỉ chọn 1 hạng mục an toàn nhất trong Nhóm B (đã trao đổi trước) — KHÔNG
+đổi schema database, KHÔNG đụng tới luồng nhập/xuất/đếm camera đang chạy
+ổn định. Tận dụng lại đúng dữ liệu InventoryTransaction/Inventory/Alert
+đã có sẵn từ đầu.
 
-Đây là bài học thật: "tải sẵn lúc khởi động" không sai về Ý TƯỞNG,
-nhưng THỰC THI SAI CÁCH (chặn cứng thay vì chạy nền) đã biến 1 vấn đề
-(người dùng đầu tiên chờ lâu) thành vấn đề NẶNG HƠN (server không bao
-giờ khởi động được, ảnh hưởng TẤT CẢ người dùng, không chỉ người quét
-phiếu đầu tiên).
-
-CÁCH SỬA ĐÚNG (app/main.py, hàm lifespan):
-- Việc tải model giờ chạy trong 1 task NỀN (asyncio.create_task),
-  KHÔNG "await" trực tiếp trong lifespan — dòng "yield" (báo server
-  sẵn sàng nhận request) được gọi NGAY LẬP TỨC, không đợi tải model.
-- QUAN TRỌNG: get_ocr_engine() là hàm ĐỒNG BỘ, chạy NẶNG (CPU-bound +
-  tải file lớn) — chỉ bọc asyncio.create_task() suông KHÔNG ĐỦ, vì
-  asyncio không tự tách code đồng bộ nặng ra thread riêng, code đó
-  VẪN sẽ chặn event loop chính (tức /health vẫn có thể bị treo y hệt
-  vấn đề cũ). Phải dùng loop.run_in_executor(None, receipts.get_ocr_engine)
-  để đẩy HẲN việc này sang 1 thread pool riêng — đây là điểm kỹ thuật
-  dễ bỏ sót nếu chỉ nghĩ "thêm async là xong".
-- Giữ nguyên try/except quanh việc tải — lỗi tải model (vd mất mạng)
-  không làm sập task nền/server, request /receipts/upload đầu tiên
-  sau đó tự thử tải lại (lazy-load).
-
-ĐÃ TỰ KIỂM TRA KỸ HƠN LẦN TRƯỚC (rút kinh nghiệm: lần trước chỉ test
-"lifespan chạy xong", KHÔNG ĐO THỜI GIAN — thiếu sót này chính là lý
-do không phát hiện được lỗi chặn cứng trước khi giao). Lần này:
-1. Giả lập model "tải" mất ĐÚNG 5 GIÂY (time.sleep(5) thật) — ĐO THỜI
-   GIAN THỰC TẾ "with TestClient(app) as client:" (context manager
-   này đợi lifespan xong mới cho phép gọi request, mô phỏng đúng cách
-   Railway đợi server "sẵn sàng") mất bao lâu.
-2. Xác nhận lifespan hoàn tất trong 0.04 GIÂY (không phải 5 giây) —
-   bằng chứng trực tiếp, đo được, không phải suy luận, xác nhận
-   KHÔNG còn bị chặn cứng.
-3. Xác nhận GET /health trả lời trong 0.03 giây — tức thì, đúng như
-   Railway healthcheck cần.
-4. Đợi đủ 6 giây (dài hơn 5 giây giả lập), xác nhận model THỰC SỰ đã
-   được tải xong ở nền (receipts._ocr_engine không còn None) — chứng
-   minh việc "chạy nền" không phải là bỏ qua/không tải, mà tải đúng
-   nhưng không chặn ai cả.
-
-VIỆC CẦN LÀM NGAY:
-1. Nếu deployment hiện tại đang "Crashed/Failed" do bản vá trước —
-   đã hướng dẫn rollback về bản trước đó để khôi phục dịch vụ ngay,
-   KHÔNG đợi bản vá này mới khôi phục.
-2. Deploy bản vá NÀY (đã sửa đúng) — lần này deploy sẽ nhanh bình
-   thường như trước (không mất thêm 1-2 phút để "healthy" nữa, vì
-   không còn chặn healthcheck), quan sát Railway Dashboard xác nhận
-   chuyển thẳng sang "Active/Healthy" như bình thường.
-3. Test lại đúng kịch bản đã gây lỗi 2 lần trước: quét 1 phiếu nhập
-   MỚI ngay sau khi deploy xong — lần đầu tiên có thể vẫn hơi chậm
-   hơn bình thường 1 chút (nếu request tới TRƯỚC khi task nền tải
-   xong, sẽ tự đợi tải xong rồi mới xử lý — không lỗi, chỉ chậm hơn
-   bình thường), nhưng sẽ KHÔNG còn bị timeout/lỗi CORS giả nữa vì
-   quá trình tải đã bắt đầu từ sớm (ngay lúc khởi động) thay vì đợi
-   đúng lúc request tới mới bắt đầu từ 0.
+BACKEND (thêm mới, không sửa logic cũ):
+- app/schemas.py: thêm DailyFlowPoint, TopProductMovement, AnalyticsKpis,
+  AnalyticsOut.
+- app/routers/inventory.py: thêm GET /inventory/analytics?days=N — trả
+  về (1) nhập/xuất theo từng ngày, (2) top 10 sản phẩm quay vòng nhiều
+  nhất (tổng nhập+xuất), (3) 4 KPI nhanh (cảnh báo mở, sản phẩm sắp hết,
+  lô sắp hết hạn, tổng số giao dịch trong khoảng ngày xem).
+  ĐÃ TEST THẬT logic query bằng SQLite in-memory (không chỉ kiểm tra cú
+  pháp) — xác nhận số liệu tính đúng với dữ liệu giả lập.

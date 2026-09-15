@@ -2,6 +2,7 @@ from datetime import date, timedelta, datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import func, case
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -40,6 +41,101 @@ def expiring_soon(days: int = 30, db: Session = Depends(get_db)):
         .filter(models.Inventory.expiry_date <= cutoff)
         .filter(models.Inventory.expiry_date >= date.today())
         .all()
+    )
+
+
+@router.get("/analytics", response_model=schemas.AnalyticsOut)
+def analytics(days: int = 30, db: Session = Depends(get_db)):
+    """Dashboard báo cáo/phân tích nhập-xuất-tồn — CHỈ đọc lại dữ liệu
+    InventoryTransaction/Inventory/Alert đã có sẵn từ trước, KHÔNG thêm
+    bảng mới, KHÔNG đụng gì tới luồng nhập/xuất/đếm camera đang chạy.
+    Dùng cho trang Dashboard mới ở frontend (xem pages/Dashboard.jsx)."""
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+
+    day_expr = func.date(models.InventoryTransaction.created_at)
+    imported_expr = func.sum(
+        case((models.InventoryTransaction.transaction_type == "import", models.InventoryTransaction.change_qty), else_=0)
+    )
+    # change_qty của export lưu ÂM trong DB (xem models.py) -> đảo dấu lại
+    # cho dễ đọc, khớp đúng quy ước đã dùng ở ExportHistoryItem (schemas.py).
+    exported_expr = func.sum(
+        case((models.InventoryTransaction.transaction_type == "export", -models.InventoryTransaction.change_qty), else_=0)
+    )
+
+    # --- Nhập/xuất theo từng ngày, trong N ngày gần nhất ---
+    daily_rows = (
+        db.query(day_expr.label("day"), imported_expr.label("imported"), exported_expr.label("exported"))
+        .filter(models.InventoryTransaction.created_at >= since)
+        .group_by(day_expr)
+        .order_by(day_expr)
+        .all()
+    )
+    daily_flow = [
+        schemas.DailyFlowPoint(date=str(r.day), imported=float(r.imported or 0), exported=float(r.exported or 0))
+        for r in daily_rows
+    ]
+
+    # --- Top 10 sản phẩm quay vòng nhiều nhất (tổng nhập + xuất) ---
+    top_rows = (
+        db.query(
+            models.Product.id,
+            models.Product.name,
+            models.Product.sku,
+            models.Product.unit,
+            imported_expr.label("imported_total"),
+            exported_expr.label("exported_total"),
+        )
+        .join(models.Inventory, models.Inventory.product_id == models.Product.id)
+        .join(models.InventoryTransaction, models.InventoryTransaction.inventory_id == models.Inventory.id)
+        .filter(models.InventoryTransaction.created_at >= since)
+        .group_by(models.Product.id, models.Product.name, models.Product.sku, models.Product.unit)
+        .order_by((imported_expr + exported_expr).desc())
+        .limit(10)
+        .all()
+    )
+    top_products = [
+        schemas.TopProductMovement(
+            product_id=r.id,
+            name=r.name,
+            sku=r.sku,
+            unit=r.unit,
+            imported_total=float(r.imported_total or 0),
+            exported_total=float(r.exported_total or 0),
+            net_change=float((r.imported_total or 0) - (r.exported_total or 0)),
+        )
+        for r in top_rows
+    ]
+
+    # --- KPI nhanh cho đầu trang Dashboard ---
+    open_alerts = db.query(models.Alert).filter(models.Alert.status == "open").count()
+    low_stock_products = (
+        db.query(models.Inventory)
+        .join(models.Product)
+        .filter(models.Inventory.quantity <= models.Product.low_stock_threshold)
+        .count()
+    )
+    cutoff = date.today() + timedelta(days=30)
+    expiring_soon_batches = (
+        db.query(models.Inventory)
+        .filter(models.Inventory.expiry_date.isnot(None))
+        .filter(models.Inventory.expiry_date <= cutoff)
+        .filter(models.Inventory.expiry_date >= date.today())
+        .count()
+    )
+    total_transactions = (
+        db.query(models.InventoryTransaction).filter(models.InventoryTransaction.created_at >= since).count()
+    )
+
+    return schemas.AnalyticsOut(
+        days=days,
+        daily_flow=daily_flow,
+        top_products=top_products,
+        kpis=schemas.AnalyticsKpis(
+            open_alerts=open_alerts,
+            low_stock_products=low_stock_products,
+            expiring_soon_batches=expiring_soon_batches,
+            total_transactions=total_transactions,
+        ),
     )
 
 

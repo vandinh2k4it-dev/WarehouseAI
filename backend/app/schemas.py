@@ -263,6 +263,38 @@ class ExportHistoryItem(BaseModel):
     created_at: datetime
 
 
+# ---------- Dashboard báo cáo/phân tích (đọc lại InventoryTransaction có
+# sẵn, KHÔNG thêm bảng mới) ----------
+class DailyFlowPoint(BaseModel):
+    date: str  # "YYYY-MM-DD"
+    imported: float
+    exported: float
+
+
+class TopProductMovement(BaseModel):
+    product_id: int
+    name: str
+    sku: Optional[str] = None
+    unit: str
+    imported_total: float
+    exported_total: float
+    net_change: float  # imported_total - exported_total, có thể âm
+
+
+class AnalyticsKpis(BaseModel):
+    open_alerts: int
+    low_stock_products: int
+    expiring_soon_batches: int
+    total_transactions: int  # tổng số phiếu giao dịch trong khoảng ngày đang xem
+
+
+class AnalyticsOut(BaseModel):
+    days: int
+    daily_flow: List[DailyFlowPoint]
+    top_products: List[TopProductMovement]
+    kpis: AnalyticsKpis
+
+
 # ---------- Alerts ----------
 class AlertOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
