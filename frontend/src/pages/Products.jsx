@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { api } from "../api";
+import { useToast } from "../components/Toast";
 
 const SORT_OPTIONS = [
   { value: "default", label: "Mặc định (theo tên)" },
@@ -24,6 +25,11 @@ export default function Products() {
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState("stock_desc");
   const [expandedId, setExpandedId] = useState(null);
+  // Sửa vị trí kệ cho 1 lô — editingLocationId = id của bản ghi inventory
+  // đang mở form sửa (chỉ mở 1 lô tại 1 thời điểm).
+  const [editingLocationId, setEditingLocationId] = useState(null);
+  const [locationDraft, setLocationDraft] = useState("");
+  const showToast = useToast();
 
   useEffect(() => {
     Promise.all([api.listProducts(), api.listInventory()])
@@ -91,6 +97,22 @@ export default function Products() {
         return arr.sort((a, b) => a.product.name.localeCompare(b.product.name, "vi"));
     }
   }, [filtered, sortBy]);
+
+  function startEditLocation(batch) {
+    setEditingLocationId(batch.id);
+    setLocationDraft(batch.location || "");
+  }
+
+  async function saveLocation(inventoryId) {
+    try {
+      const updated = await api.updateInventoryLocation(inventoryId, locationDraft.trim() || null);
+      setInventory((prev) => prev.map((i) => (i.id === inventoryId ? updated : i)));
+      setEditingLocationId(null);
+      showToast("Đã cập nhật vị trí", "success");
+    } catch (err) {
+      showToast(err.message || String(err), "error");
+    }
+  }
 
   return (
     <main className="page-main">
@@ -200,6 +222,39 @@ export default function Products() {
                                         {b.quantity} {p.unit}
                                       </span>
                                       <span className="text-muted">{b.expiry_date || "—"}</span>
+                                      {editingLocationId === b.id ? (
+                                        <span
+                                          style={{ display: "flex", gap: 6, alignItems: "center" }}
+                                          onClick={(e) => e.stopPropagation()}
+                                        >
+                                          <input
+                                            type="text"
+                                            value={locationDraft}
+                                            onChange={(e) => setLocationDraft(e.target.value)}
+                                            placeholder="VD: Kệ A3-02"
+                                            style={{ margin: 0, padding: 6, fontSize: 13, width: 120 }}
+                                            autoFocus
+                                          />
+                                          <button
+                                            className="ghost lineCard-smallBtn"
+                                            onClick={() => saveLocation(b.id)}
+                                          >
+                                            Lưu
+                                          </button>
+                                        </span>
+                                      ) : (
+                                        <span
+                                          className="text-muted"
+                                          style={{ cursor: "pointer", textDecoration: "underline dotted" }}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            startEditLocation(b);
+                                          }}
+                                          title="Bấm để sửa vị trí"
+                                        >
+                                          📍 {b.location || "chưa gán vị trí"}
+                                        </span>
+                                      )}
                                     </div>
                                   ))}
                               </div>

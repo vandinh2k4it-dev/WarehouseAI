@@ -30,7 +30,7 @@ export default function CountingScreen({ session, expectedQuantity, label, onDon
     setStatus("uploading");
     setErrorMsg("");
     try {
-      const res = await api.countVideo(session.id, file, 0.02, videoConf);
+      const res = await api.countVideo(session.id, file, 0, videoConf);
       setResult(res);
       setStatus("done");
     } catch (err) {

@@ -12,9 +12,31 @@ export default function CreateReceiptManual() {
   const [errorMsg, setErrorMsg] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [products, setProducts] = useState([]);
+  // Tên dòng đang tạo sản phẩm mới (creatingProductForIdx = index trong
+  // mảng lines) — tránh bấm nhầm 2 lần liên tiếp trong lúc đang gọi API.
+  const [creatingProductForIdx, setCreatingProductForIdx] = useState(null);
 
   useEffect(() => {
     api.listProducts().then(setProducts).catch(() => {});
+  }, []);
+
+  // Tự gợi ý mã phiếu tiếp theo dựa trên các phiếu có sẵn theo mẫu PNxxxx
+  // (khớp đúng quy ước đặt tên của bộ dữ liệu mẫu, xem db/seed_main.py) —
+  // chỉ điền khi ô mã phiếu còn TRỐNG lúc tải trang, không ghi đè nếu
+  // người dùng đã gõ gì đó.
+  useEffect(() => {
+    api
+      .listReceipts()
+      .then((receipts) => {
+        const numbers = receipts
+          .map((r) => /^PN(\d+)$/i.exec(r.receipt_code || ""))
+          .filter(Boolean)
+          .map((m) => parseInt(m[1], 10));
+        if (numbers.length === 0) return;
+        const nextNum = Math.max(...numbers) + 1;
+        setReceiptCode((prev) => (prev ? prev : `PN${String(nextNum).padStart(4, "0")}`));
+      })
+      .catch(() => {}); // không quan trọng nếu lỗi — chỉ là gợi ý, không bắt buộc
   }, []);
 
   function updateLine(idx, field, value) {
@@ -40,6 +62,25 @@ export default function CreateReceiptManual() {
 
   function removeLine(idx) {
     setLines((prev) => prev.filter((_, i) => i !== idx));
+  }
+
+  // Tạo sản phẩm mới lấy đúng tên đang gõ ở dòng này (endpoint POST
+  // /products thô — KHÁC với createProductAndMap vì dòng hàng ở đây
+  // chưa lưu vào DB, chưa có line_id để gọi create-and-map). Sau khi
+  // tạo xong, tự động chọn luôn sản phẩm mới vào đúng dòng đang gõ.
+  async function createProductForLine(idx) {
+    const name = lines[idx].product_name_raw.trim();
+    if (!name) return;
+    setCreatingProductForIdx(idx);
+    try {
+      const product = await api.createProduct(name);
+      setProducts((prev) => [...prev, product].sort((a, b) => a.name.localeCompare(b.name)));
+      updateLine(idx, "product_id", String(product.id));
+    } catch (err) {
+      setErrorMsg(err.message || String(err));
+    } finally {
+      setCreatingProductForIdx(null);
+    }
   }
 
   async function submit() {
@@ -130,10 +171,25 @@ export default function CreateReceiptManual() {
               ))}
             </select>
             {!line.product_id && (
-              <div className="stockHint-warn" style={{ marginTop: 6, fontSize: 12.5 }}>
-                ⚠ Chưa chọn sản phẩm — dòng này sẽ KHÔNG đếm được cho tới khi được gán sản phẩm
-                (ở trang "Sản phẩm chưa gán"). Nếu đây là sản phẩm đã có sẵn, hãy chọn đúng ở danh sách trên.
-              </div>
+              <>
+                <div className="stockHint-warn" style={{ marginTop: 6, fontSize: 12.5 }}>
+                  ⚠ Chưa chọn sản phẩm — dòng này sẽ KHÔNG đếm được cho tới khi được gán sản phẩm
+                  (ở trang "Sản phẩm chưa gán"). Nếu đây là sản phẩm đã có sẵn, hãy chọn đúng ở danh sách trên.
+                </div>
+                {line.product_name_raw.trim() && (
+                  <button
+                    type="button"
+                    className="ghost"
+                    style={{ marginTop: 6, width: "100%" }}
+                    disabled={creatingProductForIdx === idx}
+                    onClick={() => createProductForLine(idx)}
+                  >
+                    {creatingProductForIdx === idx
+                      ? "Đang tạo…"
+                      : `+ Tạo sản phẩm mới từ tên "${line.product_name_raw.trim()}"`}
+                  </button>
+                )}
+              </>
             )}
             <div className="manualLineRow-grid">
               <input

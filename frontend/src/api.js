@@ -24,6 +24,12 @@ export const api = {
 
   listProducts: () => request("/products"),
   listInventory: () => request("/inventory"),
+  updateInventoryLocation: (inventoryId, location) =>
+    request(`/inventory/${inventoryId}/location`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ location }),
+    }),
   // Dashboard báo cáo/phân tích — đọc lại InventoryTransaction có sẵn,
   // dùng cho khối "Xu hướng nhập-xuất" + "Top sản phẩm quay vòng" ở
   // trang Tổng quan (xem pages/Overview.jsx).
@@ -37,6 +43,12 @@ export const api = {
     }),
   createProductAndMap: (lineId) =>
     request(`/products/lines/${lineId}/create-and-map`, { method: "POST" }),
+  createProduct: (name) =>
+    request("/products", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    }),
 
   // Push notification (thông báo đẩy) — xem src/pushNotifications.js để biết
   // cách các hàm này được gọi (đăng ký quyền, subscribe PushManager...).
@@ -145,7 +157,7 @@ export const api = {
 
   // Quay video xong -> upload thẳng, backend tự đếm (YOLOv8+ByteTrack) rồi
   // tự đối chiếu luôn — chỉ 1 lần gọi, không cần round-trip riêng.
-  countVideo: async (sessionId, videoFile, thresholdPct = 0.02, conf = 0.5) => {
+  countVideo: async (sessionId, videoFile, thresholdPct = 0, conf = 0.5) => {
     const form = new FormData();
     form.append("file", videoFile);
     form.append("threshold_pct", String(thresholdPct));
@@ -168,7 +180,7 @@ export const api = {
 
   // Nhập tay số lượng đã đếm — dùng khi số lượng ít, không cần quay video.
   // Gọi thẳng /stop với số đã đếm, cùng logic đối chiếu như count-video.
-  stopManualCount: (sessionId, countedQuantity, thresholdPct = 0.02) =>
+  stopManualCount: (sessionId, countedQuantity, thresholdPct = 0) =>
     request(`/camera-sessions/${sessionId}/stop`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

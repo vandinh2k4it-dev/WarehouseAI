@@ -11,6 +11,7 @@ export default function ExportHistory() {
   const [history, setHistory] = useState(null);
   const [errorMsg, setErrorMsg] = useState("");
   const [search, setSearch] = useState("");
+  const [dateFilter, setDateFilter] = useState(""); // "YYYY-MM-DD"
 
   useEffect(() => {
     api
@@ -19,7 +20,17 @@ export default function ExportHistory() {
       .catch((err) => setErrorMsg(err.message || String(err)));
   }, []);
 
-  const filtered = history?.filter((h) => h.product_name.toLowerCase().includes(search.toLowerCase()));
+  const filtered = history?.filter((h) => {
+    if (!h.product_name.toLowerCase().includes(search.toLowerCase())) return false;
+    if (dateFilter) {
+      const d = new Date(h.created_at);
+      const localDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
+        d.getDate()
+      ).padStart(2, "0")}`;
+      if (localDate !== dateFilter) return false;
+    }
+    return true;
+  });
 
   // Tổng số lượng đã xuất (theo đúng danh sách đang lọc) — hiện nhanh 1 con
   // số tổng hợp phía trên bảng, kiểu dashboard thật.
@@ -46,16 +57,33 @@ export default function ExportHistory() {
       </div>
 
       <div className="card">
-        <input
-          type="text"
-          placeholder="Tìm theo tên sản phẩm…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <input
+            type="text"
+            placeholder="Tìm theo tên sản phẩm…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            style={{ flex: 1, minWidth: 180 }}
+          />
+          <input
+            type="date"
+            value={dateFilter}
+            onChange={(e) => setDateFilter(e.target.value)}
+            title="Lọc theo ngày xuất"
+          />
+          {dateFilter && (
+            <button className="ghost lineCard-smallBtn" onClick={() => setDateFilter("")}>
+              Bỏ lọc ngày
+            </button>
+          )}
+        </div>
 
         {errorMsg && <div className="empty" style={{ color: "var(--danger)" }}>{errorMsg}</div>}
         {!history && !errorMsg && <div className="empty">Đang tải…</div>}
-        {filtered && filtered.length === 0 && <div className="empty">Chưa có lượt xuất kho nào</div>}
+        {history && history.length === 0 && <div className="empty">Chưa có lượt xuất kho nào</div>}
+        {history && history.length > 0 && filtered && filtered.length === 0 && (
+          <div className="empty">Không có lượt xuất nào khớp bộ lọc đang chọn.</div>
+        )}
 
         {filtered && filtered.length > 0 && (
           <div className="tableScroll">

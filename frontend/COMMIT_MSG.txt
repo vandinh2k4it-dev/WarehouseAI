@@ -1,23 +1,88 @@
-feat(dashboard): thêm Dashboard báo cáo/phân tích — Nhóm B (mục an toàn nhất)
+feat(frontend): làm mượt UX nhập/xuất/đếm hàng, thêm dashboard, ghi đè, bộ lọc và vị trí kệ hàng
 
-Chỉ chọn 1 hạng mục an toàn nhất trong Nhóm B (đã trao đổi trước) — KHÔNG
-đổi schema database, KHÔNG đụng tới luồng nhập/xuất/đếm camera đang chạy
-ổn định. Tận dụng lại đúng dữ liệu InventoryTransaction/Inventory/Alert
-đã có sẵn từ đầu.
+Tổng hợp toàn bộ thay đổi frontend (React) trong buổi làm việc hoàn
+thiện project tại máy local. Đã tự test qua npm run dev trong suốt quá
+trình, không chỉ rà soát JSX bằng mắt.
 
-FRONTEND:
-- api.js: thêm getAnalytics(days).
-- pages/Overview.jsx: thêm 2 card mới vào đúng trang "Tổng quan" đã có
-  sẵn — "Xu hướng nhập-xuất" (biểu đồ cột CSS thuần theo từng ngày) và
-  "Top sản phẩm quay vòng nhanh" (danh sách có thanh ngang tỉ lệ).
-  KHÔNG thêm route/tab điều hướng mới — bottom nav mobile đã được tinh
-  chỉnh đúng cho 6 mục (xem comment CSS gốc), thêm mục thứ 7 sẽ làm chật
-  giao diện trên điện thoại thật, đi ngược mục tiêu làm mượt UX.
-  Lời gọi getAnalytics() được TÁCH RIÊNG khỏi Promise.all() chính — nếu
-  endpoint mới lỗi vì bất kỳ lý do gì, chỉ 2 card thống kê bị ẩn, không
-  làm hỏng cả trang Tổng quan (4 stat card + cảnh báo + phiếu gần đây)
-  vốn đã chạy ổn định từ trước.
-- styles/app.css: thêm CSS cho .flowChart/.topProductList — dùng lại
-  đúng biến màu --success/--accent/--info-dim đã có sẵn, KHÔNG thêm thư
-  viện biểu đồ ngoài (recharts/chart.js...) để tránh rủi ro npm install
-  sát ngày bảo vệ.
+1) App.jsx — bọc toàn app bằng <ToastProvider> (component Toast.jsx đã
+   có sẵn từ trước nhưng CHƯA từng được dùng ở đâu — giờ mới hoạt động).
+
+2) pages/ImportFlow.jsx (thay đổi nhiều nhất)
+   - Thêm thanh tổng tiến độ đếm ("X/Y dòng đã xong") + cảnh báo riêng
+     số dòng chưa gán sản phẩm, hiện ngay đầu danh sách dòng hàng.
+   - XÂY MỚI giao diện "Xác nhận ghi đè": backend đã có sẵn endpoint
+     resolve (action=override) và api.js đã có sẵn hàm gọi, nhưng CHƯA
+     từng có nút nào trong UI gọi tới — giờ có form bắt buộc nhập lý do,
+     khớp đúng validate của backend.
+   - Thêm nút "+ Tạo sản phẩm mới từ tên ..." ngay trong form sửa dòng
+     hàng — nối vào endpoint create-and-map đã có sẵn nhưng cũng chưa
+     từng được dùng.
+   - Thêm bộ lọc danh sách phiếu nhập: 3 tab trạng thái (Tất cả / Chờ
+     đếm hàng / Đã xong — đã gỡ bỏ tab "Chưa đếm" theo yêu cầu) + ô chọn
+     ngày lọc theo ngày nhận hàng. Lọc thuần phía client.
+   - Thêm ô nhập "Hạn sử dụng" vào cả form "+ Thêm dòng hàng" và form
+     "Sửa" dòng hàng (trước đây thiếu ở cả 2, dù backend đã hỗ trợ sẵn
+     field expiry_date).
+   - Thay các setErrorMsg() rời rạc bằng showToast() nhất quán (thêm/
+     sửa/xoá dòng, xoá phiếu, bắt đầu đếm).
+
+3) pages/ExportFlow.jsx
+   - Chặn sớm ngay trên UI nếu số dự kiến xuất vượt tồn kho hiện có —
+     trước đây chỉ hiện tồn kho tham khảo, không chặn, khiến nhân viên
+     có thể quay/đếm hết video rồi mới bị backend từ chối.
+   - Thêm showToast() cho lỗi khi start-export thất bại vì lý do khác.
+
+4) components/CountingScreen.jsx
+   - Thêm showToast() song song với khối lỗi màu đỏ có sẵn khi upload
+     video/nhập tay thất bại.
+   - Đổi ngưỡng sai số mặc định khi gọi countVideo từ 0.02 → 0 (khớp
+     quyết định nghiệp vụ mới, xem BACKEND_COMMIT_MSG.txt mục 3).
+
+5) pages/Overview.jsx (trang Tổng quan)
+   - Thêm 2 khối mới: "Xu hướng nhập-xuất" (biểu đồ cột CSS thuần theo
+     ngày) và "Top sản phẩm quay vòng nhanh" (danh sách có thanh ngang
+     tỉ lệ) — gọi endpoint /inventory/analytics mới. KHÔNG thêm route/
+     tab điều hướng mới (bottom nav mobile đã tối ưu đúng cho 6 mục).
+   - Lời gọi getAnalytics() tách riêng khỏi Promise.all() chính — nếu
+     endpoint mới lỗi, chỉ 2 card thống kê bị ẩn, không hỏng cả trang.
+
+6) pages/Products.jsx
+   - Thêm hiển thị + sửa "vị trí kệ" (📍) cho từng lô hàng trong phần mở
+     rộng chi tiết sản phẩm — bấm vào để sửa tại chỗ, gọi API mới
+     updateInventoryLocation.
+
+7) pages/CreateReceiptManual.jsx
+   - Tự động gợi ý mã phiếu tiếp theo (mẫu PNxxxx, dựa trên phiếu có sẵn
+     lớn nhất +1) khi mở trang — chỉ điền nếu ô còn trống, không ghi đè
+     nếu người dùng đã gõ gì.
+   - Thêm nút "+ Tạo sản phẩm mới từ tên ..." cho dòng hàng chưa chọn
+     được sản phẩm trong danh mục — dùng endpoint POST /products thô
+     (khác createAndMap ở ImportFlow vì dòng hàng ở đây CHƯA có line_id,
+     chưa lưu vào DB).
+
+8) pages/ExportHistory.jsx — thêm ô chọn ngày lọc theo ngày xuất, giữ
+   nguyên ô tìm theo tên sản phẩm đã có sẵn.
+
+9) api.js — thêm getAnalytics, createProduct (tạo sản phẩm thô, khác
+   createProductAndMap đã có sẵn từ trước), updateInventoryLocation; đổi
+   default threshold_pct 0.02 → 0 ở countVideo và stopManualCount.
+
+10) styles/app.css — nhiều fix UI phát hiện trong lúc test thật:
+   - .statCard-link: bỏ gạch chân + màu xanh mặc định của thẻ <a> (chưa
+     từng có CSS riêng từ trước).
+   - .receiptImage-img: chặn ảnh phiếu gốc tràn ra ngoài khung (chưa
+     từng có CSS riêng, ảnh hiện nguyên kích thước thật).
+   - .dashGrid: đổi từ CSS Grid 2 cột sang CSS multi-column (masonry) —
+     Grid cũ ép 2 card lệch chiều cao chung 1 hàng, để lại khoảng trống
+     lớn dưới card ngắn.
+   - Thêm input[type="date"] vào chung rule với input/select (trước đây
+     thiếu, rơi về style trắng mặc định của trình duyệt) + đảo màu icon
+     lịch cho nhìn rõ trên nền tối.
+   - Thêm .progressSummary, .filterTabs/.filterTab, .flowChart/
+     .topProductList (dashboard), flex-wrap cho .productCard-batchRow
+     (thêm cột vị trí kệ, 4 cột thay vì 3).
+
+Tất cả thay đổi UI trên đã được test trực tiếp qua npm run dev trong
+buổi làm việc (không chỉ soát JSX tĩnh) — xem lại kỹ luồng "Xác nhận ghi
+đè" và "Tạo sản phẩm mới tại chỗ" một lần nữa trước khi coi là ổn định
+hoàn toàn, vì đây là 2 luồng hoàn toàn mới, mới test qua ít lần.

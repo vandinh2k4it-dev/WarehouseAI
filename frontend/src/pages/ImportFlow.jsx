@@ -16,12 +16,21 @@ const RECEIPT_STATUS_LABEL = {
   pending_ocr: "đang xử lý OCR",
   ocr_done: "chờ đếm hàng",
   reconciled: "đã xong hết",
+  flagged: "lỗi OCR — cần xử lý",
 };
 const RECEIPT_STATUS_BADGE = {
   pending_ocr: "counting",
   ocr_done: "not_started",
   reconciled: "matched",
+  flagged: "needs_review",
 };
+// Nhóm lọc hiện trên UI — gộp pending_ocr + flagged vào chung 1 nhóm
+// "Chưa đếm" vì cả 2 đều là phiếu CHƯA có dòng hàng nào sẵn sàng để đếm.
+const RECEIPT_FILTER_TABS = [
+  { key: "all", label: "Tất cả" },
+  { key: "ocr_done", label: "Chờ đếm hàng", statuses: ["ocr_done"] },
+  { key: "reconciled", label: "Đã xong", statuses: ["reconciled"] },
+];
 
 export default function ImportFlow() {
   const [receipts, setReceipts] = useState(null);
@@ -31,10 +40,14 @@ export default function ImportFlow() {
   const [errorMsg, setErrorMsg] = useState("");
   const [activeSession, setActiveSession] = useState(null); // { session, expected, label }
   const [editingLineId, setEditingLineId] = useState(null);
-  const [editDraft, setEditDraft] = useState({ product_name_raw: "", product_id: "", quantity: "", batch_code: "" });
+  const [editDraft, setEditDraft] = useState({ product_name_raw: "", product_id: "", quantity: "", batch_code: "", expiry_date: "" });
   const [addingLine, setAddingLine] = useState(false);
-  const [newLineDraft, setNewLineDraft] = useState({ product_name_raw: "", quantity: "", batch_code: "" });
+  const [newLineDraft, setNewLineDraft] = useState({ product_name_raw: "", quantity: "", batch_code: "", expiry_date: "" });
   const [products, setProducts] = useState([]);
+  // Bộ lọc danh sách phiếu nhập — lọc thuần phía client trên danh sách đã
+  // tải sẵn (số lượng phiếu của 1 kho nhỏ không cần lọc phía server).
+  const [receiptFilterTab, setReceiptFilterTab] = useState("all");
+  const [receiptDateFilter, setReceiptDateFilter] = useState(""); // "YYYY-MM-DD"
   // Form "Xác nhận ghi đè" cho dòng đang lệch (needs_review) — mở theo từng
   // dòng 1 lúc (line_id đang mở), bắt buộc phải ghi lý do trước khi gửi,
   // khớp đúng validate bắt buộc override_note ở backend (xem camera.py).
@@ -121,7 +134,33 @@ export default function ImportFlow() {
       product_id: line.product_id != null ? String(line.product_id) : "",
       quantity: String(line.declared_quantity),
       batch_code: "",
+      expiry_date: "",
     });
+  }
+
+  // Tạo nhanh sản phẩm mới lấy đúng tên OCR đọc được (line.product_name_raw
+  // đã LƯU trong DB, không phải tên đang gõ dở trong ô sửa) rồi gán luôn
+  // cho dòng này — dùng endpoint có sẵn POST /products/lines/{id}/create-and-map.
+  async function createAndMapProduct(line) {
+    if (
+      !window.confirm(
+        `Tạo sản phẩm mới tên "${line.product_name_raw}" và gán cho dòng này?`
+      )
+    )
+      return;
+    try {
+      const product = await api.createProductAndMap(line.line_id);
+      showToast(`Đã tạo sản phẩm "${product.name}" và gán cho dòng hàng`, "success");
+      setEditingLineId(null);
+      const [freshLines, freshProducts] = await Promise.all([
+        api.getLinesProgress(selectedReceipt.id),
+        api.listProducts(),
+      ]);
+      setLines(freshLines);
+      setProducts(freshProducts);
+    } catch (err) {
+      showToast(err.message || String(err), "error");
+    }
   }
 
   async function saveEditLine(lineId) {
@@ -131,6 +170,7 @@ export default function ImportFlow() {
         product_id: editDraft.product_id ? parseInt(editDraft.product_id, 10) : null,
         quantity: parseFloat(editDraft.quantity),
         batch_code: editDraft.batch_code || null,
+        expiry_date: editDraft.expiry_date || null,
       });
       setEditingLineId(null);
       showToast("Đã lưu dòng hàng", "success");
@@ -163,8 +203,9 @@ export default function ImportFlow() {
         product_name_raw: newLineDraft.product_name_raw.trim(),
         quantity: parseFloat(newLineDraft.quantity),
         batch_code: newLineDraft.batch_code || null,
+        expiry_date: newLineDraft.expiry_date || null,
       });
-      setNewLineDraft({ product_name_raw: "", quantity: "", batch_code: "" });
+      setNewLineDraft({ product_name_raw: "", quantity: "", batch_code: "", expiry_date: "" });
       setAddingLine(false);
       showToast("Đã thêm dòng hàng", "success");
       const data = await api.getLinesProgress(selectedReceipt.id);
@@ -306,6 +347,16 @@ export default function ImportFlow() {
                           </option>
                         ))}
                       </select>
+                      {!editDraft.product_id && (
+                        <button
+                          type="button"
+                          className="ghost"
+                          style={{ marginTop: 6, width: "100%" }}
+                          onClick={() => createAndMapProduct(line)}
+                        >
+                          + Tạo sản phẩm mới từ tên "{line.product_name_raw}"
+                        </button>
+                      )}
                       <div className="manualLineRow-grid">
                         <input
                           type="number"
@@ -320,6 +371,14 @@ export default function ImportFlow() {
                           placeholder="Mã lô"
                         />
                       </div>
+                      <label className="text-muted" style={{ fontSize: 12 }}>
+                        Hạn sử dụng (để trống nếu không đổi)
+                      </label>
+                      <input
+                        type="date"
+                        value={editDraft.expiry_date}
+                        onChange={(e) => setEditDraft((d) => ({ ...d, expiry_date: e.target.value }))}
+                      />
                       <div className="lineCard-actions">
                         <button className="ghost" onClick={() => setEditingLineId(null)}>
                           Huỷ
@@ -439,6 +498,14 @@ export default function ImportFlow() {
                   onChange={(e) => setNewLineDraft((d) => ({ ...d, batch_code: e.target.value }))}
                 />
               </div>
+              <label className="text-muted" style={{ fontSize: 12 }}>
+                Hạn sử dụng (tuỳ chọn)
+              </label>
+              <input
+                type="date"
+                value={newLineDraft.expiry_date}
+                onChange={(e) => setNewLineDraft((d) => ({ ...d, expiry_date: e.target.value }))}
+              />
               <div className="lineCard-actions">
                 <button className="ghost" onClick={() => setAddingLine(false)}>
                   Huỷ
@@ -455,6 +522,21 @@ export default function ImportFlow() {
   }
 
   // ---------- Danh sách phiếu nhập ----------
+  const filteredReceipts = receipts?.filter((r) => {
+    const tab = RECEIPT_FILTER_TABS.find((t) => t.key === receiptFilterTab);
+    if (tab?.statuses && !tab.statuses.includes(r.status)) return false;
+    if (receiptDateFilter && r.received_at) {
+      const d = new Date(r.received_at);
+      const localDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
+        d.getDate()
+      ).padStart(2, "0")}`;
+      if (localDate !== receiptDateFilter) return false;
+    } else if (receiptDateFilter && !r.received_at) {
+      return false; // đang lọc theo ngày nhưng phiếu chưa có ngày nhận -> loại
+    }
+    return true;
+  });
+
   return (
     <main className="page-main">
       <div className="card">
@@ -470,16 +552,43 @@ export default function ImportFlow() {
           </div>
         </div>
 
+        <div className="filterTabs">
+          {RECEIPT_FILTER_TABS.map((tab) => (
+            <button
+              key={tab.key}
+              className={`filterTab${receiptFilterTab === tab.key ? " active" : ""}`}
+              onClick={() => setReceiptFilterTab(tab.key)}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+        <input
+          type="date"
+          value={receiptDateFilter}
+          onChange={(e) => setReceiptDateFilter(e.target.value)}
+          style={{ marginBottom: 12 }}
+          title="Lọc theo ngày nhận hàng"
+        />
+        {receiptDateFilter && (
+          <button className="ghost lineCard-smallBtn" style={{ marginBottom: 12, marginLeft: 8 }} onClick={() => setReceiptDateFilter("")}>
+            Bỏ lọc ngày
+          </button>
+        )}
+
         {loadingReceipts && <div className="empty">Đang tải danh sách phiếu…</div>}
         {errorMsg && <div className="empty" style={{ color: "var(--danger)" }}>{errorMsg}</div>}
 
         {!loadingReceipts && receipts && receipts.length === 0 && (
           <div className="empty">Chưa có phiếu nhập nào — quét phiếu hoặc tạo phiếu tay.</div>
         )}
+        {!loadingReceipts && receipts && receipts.length > 0 && filteredReceipts.length === 0 && (
+          <div className="empty">Không có phiếu nào khớp bộ lọc đang chọn.</div>
+        )}
 
-        {receipts && receipts.length > 0 && (
+        {filteredReceipts && filteredReceipts.length > 0 && (
           <div className="lineList">
-            {receipts.map((r) => (
+            {filteredReceipts.map((r) => (
               <div className="lineCard clickable" key={r.id} onClick={() => pickReceipt(r)}>
                 <div>
                   <div className="lineCard-name">
