@@ -24,6 +24,10 @@ export const api = {
 
   listProducts: () => request("/products"),
   listInventory: () => request("/inventory"),
+  // Dashboard báo cáo/phân tích — đọc lại InventoryTransaction có sẵn,
+  // dùng cho khối "Xu hướng nhập-xuất" + "Top sản phẩm quay vòng" ở
+  // trang Tổng quan (xem pages/Overview.jsx).
+  getAnalytics: (days = 14) => request(`/inventory/analytics?days=${days}`),
   listUnmappedLines: () => request("/products/unmapped-lines"),
   mapLineToProduct: (lineId, productId) =>
     request(`/products/lines/${lineId}/map`, {

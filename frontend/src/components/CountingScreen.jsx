@@ -1,5 +1,6 @@
 import { useState, useRef } from "react";
 import { api, API_BASE } from "../api";
+import { useToast } from "./Toast";
 import LiveCountingScreen from "./LiveCountingScreen";
 import PrintExportReceipt from "./PrintExportReceipt";
 
@@ -20,6 +21,7 @@ export default function CountingScreen({ session, expectedQuantity, label, onDon
   const inputRef = useRef(null);
   const [videoConf, setVideoConf] = useState(0.5); // độ nhạy phát hiện cho chế độ Quay video — khớp mặc định 0.5 bên backend
   const [showPrintReceipt, setShowPrintReceipt] = useState(false);
+  const showToast = useToast();
 
   async function handleFileSelected(e) {
     const file = e.target.files?.[0];
@@ -32,7 +34,9 @@ export default function CountingScreen({ session, expectedQuantity, label, onDon
       setResult(res);
       setStatus("done");
     } catch (err) {
-      setErrorMsg(err.message || String(err));
+      const msg = err.message || String(err);
+      setErrorMsg(msg);
+      showToast(msg, "error");
       setStatus("error");
     }
   }
@@ -51,7 +55,9 @@ export default function CountingScreen({ session, expectedQuantity, label, onDon
       setResult(res);
       setStatus("done");
     } catch (err) {
-      setErrorMsg(err.message || String(err));
+      const msg = err.message || String(err);
+      setErrorMsg(msg);
+      showToast(msg, "error");
       setStatus("error");
     }
   }

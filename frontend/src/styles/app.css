@@ -225,6 +225,105 @@ button.ghost {
 .badge.needs_review { background: var(--danger-dim); color: var(--danger); }
 .badge.counting { background: var(--accent-dim); color: var(--accent); }
 
+/* Thanh tổng tiến độ đếm dòng hàng trên 1 phiếu — hiện ngay đầu danh sách
+   để nhân viên biết còn bao nhiêu dòng nữa mà không cần đếm thủ công từng
+   badge (xem ImportFlow.jsx). */
+.progressSummary { margin-bottom: 12px; }
+.progressSummary-bar {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--info-dim);
+  overflow: hidden;
+}
+.progressSummary-fill {
+  height: 100%;
+  background: var(--success);
+  border-radius: 999px;
+  transition: width 0.25s ease;
+}
+.progressSummary-text {
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--text-muted, var(--text));
+}
+
+/* Biểu đồ cột xu hướng nhập-xuất (Overview.jsx) — CSS thuần, không dùng
+   thư viện biểu đồ ngoài, tránh thêm dependency mới sát ngày bảo vệ. */
+.flowLegend-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  margin-right: 4px;
+}
+.flowLegend-dot.imported { background: var(--success); }
+.flowLegend-dot.exported { background: var(--accent); }
+
+.flowChart {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 120px;
+  margin-top: 10px;
+  overflow-x: auto;
+}
+.flowChart-col {
+  flex: 1;
+  min-width: 18px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 100%;
+}
+.flowChart-bars {
+  flex: 1;
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  width: 100%;
+}
+.flowChart-bar {
+  flex: 1;
+  min-height: 2px;
+  border-radius: 2px 2px 0 0;
+}
+.flowChart-bar.imported { background: var(--success); }
+.flowChart-bar.exported { background: var(--accent); }
+.flowChart-label {
+  font-size: 9px;
+  color: var(--text-muted, var(--text));
+  margin-top: 4px;
+  white-space: nowrap;
+}
+
+/* Danh sách top sản phẩm quay vòng nhanh (Overview.jsx) */
+.topProductList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+}
+.topProductRow-name {
+  font-size: 13px;
+  font-weight: 600;
+}
+.topProductRow-bar {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--info-dim);
+  overflow: hidden;
+  margin: 4px 0;
+}
+.topProductRow-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 999px;
+}
+.topProductRow-nums {
+  font-size: 11px;
+  color: var(--text-muted, var(--text));
+}
+
 .tapbtn {
   border: 1px solid var(--accent);
   background: var(--accent-dim);

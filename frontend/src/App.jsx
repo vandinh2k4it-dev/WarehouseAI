@@ -1,4 +1,5 @@
 import { HashRouter, Routes, Route, Outlet } from "react-router-dom";
+import { ToastProvider } from "./components/Toast";
 import TopNav from "./components/TopNav";
 import Overview from "./pages/Overview";
 import Products from "./pages/Products";
@@ -26,20 +27,22 @@ function Layout() {
 
 export default function App() {
   return (
-    <HashRouter>
-      <Routes>
-        <Route element={<Layout />}>
-          <Route path="/" element={<Overview />} />
-          <Route path="/products" element={<Products />} />
-          <Route path="/alerts" element={<Alerts />} />
-          <Route path="/import" element={<ImportFlow />} />
-          <Route path="/import/create" element={<CreateReceiptManual />} />
-          <Route path="/import/scan" element={<ScanReceipt />} />
-          <Route path="/export" element={<ExportFlow />} />
-          <Route path="/export/history" element={<ExportHistory />} />
-          <Route path="/chatbot" element={<Chatbot />} />
-        </Route>
-      </Routes>
-    </HashRouter>
+    <ToastProvider>
+      <HashRouter>
+        <Routes>
+          <Route element={<Layout />}>
+            <Route path="/" element={<Overview />} />
+            <Route path="/products" element={<Products />} />
+            <Route path="/alerts" element={<Alerts />} />
+            <Route path="/import" element={<ImportFlow />} />
+            <Route path="/import/create" element={<CreateReceiptManual />} />
+            <Route path="/import/scan" element={<ScanReceipt />} />
+            <Route path="/export" element={<ExportFlow />} />
+            <Route path="/export/history" element={<ExportHistory />} />
+            <Route path="/chatbot" element={<Chatbot />} />
+          </Route>
+        </Routes>
+      </HashRouter>
+    </ToastProvider>
   );
 }

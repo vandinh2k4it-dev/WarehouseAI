@@ -1,48 +1,23 @@
-fix(frontend): sửa tận gốc — thêm dropdown chọn sản phẩm còn thiếu ở form tạo phiếu tay + khoá nút Đếm khi thiếu sản phẩm
+feat(dashboard): thêm Dashboard báo cáo/phân tích — Nhóm B (mục an toàn nhất)
 
-Bối cảnh: log Railway cho thấy lỗi 500 (hiện dạng CORS giả) khi đếm 1
-dòng hàng chưa được gán sản phẩm. Đọc kỹ CreateReceiptManual.jsx phát
-hiện GỐC RỄ THẬT: form tạo phiếu tay CHỈ CÓ Ô GÕ TÊN TỰ DO
-(product_name_raw), HOÀN TOÀN KHÔNG CÓ cách nào chọn 1 sản phẩm có
-sẵn trong danh mục — nghĩa là product_id LUÔN bị gửi rỗng (null) một
-cách không tránh khỏi, không phải do người dùng quên chọn, mà do
-KHÔNG CÓ GÌ ĐỂ CHỌN. Backend đã có sẵn thiết kế đúng (cho phép
-product_id=null, xử lý sau ở /products/unmapped-lines) nhưng frontend
-chưa từng tận dụng đúng thiết kế đó.
+Chỉ chọn 1 hạng mục an toàn nhất trong Nhóm B (đã trao đổi trước) — KHÔNG
+đổi schema database, KHÔNG đụng tới luồng nhập/xuất/đếm camera đang chạy
+ổn định. Tận dụng lại đúng dữ liệu InventoryTransaction/Inventory/Alert
+đã có sẵn từ đầu.
 
-============================================================
-1. src/pages/CreateReceiptManual.jsx — thêm dropdown chọn sản phẩm
-============================================================
-- Gọi api.listProducts() lúc mở trang, hiện dropdown "Chọn đúng sản
-  phẩm trong danh mục" cho MỖI dòng hàng, cạnh ô gõ tên tự do.
-- Chọn 1 sản phẩm có sẵn -> TỰ ĐỘNG ĐIỀN tên chuẩn vào ô tên.
-- Vẫn giữ lựa chọn "— Chưa có trong danh mục —" cho sản phẩm THỰC SỰ
-  mới — nhưng giờ có DÒNG CẢNH BÁO RÕ RÀNG ngay dưới dropdown: "Chưa
-  chọn sản phẩm — dòng này sẽ KHÔNG đếm được cho tới khi được gán sản
-  phẩm" — người dùng biết trước hậu quả.
-- submit() giờ gửi kèm product_id (trước đây hoàn toàn không có).
-
-============================================================
-2. src/pages/ImportFlow.jsx — khoá nút "Đếm" nếu dòng thiếu sản phẩm
-============================================================
-- Mỗi dòng hàng: nếu line.product_id == null, hiện dòng cảnh báo đỏ
-  "Chưa gán sản phẩm — cần sửa dòng này và chọn sản phẩm trước khi
-  đếm" ngay dưới tên dòng hàng.
-- Nút "Đếm"/"Đếm lại" bị disabled (mờ đi, có tooltip) khi thiếu sản
-  phẩm — khớp đúng với chặn phía backend, tránh bấm vào rồi mới nhận
-  lỗi từ server.
-- Form "Sửa" dòng hàng giờ CŨNG có dropdown chọn sản phẩm y hệt
-  CreateReceiptManual.jsx — trước đây CHỈ sửa được tên/số lượng/mã
-  lô, KHÔNG có cách gán sản phẩm cho dòng đã lỡ tạo thiếu — nghĩa là
-  không có đường thoát nào khác ngoài xoá làm lại. Giờ sửa trực tiếp
-  được, không cần xoá.
-
-ĐÃ TỰ KIỂM TRA TÍCH HỢP (esbuild bundle CHÍNH file thật + Playwright,
-API giả lập nhưng CHỤP LẠI đúng payload thật gửi đi):
-1. CreateReceiptManual: chọn "Nước suối Aquafina 500ml" từ dropdown
-   -> ô tên tự điền đúng -> submit -> chụp lại payload thật -> xác
-   nhận product_id=5 và tên đều đúng.
-2. ImportFlow: giả lập 2 dòng (1 thiếu sản phẩm, 1 đã có) -> đo trực
-   tiếp thuộc tính disabled của cả 2 nút "Đếm" -> xác nhận CHỈ ĐÚNG
-   dòng thiếu sản phẩm bị khoá, dòng kia vẫn bấm được bình thường —
-   kèm ảnh chụp xác nhận cảnh báo đỏ hiển thị đúng vị trí.
+FRONTEND:
+- api.js: thêm getAnalytics(days).
+- pages/Overview.jsx: thêm 2 card mới vào đúng trang "Tổng quan" đã có
+  sẵn — "Xu hướng nhập-xuất" (biểu đồ cột CSS thuần theo từng ngày) và
+  "Top sản phẩm quay vòng nhanh" (danh sách có thanh ngang tỉ lệ).
+  KHÔNG thêm route/tab điều hướng mới — bottom nav mobile đã được tinh
+  chỉnh đúng cho 6 mục (xem comment CSS gốc), thêm mục thứ 7 sẽ làm chật
+  giao diện trên điện thoại thật, đi ngược mục tiêu làm mượt UX.
+  Lời gọi getAnalytics() được TÁCH RIÊNG khỏi Promise.all() chính — nếu
+  endpoint mới lỗi vì bất kỳ lý do gì, chỉ 2 card thống kê bị ẩn, không
+  làm hỏng cả trang Tổng quan (4 stat card + cảnh báo + phiếu gần đây)
+  vốn đã chạy ổn định từ trước.
+- styles/app.css: thêm CSS cho .flowChart/.topProductList — dùng lại
+  đúng biến màu --success/--accent/--info-dim đã có sẵn, KHÔNG thêm thư
+  viện biểu đồ ngoài (recharts/chart.js...) để tránh rủi ro npm install
+  sát ngày bảo vệ.

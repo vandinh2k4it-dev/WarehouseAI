@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, API_BASE } from "../api";
+import { useToast } from "../components/Toast";
 import CountingScreen from "../components/CountingScreen";
 
 const LINE_STATUS_LABEL = {
@@ -34,6 +35,13 @@ export default function ImportFlow() {
   const [addingLine, setAddingLine] = useState(false);
   const [newLineDraft, setNewLineDraft] = useState({ product_name_raw: "", quantity: "", batch_code: "" });
   const [products, setProducts] = useState([]);
+  // Form "Xác nhận ghi đè" cho dòng đang lệch (needs_review) — mở theo từng
+  // dòng 1 lúc (line_id đang mở), bắt buộc phải ghi lý do trước khi gửi,
+  // khớp đúng validate bắt buộc override_note ở backend (xem camera.py).
+  const [overridingLineId, setOverridingLineId] = useState(null);
+  const [overrideNote, setOverrideNote] = useState("");
+  const [overrideSubmitting, setOverrideSubmitting] = useState(false);
+  const showToast = useToast();
 
   useEffect(() => {
     api.listProducts().then(setProducts).catch(() => {});
@@ -78,7 +86,7 @@ export default function ImportFlow() {
         label: line.product_name_raw,
       });
     } catch (err) {
-      setErrorMsg(err.message || String(err));
+      showToast(err.message || String(err), "error");
     }
   }
 
@@ -99,9 +107,10 @@ export default function ImportFlow() {
     if (!window.confirm(`Xoá hẳn phiếu "${receipt.receipt_code || `#${receipt.id}`}"? Không thể hoàn tác.`)) return;
     try {
       await api.deleteReceipt(receipt.id);
+      showToast("Đã xoá phiếu", "success");
       loadReceipts();
     } catch (err) {
-      setErrorMsg(err.message || String(err));
+      showToast(err.message || String(err), "error");
     }
   }
 
@@ -124,10 +133,11 @@ export default function ImportFlow() {
         batch_code: editDraft.batch_code || null,
       });
       setEditingLineId(null);
+      showToast("Đã lưu dòng hàng", "success");
       const data = await api.getLinesProgress(selectedReceipt.id);
       setLines(data);
     } catch (err) {
-      setErrorMsg(err.message || String(err));
+      showToast(err.message || String(err), "error");
     }
   }
 
@@ -135,10 +145,11 @@ export default function ImportFlow() {
     if (!window.confirm("Xoá dòng hàng này khỏi phiếu?")) return;
     try {
       await api.deleteReceiptLine(selectedReceipt.id, lineId);
+      showToast("Đã xoá dòng hàng", "success");
       const data = await api.getLinesProgress(selectedReceipt.id);
       setLines(data);
     } catch (err) {
-      setErrorMsg(err.message || String(err));
+      showToast(err.message || String(err), "error");
     }
   }
 
@@ -155,10 +166,39 @@ export default function ImportFlow() {
       });
       setNewLineDraft({ product_name_raw: "", quantity: "", batch_code: "" });
       setAddingLine(false);
+      showToast("Đã thêm dòng hàng", "success");
       const data = await api.getLinesProgress(selectedReceipt.id);
       setLines(data);
     } catch (err) {
-      setErrorMsg(err.message || String(err));
+      showToast(err.message || String(err), "error");
+    }
+  }
+
+  // Xử lý dòng đang lệch (needs_review): xác nhận ghi đè theo số camera thực
+  // tế đã đếm được — bắt buộc ghi rõ lý do, khớp validate bắt buộc của
+  // backend (POST /camera-sessions/{id}/resolve, action=override).
+  function startOverride(line) {
+    setOverridingLineId(line.line_id);
+    setOverrideNote("");
+  }
+
+  async function submitOverride(line) {
+    if (!overrideNote.trim()) {
+      showToast("Cần ghi rõ lý do trước khi xác nhận ghi đè", "error");
+      return;
+    }
+    setOverrideSubmitting(true);
+    try {
+      await api.resolveSegment(line.latest_session_id, "override", overrideNote.trim());
+      showToast(`Đã ghi đè — cập nhật kho theo số camera (${line.counted_quantity})`, "success");
+      setOverridingLineId(null);
+      setOverrideNote("");
+      const data = await api.getLinesProgress(selectedReceipt.id);
+      setLines(data);
+    } catch (err) {
+      showToast(err.message || String(err), "error");
+    } finally {
+      setOverrideSubmitting(false);
     }
   }
 
@@ -201,6 +241,31 @@ export default function ImportFlow() {
 
           {!lines && !errorMsg && <div className="empty">Đang tải…</div>}
           {errorMsg && <div className="empty" style={{ color: "var(--danger)" }}>{errorMsg}</div>}
+
+          {lines && lines.length > 0 && (() => {
+            const doneCount = lines.filter(
+              (l) => l.counting_status === "matched" || l.counting_status === "resolved_override"
+            ).length;
+            const unmappedCount = lines.filter((l) => l.product_id == null).length;
+            return (
+              <div className="progressSummary">
+                <div className="progressSummary-bar">
+                  <div
+                    className="progressSummary-fill"
+                    style={{ width: `${Math.round((doneCount / lines.length) * 100)}%` }}
+                  />
+                </div>
+                <div className="progressSummary-text">
+                  {doneCount}/{lines.length} dòng đã xong
+                  {unmappedCount > 0 && (
+                    <span className="stockHint-warn" style={{ marginLeft: 8 }}>
+                      ⚠ {unmappedCount} dòng chưa gán sản phẩm
+                    </span>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
 
           {lines && (
             <div className="lineList">
@@ -267,8 +332,10 @@ export default function ImportFlow() {
                   );
                 }
 
+                const isOverriding = overridingLineId === line.line_id;
+
                 return (
-                  <div className="lineCard" key={line.line_id}>
+                  <div className="lineCard" key={line.line_id} style={isOverriding ? { flexDirection: "column", alignItems: "stretch" } : undefined}>
                     <div>
                       <div className="lineCard-name">{line.product_name_raw}</div>
                       <div className="lineCard-sub">
@@ -281,33 +348,63 @@ export default function ImportFlow() {
                         </div>
                       )}
                     </div>
-                    <div className="lineCard-actions">
-                      <span className={`badge ${line.counting_status}`}>
-                        {LINE_STATUS_LABEL[line.counting_status] || line.counting_status}
-                      </span>
-                      {canEdit && (
-                        <>
-                          <button className="ghost lineCard-smallBtn" onClick={() => startEditLine(line)}>
-                            Sửa
+
+                    {/* Form ghi đè — chỉ mở khi bấm "Xác nhận ghi đè" ở dòng needs_review */}
+                    {isOverriding ? (
+                      <div className="lineCard-editing" style={{ marginTop: 8 }}>
+                        <label className="text-muted" style={{ fontSize: 12 }}>
+                          Lý do ghi đè (bắt buộc) — vd "đã kiểm lại bằng tay, số camera đúng"
+                        </label>
+                        <input
+                          type="text"
+                          value={overrideNote}
+                          onChange={(e) => setOverrideNote(e.target.value)}
+                          placeholder="Nhập lý do..."
+                          autoFocus
+                        />
+                        <div className="lineCard-actions">
+                          <button className="ghost" onClick={() => setOverridingLineId(null)} disabled={overrideSubmitting}>
+                            Huỷ
                           </button>
-                          <button className="ghost lineCard-smallBtn" onClick={() => handleDeleteLine(line.line_id)}>
-                            Xoá
+                          <button className="tapbtn" onClick={() => submitOverride(line)} disabled={overrideSubmitting}>
+                            {overrideSubmitting ? "Đang lưu…" : `Xác nhận ghi đè còn ${line.counted_quantity}`}
                           </button>
-                        </>
-                      )}
-                      {(line.counting_status === "not_started" ||
-                        line.counting_status === "needs_review" ||
-                        line.counting_status === "counting") && (
-                        <button
-                          className="tapbtn"
-                          onClick={() => beginLine(line)}
-                          disabled={line.product_id == null}
-                          title={line.product_id == null ? "Cần gán sản phẩm trước khi đếm" : undefined}
-                        >
-                          {line.counting_status === "counting" ? "Đếm lại" : "Đếm"}
-                        </button>
-                      )}
-                    </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="lineCard-actions">
+                        <span className={`badge ${line.counting_status}`}>
+                          {LINE_STATUS_LABEL[line.counting_status] || line.counting_status}
+                        </span>
+                        {canEdit && (
+                          <>
+                            <button className="ghost lineCard-smallBtn" onClick={() => startEditLine(line)}>
+                              Sửa
+                            </button>
+                            <button className="ghost lineCard-smallBtn" onClick={() => handleDeleteLine(line.line_id)}>
+                              Xoá
+                            </button>
+                          </>
+                        )}
+                        {line.counting_status === "needs_review" && (
+                          <button className="ghost lineCard-smallBtn" onClick={() => startOverride(line)}>
+                            Xác nhận ghi đè
+                          </button>
+                        )}
+                        {(line.counting_status === "not_started" ||
+                          line.counting_status === "needs_review" ||
+                          line.counting_status === "counting") && (
+                          <button
+                            className="tapbtn"
+                            onClick={() => beginLine(line)}
+                            disabled={line.product_id == null}
+                            title={line.product_id == null ? "Cần gán sản phẩm trước khi đếm" : undefined}
+                          >
+                            {line.counting_status === "counting" ? "Đếm lại" : "Đếm"}
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 );
               })}

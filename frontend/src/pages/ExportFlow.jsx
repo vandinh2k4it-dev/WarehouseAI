@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api";
+import { useToast } from "../components/Toast";
 import CountingScreen from "../components/CountingScreen";
 
 export default function ExportFlow() {
@@ -10,6 +11,7 @@ export default function ExportFlow() {
   const [qty, setQty] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
   const [activeSession, setActiveSession] = useState(null); // { session, expected, label }
+  const showToast = useToast();
 
   useEffect(() => {
     Promise.all([api.listProducts(), api.listInventory()])
@@ -35,11 +37,18 @@ export default function ExportFlow() {
       return;
     }
     const productName = products.find((p) => p.id === pid)?.name || `#${pid}`;
+    const currentStock = stockOf(pid);
+    if (q > currentStock) {
+      // Chặn sớm ngay trên UI — backend cũng tự chặn ở bước /stop, nhưng để
+      // tới lúc đó thì nhân viên đã mất công quay/đếm hết video rồi mới biết.
+      setErrorMsg(`Chỉ còn ${currentStock.toLocaleString("vi-VN")} trong kho, không đủ để xuất ${q}`);
+      return;
+    }
     try {
       const session = await api.startExport(pid, q);
       setActiveSession({ session, expected: q, label: productName });
     } catch (err) {
-      setErrorMsg(err.message || String(err));
+      showToast(err.message || String(err), "error");
     }
   }
 

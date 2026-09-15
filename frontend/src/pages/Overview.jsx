@@ -24,6 +24,7 @@ export default function Overview() {
   const [inventory, setInventory] = useState(null);
   const [alerts, setAlerts] = useState(null);
   const [receipts, setReceipts] = useState(null);
+  const [analytics, setAnalytics] = useState(null);
   const [errorMsg, setErrorMsg] = useState("");
   const [ackBusy, setAckBusy] = useState(null);
   const [expandedAlertId, setExpandedAlertId] = useState(null);
@@ -47,6 +48,17 @@ export default function Overview() {
       setReceipts(rc);
     } catch (err) {
       setErrorMsg(err.message || String(err));
+    }
+
+    // Tách riêng khỏi khối try/catch chính ở trên — đây là khối thống kê
+    // MỚI thêm, nếu lỗi (vd backend chưa deploy kịp endpoint mới) thì chỉ
+    // ẩn 2 card thống kê, KHÔNG được làm hỏng luôn cả trang Tổng quan
+    // (4 stat card + cảnh báo + phiếu gần đây) vốn đã chạy ổn định.
+    try {
+      const an = await api.getAnalytics(14);
+      setAnalytics(an);
+    } catch {
+      setAnalytics(null);
     }
   }
 
@@ -94,6 +106,62 @@ export default function Overview() {
       </div>
 
       <div className="dashGrid">
+        {analytics && analytics.daily_flow.length > 0 && (() => {
+          const maxVal = Math.max(1, ...analytics.daily_flow.flatMap((d) => [d.imported, d.exported]));
+          return (
+            <div className="card">
+              <h2>Xu hướng nhập-xuất ({analytics.days} ngày)</h2>
+              <p className="card-sub">
+                <span className="flowLegend-dot imported" /> Nhập &nbsp;
+                <span className="flowLegend-dot exported" /> Xuất
+              </p>
+              <div className="flowChart">
+                {analytics.daily_flow.map((d) => (
+                  <div className="flowChart-col" key={d.date} title={`${d.date}: nhập ${d.imported} / xuất ${d.exported}`}>
+                    <div className="flowChart-bars">
+                      <div className="flowChart-bar imported" style={{ height: `${(d.imported / maxVal) * 100}%` }} />
+                      <div className="flowChart-bar exported" style={{ height: `${(d.exported / maxVal) * 100}%` }} />
+                    </div>
+                    <div className="flowChart-label">{d.date.slice(5)}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
+
+        {analytics && analytics.top_products.length > 0 && (() => {
+          const maxMoved = Math.max(
+            1,
+            ...analytics.top_products.map((p) => p.imported_total + p.exported_total)
+          );
+          return (
+            <div className="card">
+              <h2>Top sản phẩm quay vòng nhanh ({analytics.days} ngày)</h2>
+              <p className="card-sub">Xếp theo tổng nhập + xuất — sản phẩm luân chuyển nhiều nhất trong kho</p>
+              <div className="topProductList">
+                {analytics.top_products.map((p) => {
+                  const moved = p.imported_total + p.exported_total;
+                  return (
+                    <div className="topProductRow" key={p.product_id}>
+                      <div className="topProductRow-name">
+                        {p.name}
+                        {p.sku ? <span className="text-muted"> ({p.sku})</span> : null}
+                      </div>
+                      <div className="topProductRow-bar">
+                        <div className="topProductRow-fill" style={{ width: `${(moved / maxMoved) * 100}%` }} />
+                      </div>
+                      <div className="topProductRow-nums mono">
+                        +{p.imported_total.toLocaleString("vi-VN")} / -{p.exported_total.toLocaleString("vi-VN")} {p.unit}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
+
         <div className="card">
           <h2>Cảnh báo gần đây</h2>
           <p className="card-sub">
