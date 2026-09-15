@@ -1,5 +1,4 @@
 import os
-import time
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
@@ -16,7 +15,7 @@ from app.code_generator import generate_next_code
 
 router = APIRouter(prefix="/camera-sessions", tags=["camera"])
 
-DEFAULT_THRESHOLD_PCT = 0.02
+DEFAULT_THRESHOLD_PCT = 0.0  # theo yêu cầu: KHÔNG cho phép sai số nào, dù nhỏ nhất
 
 
 @router.post("", response_model=schemas.CameraSessionOut)
@@ -450,10 +449,9 @@ async def count_video_segment(
     with open(video_path, "wb") as f:
         f.write(await file.read())
 
-    # Thư mục ultralytics tự ghi video đã vẽ khung hộp vào (save=True) —
-    # dùng riêng cho từng phiên để tránh 2 phiên xử lý cùng lúc ghi đè nhau.
+    # Thư mục riêng cho từng phiên — tránh 2 phiên xử lý cùng lúc ghi đè
+    # nhau lên cùng 1 file.
     annotated_raw_dir = Path("uploads/annotated_raw") / f"session_{session_id}"
-    search_started_at = time.time()  # dùng để lọc đúng file MỚI tạo ra lần này
 
     try:
         result = count_boxes_in_video(
@@ -476,72 +474,41 @@ async def count_video_segment(
     if result.model_warning:
         raise HTTPException(status_code=500, detail=result.model_warning)
 
-    # ultralytics KHÔNG dùng đúng nguyên đường dẫn project= truyền vào — nó
-    # tự chèn thêm tiền tố "runs/<task>/" phía trước (xác nhận qua log thật:
-    # truyền project="uploads/annotated_raw/session_56" nhưng file thật lại
-    # nằm ở "runs/detect/uploads/annotated_raw/session_56/session/"). Thay vì
-    # đoán cứng theo đúng 1 quy tắc (dễ vỡ lại nếu ultralytics đổi hành vi ở
-    # bản khác), TÌM ĐỆ QUY toàn bộ file .mp4/.avi MỚI TẠO RA sau thời điểm
-    # bắt đầu xử lý (search_started_at) — chắc chắn đúng bất kể ultralytics
-    # đặt ở thư mục con nào.
+    # Trước đây phải TÌM ĐỆ QUY file video Ultralytics tự lưu (vì nó tự
+    # chèn thêm thư mục con không đoán trước được) — giờ count_pipeline.py
+    # tự vẽ khung hộp + số đếm chạy bằng OpenCV và trả về ĐÚNG đường dẫn nó
+    # vừa ghi ra (result.annotated_video_path), không cần dò tìm gì nữa.
     annotated_url = None
-    try:
-        search_roots = [Path("runs"), annotated_raw_dir, Path(".")]
-        found_candidates = []
-        for root in search_roots:
-            if not root.exists():
-                continue
-            for ext in ("*.mp4", "*.avi"):
-                for f in root.rglob(ext):
-                    try:
-                        if f.stat().st_mtime >= search_started_at - 2:  # trừ hao 2s cho sai lệch đồng hồ hệ thống
-                            found_candidates.append(f)
-                    except OSError:
-                        continue
-
-        # Loại trùng (3 thư mục tìm có thể trùng nhau) + sắp theo mới nhất trước
-        seen_paths = set()
-        candidates = []
-        for f in sorted(found_candidates, key=lambda p: p.stat().st_mtime, reverse=True):
-            resolved = f.resolve()
-            if resolved not in seen_paths:
-                seen_paths.add(resolved)
-                candidates.append(f)
-
-        print(f"[annotated-video] Tìm đệ quy từ thời điểm {search_started_at} -> thấy {len(candidates)} file mới")
-        if candidates:
-            print(f"[annotated-video] File mới nhất: {candidates[0].resolve()}")
-
-        if candidates:
+    if result.annotated_video_path:
+        try:
             served_dir = Path("uploads/annotated_videos")
             served_dir.mkdir(parents=True, exist_ok=True)
             final_name = f"session_{session_id}.mp4"
             final_path = served_dir / final_name
+            src_path = Path(result.annotated_video_path)
 
-            # ultralytics xuất video bằng codec (thường mpeg4/mp4v qua .avi)
-            # KHÔNG được trình duyệt hỗ trợ phát trực tiếp qua thẻ <video> —
-            # phải chuyển đổi lại sang H.264/MP4 chuẩn mới phát được trên
-            # mọi trình duyệt. Cần có ffmpeg cài sẵn trên server (xem
-            # RAILPACK_BUILD_APT_PACKAGES/RAILPACK_DEPLOY_APT_PACKAGES).
-            reencoded = _reencode_to_h264(candidates[0], final_path)
+            # Video OpenCV ghi bằng codec mp4v KHÔNG được trình duyệt hỗ trợ
+            # phát trực tiếp qua thẻ <video> — phải chuyển đổi lại sang
+            # H.264/MP4 chuẩn mới phát được trên mọi trình duyệt. Cần có
+            # ffmpeg cài sẵn trên server (xem RAILPACK_BUILD_APT_PACKAGES).
+            reencoded = _reencode_to_h264(src_path, final_path)
             if reencoded:
                 annotated_url = f"/media/annotated/{final_name}"
                 print(f"[annotated-video] Đã chuyển đổi sang H.264 + phục vụ -> {annotated_url}")
-                candidates[0].unlink(missing_ok=True)  # dọn file gốc, không cần giữ 2 bản
+                src_path.unlink(missing_ok=True)  # dọn file gốc, không cần giữ 2 bản
             else:
                 # ffmpeg lỗi/không có -> dùng tạm file gốc (có thể vẫn phát
                 # được tuỳ trình duyệt, còn hơn không có gì để xem).
-                fallback_name = f"session_{session_id}{candidates[0].suffix}"
+                fallback_name = f"session_{session_id}{src_path.suffix}"
                 fallback_path = served_dir / fallback_name
-                candidates[0].replace(fallback_path)
+                src_path.replace(fallback_path)
                 annotated_url = f"/media/annotated/{fallback_name}"
                 print(f"[annotated-video] ffmpeg lỗi/thiếu — dùng tạm file gốc chưa chuyển đổi -> {annotated_url}")
-    except Exception as e:
-        # Không tìm/chuyển được video đã vẽ khung hộp -> KHÔNG làm hỏng cả
-        # kết quả đếm (số đếm vẫn đúng, giá trị chính) — chỉ đơn giản là
-        # không có video xem lại, annotated_url ở lại None. NHƯNG vẫn in lỗi
-        # thật ra log thay vì nuốt hoàn toàn như trước — cần biết lý do thật.
-        print(f"[annotated-video] LỖI khi tìm/chuyển file: {e!r}")
+        except Exception as e:
+            # Không chuyển được video đã vẽ khung hộp -> KHÔNG làm hỏng cả
+            # kết quả đếm (số đếm vẫn đúng, giá trị chính) — chỉ đơn giản là
+            # không có video xem lại, annotated_url ở lại None.
+            print(f"[annotated-video] LỖI khi chuyển đổi: {e!r}")
 
     return _finalize_stop(
         db, session,

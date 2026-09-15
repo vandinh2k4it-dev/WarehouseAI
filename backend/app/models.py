@@ -143,6 +143,9 @@ class Inventory(Base):
     quantity = Column(Numeric(12, 2), nullable=False, default=0)
     expiry_date = Column(Date)
     last_updated = Column(TIMESTAMP(timezone=True), server_default=func.now())
+    # Vị trí vật lý trong kho (VD: "Kệ A3-02", "Khu lạnh B") — tuỳ chọn, gán
+    # tay sau khi hàng đã cất lên kệ thật, không bắt buộc lúc nhập.
+    location = Column(String(50), nullable=True)
 
     __table_args__ = (UniqueConstraint("product_id", "batch_code", name="uq_inventory_product_batch"),)
 

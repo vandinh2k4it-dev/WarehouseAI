@@ -42,6 +42,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Optional
 
 # Import torch TRƯỚC ultralytics — trên Windows, để ultralytics tự kéo theo
 # torch (import gián tiếp) đôi khi gây treo vô thời hạn lúc torch nạp DLL nội
@@ -62,6 +63,9 @@ except ImportError:  # pragma: no cover
         file=sys.stderr,
     )
     raise
+
+import cv2  # ultralytics tự kéo theo opencv-python làm dependency — không
+# cần khai báo riêng trong requirements.txt, cùng bản luôn đi kèm.
 
 
 DEFAULT_BACKEND_URL = "http://localhost:8000"
@@ -106,6 +110,7 @@ class CountResult:
     started_at: datetime = None
     ended_at: datetime = None
     model_warning: str | None = None  # cảnh báo nếu nghi ngờ đang dùng SAI model (xem bên dưới)
+    annotated_video_path: Optional[str] = None  # đường dẫn video ĐÃ tự vẽ khung hộp + số đếm chạy
 
 
 def count_boxes_in_video(
@@ -153,6 +158,23 @@ def count_boxes_in_video(
     frame_count = 0
     started_at = datetime.now(timezone.utc)
 
+    # Đường dẫn output CỐ ĐỊNH, do CHÍNH mình ghi ra bằng OpenCV — khác hẳn
+    # cách cũ (để Ultralytics tự save=True rồi phải dò tìm đệ quy file nó
+    # lưu ở đâu, vì Ultralytics tự chèn thêm thư mục con không đoán trước
+    # được). Biết chắc chắn đường dẫn ngay từ đầu, không cần dò tìm nữa.
+    annotated_video_path = None
+    video_writer = None
+    if save_annotated:
+        out_dir = Path(output_dir or "runs/count_pipeline")
+        out_dir.mkdir(parents=True, exist_ok=True)
+        annotated_video_path = str(out_dir / "annotated.mp4")
+        # Lấy FPS gốc của video nguồn để video xuất ra có tốc độ khớp bản
+        # gốc — mở riêng 1 lần bằng cv2 chỉ để đọc metadata rồi đóng ngay,
+        # không dùng để đọc khung hình (việc đó model.track() lo).
+        probe = cv2.VideoCapture(video_path)
+        source_fps = probe.get(cv2.CAP_PROP_FPS) or 25.0
+        probe.release()
+
     track_kwargs = dict(
         source=video_path,
         conf=conf,
@@ -162,32 +184,56 @@ def count_boxes_in_video(
         stream=True,
         verbose=False,
     )
-    if save_annotated:
-        out_dir = output_dir or "runs/count_pipeline"
-        track_kwargs.update(save=True, project=out_dir, name="session", exist_ok=True)
 
     results_generator = model.track(**track_kwargs)
 
     for result in results_generator:
         frame_count += 1
         boxes = result.boxes
-        if boxes is None or boxes.id is None:
-            continue
+        has_boxes = boxes is not None and boxes.id is not None
 
-        frame_h, frame_w = result.orig_shape  # (height, width) — có sẵn từ chính kết quả, không cần mở lại video riêng
-        track_ids = boxes.id.int().tolist()
-        cls_ids = boxes.cls.int().tolist()
-        confs = boxes.conf.tolist()
-        xyxy_list = boxes.xyxy.tolist()
+        if has_boxes:
+            frame_h, frame_w = result.orig_shape  # (height, width) — có sẵn từ chính kết quả, không cần mở lại video riêng
+            track_ids = boxes.id.int().tolist()
+            cls_ids = boxes.cls.int().tolist()
+            confs = boxes.conf.tolist()
+            xyxy_list = boxes.xyxy.tolist()
 
-        for tid, cid, c, box_xyxy in zip(track_ids, cls_ids, confs, xyxy_list):
-            if filter_by_class and class_names.get(cid) != target_class_name:
-                continue
-            x1, y1, x2, y2 = box_xyxy
-            if not _is_plausible_box_size(x1, y1, x2, y2, frame_w, frame_h):
-                continue  # nghi ngờ tường/tủ máy/vật thể lớn tĩnh -> bỏ qua, không đếm
-            seen_track_ids.add(tid)
-            confidences.append(c)
+            for tid, cid, c, box_xyxy in zip(track_ids, cls_ids, confs, xyxy_list):
+                if filter_by_class and class_names.get(cid) != target_class_name:
+                    continue
+                x1, y1, x2, y2 = box_xyxy
+                if not _is_plausible_box_size(x1, y1, x2, y2, frame_w, frame_h):
+                    continue  # nghi ngờ tường/tủ máy/vật thể lớn tĩnh -> bỏ qua, không đếm
+                seen_track_ids.add(tid)
+                confidences.append(c)
+
+        # --- Vẽ khung hình đã annotate + số đếm chạy, ghi ra video ---
+        if save_annotated:
+            # result.plot() trả về ảnh numpy (BGR, đúng định dạng OpenCV)
+            # ĐÃ tự vẽ sẵn khung hộp + track ID + tên lớp — tận dụng lại,
+            # chỉ cần vẽ thêm dòng chữ số đếm đè lên trên.
+            frame = result.plot()
+
+            if video_writer is None:
+                h, w = frame.shape[:2]
+                fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+                video_writer = cv2.VideoWriter(annotated_video_path, fourcc, source_fps, (w, h))
+
+            count_text = f"Da dem: {len(seen_track_ids)}"
+            # Vẽ 1 ô nền đen mờ phía sau chữ để chữ luôn đọc được dù nền
+            # video sáng/tối thế nào (chữ trắng đơn thuần dễ bị "chìm" vào
+            # nền sáng ở nhiều video thực tế đã thử).
+            (text_w, text_h), _ = cv2.getTextSize(count_text, cv2.FONT_HERSHEY_SIMPLEX, 1.1, 3)
+            cv2.rectangle(frame, (10, 10), (10 + text_w + 20, 10 + text_h + 30), (0, 0, 0), -1)
+            cv2.putText(
+                frame, count_text, (20, 10 + text_h + 10),
+                cv2.FONT_HERSHEY_SIMPLEX, 1.1, (0, 255, 255), 3, cv2.LINE_AA,
+            )
+            video_writer.write(frame)
+
+    if video_writer is not None:
+        video_writer.release()
 
     ended_at = datetime.now(timezone.utc)
     avg_conf = sum(confidences) / len(confidences) if confidences else 0.0
@@ -199,6 +245,7 @@ def count_boxes_in_video(
         track_ids=sorted(seen_track_ids),
         started_at=started_at,
         ended_at=ended_at,
+        annotated_video_path=annotated_video_path,
         model_warning=model_warning,
     )
 

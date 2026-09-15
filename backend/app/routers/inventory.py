@@ -20,6 +20,22 @@ def list_inventory(product_id: Optional[int] = None, db: Session = Depends(get_d
     return query.all()
 
 
+@router.put("/{inventory_id}/location", response_model=schemas.InventoryOut)
+def update_inventory_location(
+    inventory_id: int, payload: schemas.InventoryLocationUpdate, db: Session = Depends(get_db)
+):
+    """Gán/sửa vị trí vật lý (kệ, dãy...) cho 1 lô tồn kho — hoàn toàn độc
+    lập với luồng nhập/xuất/đối chiếu, không ảnh hưởng số lượng hay lịch sử
+    giao dịch. Gửi location="" hoặc null để xoá vị trí đã gán."""
+    inv = db.get(models.Inventory, inventory_id)
+    if not inv:
+        raise HTTPException(status_code=404, detail="Không tìm thấy lô tồn kho này")
+    inv.location = payload.location or None
+    db.commit()
+    db.refresh(inv)
+    return inv
+
+
 @router.get("/low-stock", response_model=list[schemas.InventoryOut])
 def low_stock(db: Session = Depends(get_db)):
     """Dùng cho chatbot: 'kho nào sắp hết hàng?' — join với ngưỡng riêng của từng sản phẩm."""

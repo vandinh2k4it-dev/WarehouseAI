@@ -158,7 +158,7 @@ class CameraSegmentStopRequest(BaseModel):
     avg_detection_confidence: Optional[float] = None
     model_version: Optional[str] = None
     video_path: Optional[str] = None
-    threshold_pct: float = 0.02
+    threshold_pct: float = 0.0  # theo yêu cầu: KHÔNG cho phép sai số nào, dù nhỏ nhất
 
 
 class CameraSegmentStopResult(BaseModel):
@@ -192,7 +192,7 @@ class ReceiptLineProgressOut(BaseModel):
 class ReconciliationRunRequest(BaseModel):
     receipt_id: int
     session_id: int
-    threshold_pct: float = 0.02  # 2% sai số cho phép mặc định — chỉnh theo mục 9.3
+    threshold_pct: float = 0.0  # theo yêu cầu: KHÔNG cho phép sai số nào, dù nhỏ nhất
 
 
 class ReconciliationOut(BaseModel):
@@ -226,6 +226,11 @@ class InventoryOut(BaseModel):
     quantity: float
     expiry_date: Optional[date]
     last_updated: datetime
+    location: Optional[str] = None
+
+
+class InventoryLocationUpdate(BaseModel):
+    location: Optional[str] = None  # để trống ("" hoặc null) = xoá vị trí đã gán
 
 
 # ---------- Xuất kho ----------

@@ -1,16 +1,85 @@
-feat(dashboard): thêm Dashboard báo cáo/phân tích — Nhóm B (mục an toàn nhất)
+feat(backend): đồng bộ schema DB, sửa ngưỡng đối chiếu, cải tiến video đếm, thêm dashboard + vị trí kệ hàng
 
-Chỉ chọn 1 hạng mục an toàn nhất trong Nhóm B (đã trao đổi trước) — KHÔNG
-đổi schema database, KHÔNG đụng tới luồng nhập/xuất/đếm camera đang chạy
-ổn định. Tận dụng lại đúng dữ liệu InventoryTransaction/Inventory/Alert
-đã có sẵn từ đầu.
+Tổng hợp toàn bộ thay đổi backend trong buổi làm việc hoàn thiện project
+tại máy local (không tính các file Dockerfile/Cloud Run đã bị bỏ, xem
+mục cuối).
 
-BACKEND (thêm mới, không sửa logic cũ):
-- app/schemas.py: thêm DailyFlowPoint, TopProductMovement, AnalyticsKpis,
-  AnalyticsOut.
-- app/routers/inventory.py: thêm GET /inventory/analytics?days=N — trả
-  về (1) nhập/xuất theo từng ngày, (2) top 10 sản phẩm quay vòng nhiều
-  nhất (tổng nhập+xuất), (3) 4 KPI nhanh (cảnh báo mở, sản phẩm sắp hết,
-  lô sắp hết hạn, tổng số giao dịch trong khoảng ngày xem).
-  ĐÃ TEST THẬT logic query bằng SQLite in-memory (không chỉ kiểm tra cú
-  pháp) — xác nhận số liệu tính đúng với dữ liệu giả lập.
+1) FIX NGHIÊM TRỌNG — đồng bộ lại db/schema.sql với app/models.py
+   File schema.sql dùng để tạo Postgres từ đầu đã LỆCH so với models.py
+   qua nhiều đợt chỉnh sửa tính năng trước đó (chỉ lộ ra khi tạo DB local
+   mới, không lộ trên Railway vì bảng cũ đã tồn tại sẵn). Đã rà soát tự
+   động toàn bộ cột giữa 2 file và sửa hết:
+   - import_receipts: thêm cột source_type (+ CHECK); image_path đổi
+     thành cho phép NULL (phiếu nhập tay không có ảnh gốc).
+   - camera_count_sessions: thêm 5 cột direction, receipt_line_item_id,
+     product_id, expected_quantity, status (+ CHECK) — toàn bộ phần đếm
+     theo từng dòng hàng; counted_quantity đổi thành cho phép NULL.
+   - reconciliations: thêm 2 cột receipt_line_item_id, product_id;
+     receipt_id đổi thành cho phép NULL (không còn UNIQUE — 1 phiếu có
+     nhiều bản ghi đối chiếu theo dòng); CHECK status bổ sung giá trị
+     'resolved_override' (đã dùng thật trong code nhưng thiếu trong SQL).
+   - push_subscriptions: THÊM MỚI HOÀN TOÀN (bảng cho tính năng push đã
+     có trong models.py nhưng chưa từng được thêm vào file .sql).
+   Đã test thật bằng Postgres 16 cài trong sandbox: chạy schema.sql mới
+   từ đầu, chạy lại đúng câu query từng lỗi (GET /receipts) — thành
+   công; test thêm case tạo phiếu tay với image_path=NULL — thành công.
+
+2) app/models.py — thêm cột Inventory.location (vị trí kệ/dãy hàng vật
+   lý, VD "Kệ A3-02"), tuỳ chọn, không ảnh hưởng logic nghiệp vụ hiện có.
+
+3) app/schemas.py
+   - Thêm DailyFlowPoint, TopProductMovement, AnalyticsKpis, AnalyticsOut
+     (phục vụ endpoint dashboard mới, mục 5 bên dưới).
+   - Thêm InventoryLocationUpdate (phục vụ endpoint sửa vị trí, mục 5).
+   - QUYẾT ĐỊNH NGHIỆP VỤ: đổi threshold_pct mặc định từ 0.02 (2%) về 0.0
+     ở CameraSegmentStopRequest và ReconciliationRunRequest — không cho
+     phép sai số nào giữa số đếm camera và số khai báo, dù nhỏ nhất.
+
+4) app/routers/camera.py
+   - DEFAULT_THRESHOLD_PCT đổi từ 0.02 → 0.0 (khớp mục 3).
+   - Đơn giản hoá cơ chế lấy video đã vẽ khung hộp: BỎ đoạn code cũ dò
+     tìm đệ quy file Ultralytics tự lưu (fragile — Ultralytics tự chèn
+     thêm thư mục con không đoán trước được), thay bằng dùng thẳng
+     đường dẫn count_pipeline.py trả về (xem mục 6) — biết chắc chắn từ
+     đầu, không cần dò tìm gì nữa. Xoá theo: biến search_started_at,
+     import time (không còn dùng).
+   - Thêm endpoint GET /inventory/analytics (qua router inventory.py,
+     xem mục 5) và PUT /inventory/{id}/location (mục 5).
+
+5) app/routers/inventory.py
+   - Thêm GET /inventory/analytics?days=N — trả về nhập/xuất theo ngày,
+     top 10 sản phẩm quay vòng nhanh nhất, 4 KPI nhanh (cảnh báo mở, sắp
+     hết hàng, sắp hết hạn, tổng giao dịch). CHỈ đọc lại
+     InventoryTransaction/Inventory/Alert có sẵn, không đổi schema nào
+     khác ngoài mục 2. Đã test thật bằng SQLite VÀ Postgres thật với dữ
+     liệu giả lập — số liệu tính đúng.
+   - Thêm PUT /inventory/{inventory_id}/location — gán/sửa vị trí kệ cho
+     1 lô tồn kho, độc lập hoàn toàn với luồng nhập/xuất/đối chiếu.
+
+6) camera/count_pipeline.py — REFACTOR cách tạo video đã vẽ khung hộp
+   Trước đây để Ultralytics tự vẽ + tự lưu (save=True), giờ TỰ vẽ từng
+   khung hình bằng OpenCV: lấy khung đã có box+track ID từ result.plot(),
+   vẽ đè thêm chữ "Da dem: N" (số đếm chạy theo track ID duy nhất, đúng
+   tại thời điểm đó) lên góc trên-trái, ghi thẳng ra 1 đường dẫn cố định
+   (annotated.mp4 trong output_dir) — biết chắc chắn từ đầu thay vì phải
+   dò tìm như cũ. Thêm field annotated_video_path vào CountResult.
+   Đã test riêng cơ chế OpenCV (VideoWriter + vẽ chữ đè) bằng dữ liệu giả
+   lập — đúng số khung hình, đúng kích thước, chữ vẽ đè đúng vị trí.
+   CHƯA test với model YOLOv8 thật (sandbox không cài Ultralytics/Torch)
+   — cần tự kiểm tra lại bằng video thật trước khi yên tâm hoàn toàn.
+
+7) KHÔNG đưa vào lần commit này (đã thử rồi bỏ, không phải hướng đang
+   dùng): Dockerfile viết cho Hugging Face Spaces rồi sửa lại cho Google
+   Cloud Run, .dockerignore, khối frontmatter trong README.md — cả 3
+   nền tảng đều gặp trở ngại (HF yêu cầu trả phí, Google Cloud khoá
+   billing account mới) nên đã quay lại dùng Railway (Procfile/
+   nixpacks.toml không đổi gì). Dockerfile hiện đã đổi tên thành
+   Dockerfile.cloudrun để Railway không tự nhận nhầm và build sai cách —
+   giữ lại phòng khi cần dùng lại sau này, không xoá.
+
+VIỆC ĐÃ PHÁT HIỆN NHƯNG CHƯA SỬA CODE (chỉ mới rà soát/thảo luận, cần
+làm tiếp nếu còn thời gian): dòng hàng chưa gán sản phẩm bị bỏ sót khi
+phiếu tự chuyển "đã xong"; thiếu ràng buộc số lượng dương ở vài schema
+nhập tay; chưa validate loại file khi upload ảnh phiếu; lỗi định dạng
+VAPID_CLAIM_EMAIL trong tài liệu .env.example đã sửa NHƯNG code
+push_service.py chưa được sửa để tự strip tiền tố "mailto:" phòng ngừa.
