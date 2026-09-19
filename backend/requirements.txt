@@ -36,9 +36,6 @@ setuptools<82
 # dùng khi chuyển sang migration thật thay vì create_all()
 alembic==1.13.*
 
-# Chatbot Claude API (mục 6.6 đề cương) — function-calling truy vấn DB thật
-anthropic==0.40.*
-
 # Camera counting pipeline (camera/count_pipeline.py) — YOLOv8 + ByteTrack thật
 ultralytics==8.3.*
 requests==2.32.*
@@ -47,4 +44,4 @@ requests==2.32.*
 pywebpush==2.0.*
 py-vapid==1.9.*
 
-google-genai
+google-genai  # Chatbot Gemini API (mục 6.6 đề cương) — function-calling truy vấn DB thật; đã thay thế hoàn toàn cho anthropic (Claude) dùng trước đó

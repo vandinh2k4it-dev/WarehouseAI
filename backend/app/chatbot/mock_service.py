@@ -1,18 +1,20 @@
-"""Chế độ MÔ PHỎNG (mock) — dùng khi CHƯA có credit Claude API hoặc muốn
-test nhanh không tốn tiền. KHÔNG gọi Claude thật — thay vào đó tự chọn tool
-theo từ khóa đơn giản trong câu hỏi, chạy tool đó lấy dữ liệu THẬT từ
+"""Chế độ MÔ PHỎNG (mock) — dùng khi CHƯA có GEMINI_API_KEY hoặc muốn
+test nhanh không tốn tiền/quota. KHÔNG gọi Gemini thật — thay vào đó tự chọn
+tool theo từ khóa đơn giản trong câu hỏi, chạy tool đó lấy dữ liệu THẬT từ
 Postgres, rồi ghép thành câu trả lời bằng template có sẵn.
 
 Mục đích: cho phép test toàn bộ phần khó (DB query, API wiring, tool logic)
 hoàn toàn miễn phí. Phần CHƯA test được ở chế độ này: khả năng hiểu ngôn ngữ
-tự nhiên linh hoạt của Claude thật (câu hỏi diễn đạt khác thường, câu hỏi
+tự nhiên linh hoạt của Gemini thật (câu hỏi diễn đạt khác thường, câu hỏi
 nhiều bước, ngữ cảnh hội thoại phức tạp) — cái đó bắt buộc phải test bằng
-API thật (dù chỉ vài nghìn đồng credit) trước khi coi khóa luận hoàn thành
-phần chatbot.
+API thật trước khi coi khóa luận hoàn thành phần chatbot.
 
-Bật chế độ này bằng cách KHÔNG cấu hình ANTHROPIC_API_KEY, hoặc set biến môi
+Bật chế độ này bằng cách KHÔNG cấu hình GEMINI_API_KEY, hoặc set biến môi
 trường CHATBOT_MOCK=true (ưu tiên hơn, dùng khi muốn ép mock dù đã có key,
-vd để giữ credit)."""
+vd để giữ quota miễn phí). Xem điều kiện chính xác trong
+app/chatbot/service.py::ask_chatbot() — dự án đã chuyển hẳn từ Claude
+(Anthropic) sang Gemini (Google), docstring này trước đây vẫn ghi nhầm theo
+tên biến/nền tảng cũ."""
 import re
 import unicodedata
 
