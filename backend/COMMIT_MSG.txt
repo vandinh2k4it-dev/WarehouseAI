@@ -1,52 +1,68 @@
-chore(backend): dọn dependency thừa, sửa docstring nhầm nền tảng cũ, thêm script tự kiểm tra lệch schema.sql/models.py
+feat(camera): thêm ROI (giới hạn vùng nhận dạng) để chặn vật đứng yên bị nhận nhầm thành thùng carton
 
-Làm theo 3 việc "có thời gian thì làm thêm" đã đề xuất, xếp cùng đợt vì
-đều nhỏ, không đụng logic nghiệp vụ nào.
+Bối cảnh: test thật cho thấy model nhận nhầm 1 vật hình chữ nhật ĐỨNG YÊN
+trong khung hình (camera quay trúng, luôn ở cùng 1 vị trí suốt video —
+không phải thùng di chuyển lẫn vào) thành carton_box, gây đếm lố. Khác
+với lần tune trước đó (track_buffer/match_thresh trong carton_bytetrack
+.yaml, xử lý việc TRACK bị gãy do che khuất tạm thời) — lần này là lỗi ở
+tầng DETECTION (model tự tin nhận nhầm y hệt 1 vật cố định mọi khung
+hình), tune tracker không giải quyết được, cần chặn ngay từ đầu vào.
 
-1) requirements.txt — xoá `anthropic==0.40.*`
-   Đã xác nhận KHÔNG còn import package này ở đâu trong code nữa (grep
-   toàn bộ app/chatbot/ — chỉ còn nhắc tên "Claude/Anthropic" trong
-   comment/docstring nói về việc ĐÃ chuyển sang Gemini, không có `import
-   anthropic` thật nào). Thêm chú thích rõ ràng ở dòng `google-genai`
-   rằng nó đã thay thế hoàn toàn anthropic, để không ai hiểu nhầm là còn
-   dùng song song cả 2 API.
-   Lợi ích: giảm 1 dependency khi cài lại môi trường từ đầu (hữu ích nếu
-   cần dựng máy khác gấp trước ngày bảo vệ).
+GIẢI PHÁP: thêm ROI (Region Of Interest) — giới hạn vùng model được phép
+"nhìn", che đen toàn bộ phần còn lại của khung hình (bao gồm cả vật gây
+nhận nhầm) trước khi đưa vào model. Không đụng gì đến model đã train,
+không cần thu thập thêm dữ liệu/train lại.
 
-2) app/chatbot/mock_service.py — sửa docstring đầu file
-   Docstring cũ vẫn ghi "dùng khi chưa có credit Claude API", "bật mock
-   bằng cách không cấu hình ANTHROPIC_API_KEY" — trong khi code thật
-   (app/chatbot/service.py) đã chuyển hẳn sang kiểm tra GEMINI_API_KEY từ
-   lâu. Sửa lại đúng theo Gemini, thêm 1 câu ghi chú lý do (tránh ai đọc
-   lại sau vài tuần bị nhầm tên biến môi trường cần set).
+1) camera/count_pipeline.py
+   - Thêm hàm _apply_roi_mask(frame, roi): che ĐEN (không CẮT/crop) vùng
+     ngoài ROI, giữ nguyên kích thước khung hình gốc — nhờ vậy toạ độ
+     khung hộp model trả về vẫn đúng với khung hình gốc, không cần sửa gì
+     ở logic tính diện tích (_is_plausible_box_size) hay vẽ video annotate.
+   - THAY ĐỔI CẤU TRÚC QUAN TRỌNG: trước đây đưa thẳng đường dẫn video cho
+     model.track(source=video_path, stream=True) tự đọc — không có chỗ
+     nào để "chen" bước che ROI vào trước khi model thấy khung hình. Giờ
+     tự đọc video bằng cv2.VideoCapture, che ROI (nếu có) lên TỪNG khung
+     hình, rồi gọi model.track(frame, persist=True, ...) cho từng khung
+     một. persist=True bắt buộc phải có ở cách gọi này để track ID nối
+     tiếp được giữa các khung — thiếu nó mỗi khung sẽ bị coi là 1 video
+     mới, đếm sai hoàn toàn.
+   - Thêm tham số roi: tuple (x1,y1,x2,y2) theo TỈ LỆ 0.0-1.0 (không phải
+     pixel tuyệt đối) cho count_boxes_in_video() — dùng tỉ lệ để 1 giá trị
+     ROI dùng được cho video có độ phân giải khác nhau. Có validate ngay
+     (raise ValueError rõ ràng) nếu x1>=x2 hoặc y1>=y2 hoặc ngoài [0,1].
+   - Thêm --roi "x1,y1,x2,y2" ở CLI, parse + validate định dạng ngay tại
+     main() với thông báo lỗi rõ ràng nếu gõ sai, trước khi chạy model
+     (tránh lỗi mập mờ giữa chừng lúc đang xử lý video dài).
+   - Không có --roi (mặc định None) → hành vi giữ NGUYÊN như trước đây,
+     không ảnh hưởng gì tới các lần chạy cũ không cần ROI.
 
-3) db/check_schema_sync.py — MỚI: script so cột schema.sql vs models.py
-   Đây là việc "đáng cân nhắc trước bảo vệ" (không phải chỉ dọn dẹp) —
-   nguyên nhân gốc của lỗi lệch schema.sql/models.py tuần trước (thiếu
-   source_type, thiếu cột đếm-theo-dòng, thiếu hẳn bảng
-   push_subscriptions) là vì 2 file này được duy trì SONG SONG BẰNG TAY,
-   không có gì tự động phát hiện khi ai đó sửa models.py mà quên cập
-   nhật schema.sql (hoặc ngược lại). Alembic (đã có sẵn trong
-   requirements.txt) là giải pháp triệt để nhưng đổi hẳn cách quản lý
-   schema — có thể quá rủi ro để đổi lúc gần bảo vệ. Script này là giải
-   pháp tạm, AN TOÀN hơn: KHÔNG đổi cách chạy app, chỉ đọc 2 file có sẵn
-   và báo lệch — chạy tay bằng:
-       python db/check_schema_sync.py
-   Không cần Postgres đang chạy, không cần DATABASE_URL đúng thật (chỉ
-   parse tên cột, không kết nối DB thật).
-   GIỚI HẠN ĐÃ GHI RÕ TRONG DOCSTRING: chỉ so TÊN CỘT (dùng regex thô cho
-   schema.sql, SQLAlchemy metadata thật cho models.py) — KHÔNG kiểm tra
-   kiểu dữ liệu, NULL/default, hay nội dung CHECK constraint có khớp
-   không. Đủ để bắt đúng loại lỗi đã xảy ra tuần trước (thiếu hẳn 1 cột/
-   1 bảng), không thay thế được việc tự đọc lại 2 file nếu chỉ đổi kiểu
-   dữ liệu của cột đã có sẵn.
-   ĐÃ TEST 2 CHIỀU:
-   - Chạy trên schema.sql + models.py hiện tại (đã đồng bộ từ tuần
-     trước) -> báo "✅ khớp cột" cho cả 9 bảng, không có false positive.
-   - Cố tình xoá 1 dòng cột (`location VARCHAR(50)`) khỏi bản sao
-     schema.sql để giả lập đúng loại lỗi đã xảy ra -> script bắt đúng,
-     báo rõ "Có trong models.py, THIẾU trong schema.sql: ['location']"
-     -> khôi phục lại bản gốc, chạy lại ra "✅ khớp cột" bình thường.
-   Gợi ý dùng: chạy lệnh này 1 lần trước mỗi lần đóng gói deliverable có
-   đụng tới models.py hoặc db/schema.sql, thành thói quen giống như
-   esbuild/TestClient đã làm.
+2) camera/pick_roi.py — MỚI: công cụ chọn ROI trực quan
+   python camera/pick_roi.py --video test/video_demo.mp4
+   Mở khung hình đầu của video, cho kéo chuột vẽ khung chọn (dùng
+   cv2.selectROI có sẵn của OpenCV), tự tính ra tỉ lệ và in thẳng ra dòng
+   lệnh count_pipeline.py mẫu, sẵn sàng copy-paste chạy luôn — không cần
+   tự đoán/tính toạ độ số bằng tay.
+
+ĐÃ TEST (sandbox không có GPU/model .pt thật nên không chạy được YOLO thật
+— test riêng phần logic không phụ thuộc model):
+- _apply_roi_mask(): dựng khung hình giả (numpy), xác nhận đúng 3 điều:
+  vùng NGOÀI ROI bị che đen, vùng TRONG ROI giữ nguyên màu gốc, kích
+  thước khung hình không đổi (không bị crop).
+- Parse "--roi x1,y1,x2,y2": chuỗi hợp lệ parse đúng thành tuple số;
+  chuỗi thiếu số bị bắt lỗi đúng với thông báo rõ ràng.
+- Validate range: (x1 > x2) bị raise ValueError đúng như thiết kế; case
+  hợp lệ (0.1,0.1,0.9,0.9) không bị raise.
+
+CẦN TỰ TEST TIẾP Ở MÁY LOCAL (có model + video thật):
+- Chạy camera/pick_roi.py trên đúng video đang gặp vấn đề, kéo chọn vùng
+  băng chuyền, lấy chuỗi ROI in ra.
+- Chạy lại count_pipeline.py với --roi vừa lấy + --save-annotated, xem
+  video annotate xuất ra có còn thấy vật gây nhận nhầm bị model bắt
+  không (đúng ra sẽ không còn box nào vẽ lên vùng bị che đen).
+- So sánh số đếm mới với số thùng thực tế — nếu ROI chọn đúng, số đếm
+  phải hết lố do nguyên nhân này (còn lố do TRACK gãy thì đã tune ở
+  carton_bytetrack.yaml từ trước, là chuyện khác).
+- Do đổi từ stream=True (Ultralytics tự tối ưu đọc video) sang đọc từng
+  khung bằng tay, tốc độ xử lý CÓ THỂ chậm hơn 1 chút so với trước — nếu
+  thấy chậm rõ rệt trên video dài, báo lại để tối ưu thêm (vd resize
+  khung hình trước khi che ROI nếu cần).

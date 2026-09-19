@@ -66,6 +66,7 @@ except ImportError:  # pragma: no cover
 
 import cv2  # ultralytics tự kéo theo opencv-python làm dependency — không
 # cần khai báo riêng trong requirements.txt, cùng bản luôn đi kèm.
+import numpy as np  # dùng để che đen vùng ngoài ROI — xem _apply_roi_mask() bên dưới
 
 
 DEFAULT_BACKEND_URL = "http://localhost:8000"
@@ -101,6 +102,32 @@ def _is_plausible_box_size(x1: float, y1: float, x2: float, y2: float, frame_w: 
     return (box_area / frame_area) <= MAX_BOX_AREA_RATIO
 
 
+def _apply_roi_mask(frame: "np.ndarray", roi: tuple[float, float, float, float]) -> "np.ndarray":
+    """Che ĐEN toàn bộ khung hình BÊN NGOÀI vùng ROI (Region Of Interest —
+    vùng băng chuyền/nơi thùng thật sự đi qua), để model không thấy được
+    phần khung hình có vật gây nhận nhầm (biển hiệu, cạnh kệ, khung cửa...)
+    đứng yên 1 chỗ.
+
+    QUAN TRỌNG: hàm này CHE ĐEN (giữ nguyên kích thước khung hình gốc),
+    KHÔNG CẮT (crop) khung hình. Nhờ vậy toạ độ khung hộp model trả về vẫn
+    đúng với khung hình gốc luôn — không cần tính lại toạ độ ở bất kỳ chỗ
+    nào khác trong code (annotate video, tính tỉ lệ diện tích...).
+
+    roi: (x1, y1, x2, y2) theo TỈ LỆ 0.0-1.0 so với chiều rộng/cao khung
+    hình (KHÔNG phải toạ độ pixel tuyệt đối) — nhờ vậy dùng chung được 1 giá
+    trị ROI cho video quay ở độ phân giải khác nhau (vd điện thoại quay dọc
+    vs quay ngang) mà không cần tính lại số."""
+    h, w = frame.shape[:2]
+    x1 = int(roi[0] * w)
+    y1 = int(roi[1] * h)
+    x2 = int(roi[2] * w)
+    y2 = int(roi[3] * h)
+
+    masked = np.zeros_like(frame)
+    masked[y1:y2, x1:x2] = frame[y1:y2, x1:x2]
+    return masked
+
+
 @dataclass
 class CountResult:
     counted_quantity: int
@@ -121,12 +148,20 @@ def count_boxes_in_video(
     target_class_name: str | None = CARTON_CLASS_NAME,
     save_annotated: bool = False,
     output_dir: str | None = None,
+    roi: tuple[float, float, float, float] | None = None,
 ) -> CountResult:
     """Chạy YOLOv8 + ByteTrack trên video, trả về số thùng đếm được DUY NHẤT.
 
     target_class_name: nếu model có nhiều lớp (vd. đang test tạm bằng
     yolov8s.pt gốc/COCO), chỉ đếm các track thuộc lớp này. Đặt None để đếm
     mọi lớp (dùng khi model chỉ có 1 lớp carton_box, đúng thiết kế cuối cùng).
+
+    roi: (x1, y1, x2, y2) theo TỈ LỆ 0.0-1.0, giới hạn vùng model được phép
+    "nhìn" thấy — dùng khi camera quay trúng 1 vật đứng yên (biển hiệu, cạnh
+    kệ...) bị model nhận nhầm thành thùng carton. Đặt None để dùng nguyên
+    khung hình (mặc định, không giới hạn gì — hành vi giống hệt trước đây).
+    Dùng camera/pick_roi.py để tự chọn vùng này bằng cách kéo chuột, không
+    cần tự tính toạ độ bằng tay.
     """
     model = YOLO(model_path)
     class_names = model.names  # {id: name}
@@ -158,6 +193,28 @@ def count_boxes_in_video(
     frame_count = 0
     started_at = datetime.now(timezone.utc)
 
+    # ROI (nếu có) — validate sớm, báo lỗi rõ ràng ngay khi gọi hàm thay vì
+    # để lỗi mập mờ giữa chừng lúc đang xử lý video.
+    if roi is not None:
+        rx1, ry1, rx2, ry2 = roi
+        if not (0.0 <= rx1 < rx2 <= 1.0 and 0.0 <= ry1 < ry2 <= 1.0):
+            raise ValueError(
+                f"roi không hợp lệ: {roi} — cần đúng dạng (x1, y1, x2, y2) với "
+                "0.0 <= x1 < x2 <= 1.0 và 0.0 <= y1 < y2 <= 1.0."
+            )
+
+    # Mở video BẰNG TAY (cv2.VideoCapture) thay vì để model.track(source=...,
+    # stream=True) tự đọc thẳng từ đường dẫn — BẮT BUỘC phải làm vậy để có
+    # chỗ "chen" bước che vùng ROI vào TỪNG khung hình TRƯỚC KHI đưa vào
+    # model. Nếu để model tự đọc video, sẽ không có cơ hội nào để sửa khung
+    # hình trước khi nó thấy.
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        raise RuntimeError(f"Không mở được video: {video_path}")
+    # Lấy FPS gốc luôn từ cap này — trước đây phải mở riêng 1 cv2.VideoCapture
+    # khác chỉ để đọc FPS rồi đóng ngay, giờ dùng chung 1 cap luôn cho gọn.
+    source_fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+
     # Đường dẫn output CỐ ĐỊNH, do CHÍNH mình ghi ra bằng OpenCV — khác hẳn
     # cách cũ (để Ultralytics tự save=True rồi phải dò tìm đệ quy file nó
     # lưu ở đâu, vì Ultralytics tự chèn thêm thư mục con không đoán trước
@@ -168,27 +225,27 @@ def count_boxes_in_video(
         out_dir = Path(output_dir or "runs/count_pipeline")
         out_dir.mkdir(parents=True, exist_ok=True)
         annotated_video_path = str(out_dir / "annotated.mp4")
-        # Lấy FPS gốc của video nguồn để video xuất ra có tốc độ khớp bản
-        # gốc — mở riêng 1 lần bằng cv2 chỉ để đọc metadata rồi đóng ngay,
-        # không dùng để đọc khung hình (việc đó model.track() lo).
-        probe = cv2.VideoCapture(video_path)
-        source_fps = probe.get(cv2.CAP_PROP_FPS) or 25.0
-        probe.release()
 
-    track_kwargs = dict(
-        source=video_path,
-        conf=conf,
-        iou=iou,
-        tracker=CARTON_TRACKER_CONFIG,
-        persist=True,
-        stream=True,
-        verbose=False,
-    )
+    while True:
+        ok, frame = cap.read()
+        if not ok:
+            break  # hết video
 
-    results_generator = model.track(**track_kwargs)
-
-    for result in results_generator:
         frame_count += 1
+        model_input = _apply_roi_mask(frame, roi) if roi is not None else frame
+
+        # persist=True: giữ trạng thái track (ID thùng) NỐI TIẾP giữa các
+        # lần gọi track() liên tiếp trên từng khung hình rời — bắt buộc
+        # phải có khi gọi track() từng khung 1 kiểu này (khác cách cũ đưa
+        # nguyên đường dẫn video vào 1 lần); thiếu persist=True, mỗi khung
+        # sẽ bị coi là 1 video MỚI, ID không nối tiếp được giữa các khung,
+        # đếm sai hoàn toàn.
+        results = model.track(
+            model_input, conf=conf, iou=iou, tracker=CARTON_TRACKER_CONFIG,
+            persist=True, verbose=False,
+        )
+        result = results[0]  # model.track() luôn trả về list, kể cả đưa vào đúng 1 khung hình
+
         boxes = result.boxes
         has_boxes = boxes is not None and boxes.id is not None
 
@@ -212,11 +269,14 @@ def count_boxes_in_video(
         if save_annotated:
             # result.plot() trả về ảnh numpy (BGR, đúng định dạng OpenCV)
             # ĐÃ tự vẽ sẵn khung hộp + track ID + tên lớp — tận dụng lại,
-            # chỉ cần vẽ thêm dòng chữ số đếm đè lên trên.
-            frame = result.plot()
+            # chỉ cần vẽ thêm dòng chữ số đếm đè lên trên. Vẽ trên khung
+            # ĐÃ CHE ROI (model_input, không phải frame gốc) để khi xem lại
+            # video thấy rõ đúng phần nào bị che/bỏ qua, dễ kiểm tra ROI
+            # chọn đã đúng chưa.
+            annotated_frame = result.plot()
 
             if video_writer is None:
-                h, w = frame.shape[:2]
+                h, w = annotated_frame.shape[:2]
                 fourcc = cv2.VideoWriter_fourcc(*"mp4v")
                 video_writer = cv2.VideoWriter(annotated_video_path, fourcc, source_fps, (w, h))
 
@@ -225,13 +285,14 @@ def count_boxes_in_video(
             # video sáng/tối thế nào (chữ trắng đơn thuần dễ bị "chìm" vào
             # nền sáng ở nhiều video thực tế đã thử).
             (text_w, text_h), _ = cv2.getTextSize(count_text, cv2.FONT_HERSHEY_SIMPLEX, 1.1, 3)
-            cv2.rectangle(frame, (10, 10), (10 + text_w + 20, 10 + text_h + 30), (0, 0, 0), -1)
+            cv2.rectangle(annotated_frame, (10, 10), (10 + text_w + 20, 10 + text_h + 30), (0, 0, 0), -1)
             cv2.putText(
-                frame, count_text, (20, 10 + text_h + 10),
+                annotated_frame, count_text, (20, 10 + text_h + 10),
                 cv2.FONT_HERSHEY_SIMPLEX, 1.1, (0, 255, 255), 3, cv2.LINE_AA,
             )
-            video_writer.write(frame)
+            video_writer.write(annotated_frame)
 
+    cap.release()
     if video_writer is not None:
         video_writer.release()
 
@@ -290,12 +351,41 @@ def main():
     parser.add_argument("--session-code", default=None)
     parser.add_argument("--model-version", default=None, help="Vd. 'carton_counter_v1_gd1gd2'. Mặc định lấy tên file model.")
     parser.add_argument("--save-annotated", action="store_true", help="Lưu video đã vẽ box+track ID để kiểm tra trực quan")
+    parser.add_argument(
+        "--roi", default=None,
+        help=(
+            "Giới hạn vùng model được phép nhận dạng, dạng 'x1,y1,x2,y2' theo "
+            "TỈ LỆ 0.0-1.0 (không phải pixel). Dùng khi camera quay trúng 1 vật "
+            "đứng yên bị nhận nhầm thành thùng — dùng camera/pick_roi.py để tự "
+            "chọn vùng này bằng cách kéo chuột thay vì tự tính số. "
+            "Ví dụ: --roi \"0.1,0.05,0.9,0.95\""
+        ),
+    )
     parser.add_argument("--no-push", action="store_true", help="Chỉ đếm, không gọi API (để test/debug pipeline riêng)")
     parser.add_argument("--target-class", default=CARTON_CLASS_NAME, help=f"Tên lớp cần đếm (mặc định '{CARTON_CLASS_NAME}'). Bỏ trống để đếm mọi lớp.")
     args = parser.parse_args()
 
     if not Path(args.video).exists() and not args.video.startswith(("rtsp://", "http://", "https://")):
         print(f"⚠️  Không tìm thấy file video: {args.video} (bỏ qua kiểm tra nếu đây là RTSP/webcam index)")
+
+    # Parse "--roi x1,y1,x2,y2" (chuỗi text từ dòng lệnh) thành tuple số thật.
+    # Báo lỗi rõ ràng ngay tại đây nếu gõ sai định dạng, thay vì để lỗi mập
+    # mờ (ValueError khó hiểu) xảy ra sâu bên trong count_boxes_in_video().
+    roi_tuple = None
+    if args.roi:
+        try:
+            parts = [float(p.strip()) for p in args.roi.split(",")]
+            if len(parts) != 4:
+                raise ValueError("cần đúng 4 số")
+            roi_tuple = (parts[0], parts[1], parts[2], parts[3])
+        except ValueError as e:
+            print(
+                f"❌ --roi \"{args.roi}\" sai định dạng ({e}). "
+                "Đúng dạng: --roi \"x1,y1,x2,y2\" (4 số 0.0-1.0, cách nhau dấu phẩy). "
+                "Dùng camera/pick_roi.py để tự chọn vùng này bằng cách kéo chuột.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
 
     t0 = time.time()
     result = count_boxes_in_video(
@@ -305,6 +395,7 @@ def main():
         iou=args.iou,
         target_class_name=args.target_class or None,
         save_annotated=args.save_annotated,
+        roi=roi_tuple,
     )
     elapsed = time.time() - t0
 
