@@ -5,14 +5,19 @@ cương.
 ĐÃ CHUYỂN từ Claude (Anthropic) sang Gemini (Google) — lý do: Gemini có
 free tier THẬT (không cần thẻ tín dụng/nạp tiền) đủ dùng cho khối lượng
 dùng ở quy mô demo khóa luận, xem chi tiết bên dưới. Model dùng:
-gemini-3.6-flash — ĐÃ ĐỔI 1 LẦN từ gemini-2.5-flash vì Google ngừng hỗ trợ
-model đó cho user mới (lỗi 404 thật gặp phải: "This model
-models/gemini-2.5-flash is no longer available to new users. Please
-update your code to use models/gemini-3.6-flash") — XÁC NHẬN THỰC TẾ tên
-model AI của Google đổi RẤT NHANH, có thể lại đổi tiếp trong tương lai. Nếu
-gặp lỗi "404 NOT_FOUND" tương tự, đọc kỹ nội dung lỗi — Google THƯỜNG TỰ
-NÓI LUÔN tên model mới cần đổi sang ngay trong thông báo lỗi (như lần này),
-chỉ cần đổi đúng hằng số MODEL_NAME bên dưới, không cần sửa gì khác.
+gemini-3.5-flash-lite — ĐÃ ĐỔI LẦN 2 (lịch sử: gemini-2.5-flash → bị Google
+ngừng hỗ trợ cho user mới → gemini-3.6-flash → free tier chỉ 20
+request/NGÀY, hết ngay sau vài lượt test/demo, tự động rơi về chế độ MOCK
+liên tục rất bất tiện lúc làm khóa luận → gemini-3.5-flash-lite, free tier
+500 request/ngày, đủ dùng thoải mái cho quy mô demo). XÁC NHẬN THỰC TẾ tên
+model VÀ quota free tier của Google đổi RẤT NHANH, có thể lại đổi tiếp
+trong tương lai. Nếu gặp lỗi "404 NOT_FOUND", đọc kỹ nội dung lỗi — Google
+THƯỜNG TỰ NÓI LUÔN tên model mới cần đổi sang ngay trong thông báo lỗi. Nếu
+gặp lỗi "429 RESOURCE_EXHAUSTED" (như lần đổi này), nghĩa là ĐÃ hết quota
+free tier/ngày của model đang dùng — kiểm tra lại quota hiện tại của các
+model tại https://ai.google.dev/gemini-api/docs/rate-limits trước khi đổi
+tiếp, vì con số có thể đã thay đổi so với ghi chú này. Cả 2 trường hợp chỉ
+cần đổi đúng hằng số MODEL_NAME bên dưới, không cần sửa gì khác.
 
 SDK dùng: google-genai (SDK thống nhất mới của Google, KHÔNG PHẢI SDK cũ
 "google-generativeai" đã ngừng phát triển) — cài qua `pip install
@@ -29,7 +34,7 @@ from sqlalchemy.orm import Session
 from app.chatbot.tools import TOOLS, TOOL_FUNCTIONS
 from app.chatbot.mock_service import mock_ask
 
-MODEL_NAME = "gemini-3.6-flash"
+MODEL_NAME = "gemini-3.5-flash-lite"
 MAX_TOOL_ROUNDS = 5  # chặn vòng lặp vô hạn nếu model cứ liên tục gọi tool
 
 SYSTEM_PROMPT = """Bạn là trợ lý AI của hệ thống quản lý kho hàng thông minh.

@@ -1,68 +1,26 @@
-feat(camera): thêm ROI (giới hạn vùng nhận dạng) để chặn vật đứng yên bị nhận nhầm thành thùng carton
+fix(chatbot): đổi model Gemini sang gemini-3.5-flash-lite — free tier 500 request/ngày thay vì 20
 
-Bối cảnh: test thật cho thấy model nhận nhầm 1 vật hình chữ nhật ĐỨNG YÊN
-trong khung hình (camera quay trúng, luôn ở cùng 1 vị trí suốt video —
-không phải thùng di chuyển lẫn vào) thành carton_box, gây đếm lố. Khác
-với lần tune trước đó (track_buffer/match_thresh trong carton_bytetrack
-.yaml, xử lý việc TRACK bị gãy do che khuất tạm thời) — lần này là lỗi ở
-tầng DETECTION (model tự tin nhận nhầm y hệt 1 vật cố định mọi khung
-hình), tune tracker không giải quyết được, cần chặn ngay từ đầu vào.
+Bối cảnh: gặp lỗi thật lúc test "429 RESOURCE_EXHAUSTED... limit: 20,
+model: gemini-3.6-flash" — hệ thống tự rơi về chế độ MOCK đúng như thiết
+kế (không crash), nhưng chế độ MOCK chỉ hiểu vài mẫu câu cố định, không
+dùng để demo/kiểm thử chatbot thật được.
 
-GIẢI PHÁP: thêm ROI (Region Of Interest) — giới hạn vùng model được phép
-"nhìn", che đen toàn bộ phần còn lại của khung hình (bao gồm cả vật gây
-nhận nhầm) trước khi đưa vào model. Không đụng gì đến model đã train,
-không cần thu thập thêm dữ liệu/train lại.
+Đã tra cứu lại: tính đến tháng 9/2026, dòng "Flash" (gemini-3.5/3.6/3.7/
+3.8-flash) free tier chỉ còn 20 request/NGÀY — hết rất nhanh khi test qua
+lại nhiều lần trong lúc làm khóa luận. Dòng "Flash-Lite" (gemini-3.5-flash-
+lite) vẫn miễn phí, không cần thẻ, nhưng free tier 500 request/ngày — gấp
+25 lần, phù hợp hơn nhiều cho quy mô demo/test khóa luận.
 
-1) camera/count_pipeline.py
-   - Thêm hàm _apply_roi_mask(frame, roi): che ĐEN (không CẮT/crop) vùng
-     ngoài ROI, giữ nguyên kích thước khung hình gốc — nhờ vậy toạ độ
-     khung hộp model trả về vẫn đúng với khung hình gốc, không cần sửa gì
-     ở logic tính diện tích (_is_plausible_box_size) hay vẽ video annotate.
-   - THAY ĐỔI CẤU TRÚC QUAN TRỌNG: trước đây đưa thẳng đường dẫn video cho
-     model.track(source=video_path, stream=True) tự đọc — không có chỗ
-     nào để "chen" bước che ROI vào trước khi model thấy khung hình. Giờ
-     tự đọc video bằng cv2.VideoCapture, che ROI (nếu có) lên TỪNG khung
-     hình, rồi gọi model.track(frame, persist=True, ...) cho từng khung
-     một. persist=True bắt buộc phải có ở cách gọi này để track ID nối
-     tiếp được giữa các khung — thiếu nó mỗi khung sẽ bị coi là 1 video
-     mới, đếm sai hoàn toàn.
-   - Thêm tham số roi: tuple (x1,y1,x2,y2) theo TỈ LỆ 0.0-1.0 (không phải
-     pixel tuyệt đối) cho count_boxes_in_video() — dùng tỉ lệ để 1 giá trị
-     ROI dùng được cho video có độ phân giải khác nhau. Có validate ngay
-     (raise ValueError rõ ràng) nếu x1>=x2 hoặc y1>=y2 hoặc ngoài [0,1].
-   - Thêm --roi "x1,y1,x2,y2" ở CLI, parse + validate định dạng ngay tại
-     main() với thông báo lỗi rõ ràng nếu gõ sai, trước khi chạy model
-     (tránh lỗi mập mờ giữa chừng lúc đang xử lý video dài).
-   - Không có --roi (mặc định None) → hành vi giữ NGUYÊN như trước đây,
-     không ảnh hưởng gì tới các lần chạy cũ không cần ROI.
+app/chatbot/service.py — đổi MODEL_NAME từ "gemini-3.6-flash" sang
+"gemini-3.5-flash-lite". Cập nhật lại docstring đầu file ghi rõ lịch sử 2
+lần đổi model + lý do, và ghi chú cách xử lý nếu tương lai lại gặp lỗi
+404 (đổi tên model) hoặc 429 (hết quota) — kiểm tra lại quota hiện tại tại
+https://ai.google.dev/gemini-api/docs/rate-limits trước khi đổi tiếp, vì
+con số free tier của Google thay đổi khá thường xuyên.
 
-2) camera/pick_roi.py — MỚI: công cụ chọn ROI trực quan
-   python camera/pick_roi.py --video test/video_demo.mp4
-   Mở khung hình đầu của video, cho kéo chuột vẽ khung chọn (dùng
-   cv2.selectROI có sẵn của OpenCV), tự tính ra tỉ lệ và in thẳng ra dòng
-   lệnh count_pipeline.py mẫu, sẵn sàng copy-paste chạy luôn — không cần
-   tự đoán/tính toạ độ số bằng tay.
-
-ĐÃ TEST (sandbox không có GPU/model .pt thật nên không chạy được YOLO thật
-— test riêng phần logic không phụ thuộc model):
-- _apply_roi_mask(): dựng khung hình giả (numpy), xác nhận đúng 3 điều:
-  vùng NGOÀI ROI bị che đen, vùng TRONG ROI giữ nguyên màu gốc, kích
-  thước khung hình không đổi (không bị crop).
-- Parse "--roi x1,y1,x2,y2": chuỗi hợp lệ parse đúng thành tuple số;
-  chuỗi thiếu số bị bắt lỗi đúng với thông báo rõ ràng.
-- Validate range: (x1 > x2) bị raise ValueError đúng như thiết kế; case
-  hợp lệ (0.1,0.1,0.9,0.9) không bị raise.
-
-CẦN TỰ TEST TIẾP Ở MÁY LOCAL (có model + video thật):
-- Chạy camera/pick_roi.py trên đúng video đang gặp vấn đề, kéo chọn vùng
-  băng chuyền, lấy chuỗi ROI in ra.
-- Chạy lại count_pipeline.py với --roi vừa lấy + --save-annotated, xem
-  video annotate xuất ra có còn thấy vật gây nhận nhầm bị model bắt
-  không (đúng ra sẽ không còn box nào vẽ lên vùng bị che đen).
-- So sánh số đếm mới với số thùng thực tế — nếu ROI chọn đúng, số đếm
-  phải hết lố do nguyên nhân này (còn lố do TRACK gãy thì đã tune ở
-  carton_bytetrack.yaml từ trước, là chuyện khác).
-- Do đổi từ stream=True (Ultralytics tự tối ưu đọc video) sang đọc từng
-  khung bằng tay, tốc độ xử lý CÓ THỂ chậm hơn 1 chút so với trước — nếu
-  thấy chậm rõ rệt trên video dài, báo lại để tối ưu thêm (vd resize
-  khung hình trước khi che ROI nếu cần).
+CẦN TỰ TEST LẠI Ở MÁY LOCAL: gọi thử vài câu hỏi chatbot thật (không phải
+mock) để xác nhận gemini-3.5-flash-lite vẫn trả lời đúng các câu hỏi suy
+luận nghiệp vụ (vd ưu tiên xuất hàng theo FEFO) như gemini-3.6-flash đã
+làm được trước đó — Flash-Lite là bản nhẹ hơn, tuy quota tốt hơn nhiều
+nhưng khả năng suy luận phức tạp có thể yếu hơn đôi chút, cần xác nhận đủ
+tốt cho các câu hỏi thực tế trước khi coi là ổn định thay thế hoàn toàn.
