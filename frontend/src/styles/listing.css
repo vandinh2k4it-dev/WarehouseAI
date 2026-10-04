@@ -120,9 +120,10 @@ mark.hl {
 
 /* ---------- Thẻ phiếu nhập (có ảnh + thông tin đầy đủ) ---------- */
 .rcCard {
-  display: flex;
-  gap: 12px;
-  align-items: flex-start;
+  display: grid;
+  grid-template-columns: 220px 1fr; /* kiểu "Ảnh lớn" (mặc định) */
+  gap: 14px;
+  align-items: start;
   background: var(--surface-raised);
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -134,23 +135,58 @@ mark.hl {
 .rcCard:hover {
   border-color: var(--accent);
 }
+.rcCard--compact {
+  grid-template-columns: 120px 1fr;
+  gap: 12px;
+}
 .rcThumb {
-  flex: 0 0 76px;
-  width: 76px;
-  height: 100px;
+  position: relative;
+  width: 100%;
+  height: 160px;
   border-radius: 8px;
   overflow: hidden;
   border: 1px solid var(--border);
   background: var(--surface);
 }
-.rcThumb a,
+.rcCard--compact .rcThumb {
+  height: 84px;
+}
+/* contain (không phải cover): phiếu thường là ảnh NGANG, cover sẽ cắt mất 1 nửa
+   phiếu — contain hiện trọn cả tờ phiếu, nền trắng như tờ giấy. */
 .rcThumb img {
   display: block;
   width: 100%;
   height: 100%;
+  object-fit: contain;
+  background: #fff;
 }
-.rcThumb img {
-  object-fit: cover;
+.rcThumbBtn,
+.receiptImage-btn {
+  all: unset;
+  display: block;
+  position: relative;
+  width: 100%;
+  cursor: zoom-in;
+}
+.rcThumbBtn {
+  height: 100%;
+}
+.rcThumbBtn:focus-visible,
+.receiptImage-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.zoomBadge {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.68);
+  color: #fff;
+  font-size: 11.5px;
+  font-weight: 600;
+  pointer-events: none;
 }
 .rcThumb-empty {
   height: 100%;
@@ -268,11 +304,18 @@ mark.hl {
   color: var(--text);
 }
 
-@media (max-width: 480px) {
-  .rcThumb {
-    flex-basis: 62px;
-    width: 62px;
-    height: 84px;
+@media (max-width: 640px) {
+  .rcCard--large {
+    grid-template-columns: 1fr; /* điện thoại: ảnh nằm TRÊN, rộng hết thẻ cho dễ đọc */
+  }
+  .rcCard--large .rcThumb {
+    height: 200px;
+  }
+  .rcCard--compact {
+    grid-template-columns: 96px 1fr;
+  }
+  .rcCard--compact .rcThumb {
+    height: 72px;
   }
 }
 
@@ -441,4 +484,207 @@ mark.hl {
   margin-top: 0;
   padding: 6px 12px;
   font-size: 12px;
+}
+
+/* ---------- Ô tìm kiếm có gợi ý (SmartSearchBox) ---------- */
+.smartSearch {
+  position: relative;
+  margin-bottom: 12px;
+}
+.combo-head {
+  padding: 6px 12px 4px;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.combo-icon2 {
+  margin-right: 8px;
+}
+.combo-stock.neutral {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+.suggestChips {
+  margin: 2px 0 4px;
+}
+
+/* ---------- Nút chuyển kiểu hiển thị + hàng tóm tắt ---------- */
+.listSummary-left {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+}
+.viewToggle {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.viewToggle button {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+.viewToggle button.active {
+  background: var(--accent);
+  color: #1a1200;
+}
+
+/* ---------- Khung xem ảnh phóng to (ImageLightbox) ---------- */
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  background: rgba(5, 8, 12, 0.94);
+  animation: lbFade 0.15s ease;
+}
+@keyframes lbFade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.lightbox-bar {
+  flex-shrink: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  padding-top: calc(10px + env(safe-area-inset-top));
+  color: #fff;
+}
+.lightbox-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 700;
+  font-size: 15px;
+}
+.lightbox-title small {
+  display: block;
+  margin-top: 1px;
+  font-size: 12px;
+  font-weight: 400;
+  opacity: 0.75;
+}
+.lightbox-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.lightbox-btn {
+  width: auto;
+  margin: 0;
+  padding: 9px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.lightbox-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+.lightbox-close {
+  width: 44px;
+  height: 44px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+  font-size: 20px;
+  cursor: pointer;
+}
+.lightbox-close:hover,
+.lightbox-close:focus-visible {
+  background: var(--danger);
+  outline: none;
+}
+.lightbox-stage {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  padding: 6px 16px 20px;
+}
+.lightbox-msg {
+  margin: auto;
+  color: #fff;
+  opacity: 0.8;
+}
+/* margin:auto (thay vì căn giữa bằng align/justify) để khi phóng to ảnh tràn khung
+   vẫn cuộn được tới mép trái/trên của ảnh. */
+.lightbox-img {
+  margin: auto;
+  max-width: 100%;
+  max-height: calc(100vh - 100px);
+  object-fit: contain;
+  background: #fff;
+  border-radius: 6px;
+  box-shadow: var(--shadow-lg);
+  cursor: zoom-in;
+  transition: opacity 0.15s ease;
+}
+.lightbox-img.zoomed {
+  max-width: none;
+  max-height: none;
+  width: 180%;
+  cursor: zoom-out;
+}
+
+/* Phiếu KHÔNG có ảnh (nhập tay): ô giữ chỗ thấp thôi — không chiếm 160-200px trống
+   như ô ảnh thật (nguồn phiếu đã ghi rõ ở dòng thông tin bên cạnh). */
+.rcCard--large .rcThumb--empty {
+  height: 72px;
+}
+@media (max-width: 640px) {
+  .rcCard--large .rcThumb--empty {
+    height: 56px;
+  }
+}
+
+/* Form sửa dòng hàng: .lineCard gốc có align-items:center nên mọi phần tử con co lại
+   theo nội dung (nhãn bị căn giữa, ô chọn sản phẩm hẹp) — cho giãn đủ chiều ngang thẻ. */
+.lineCard-editing {
+  align-items: stretch;
+}
+.lineCard-editing .combo {
+  width: 100%;
+  margin-bottom: 0;
+}
+.lineCard-editing .suggestChips {
+  width: 100%;
+}
+
+/* Ảnh phiếu ở màn chi tiết: giới hạn chiều cao (trước đây ảnh dọc hiện nguyên chiều
+   cao, đẩy danh sách dòng hàng xuống rất xa) — bấm vào để xem lớn trong khung. */
+.receiptImage-btn .receiptImage-img {
+  max-height: 300px;
+  object-fit: contain;
+  background: #fff;
+}
+@media (max-width: 640px) {
+  .receiptImage-btn .receiptImage-img {
+    max-height: 220px;
+  }
+}
+.lineCard-editing label {
+  text-align: left;
 }

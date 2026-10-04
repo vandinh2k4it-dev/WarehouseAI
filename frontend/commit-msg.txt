@@ -1,0 +1,62 @@
+feat(frontend): xem ảnh phiếu trong khung (không mở tab mới), tìm sản phẩm thông minh ở mọi nơi, ảnh phiếu to + bố cục cân đối hơn
+
+Chỉ sửa frontend, KHÔNG đổi backend. Làm TIẾP trên bản "danh sách phiếu có ảnh + tìm
+kiếm thông minh" đã giao trước đó (file này chỉ chứa các file thay đổi/mới so với lần đó).
+
+1) MỚI components/ImageLightbox.jsx — khung xem ảnh phiếu ngay trong trang
+   Thay cho <a target="_blank"> (trước đây mỗi lần bấm ảnh là mở 1 tab mới). Thoát bằng
+   nút ✕, bấm vùng tối bên ngoài hoặc phím Esc. Có nút/bấm vào ảnh để Phóng to - Thu nhỏ
+   (đọc chữ nhỏ trên phiếu). Khoá cuộn trang nền khi mở, trả focus về đúng nút ảnh khi
+   đóng, Tab chỉ xoay vòng trong khung. Dùng ở cả danh sách phiếu lẫn màn chi tiết phiếu.
+
+2) MỚI components/SmartSearchBox.jsx — ô tìm kiếm có GỢI Ý (gõ tên -> hiện danh sách để
+   chọn), cùng kiểu với ô chọn sản phẩm bên Xuất kho nhưng là ô lọc chữ tự do (không chọn
+   gợi ý mà cứ gõ thì danh sách vẫn lọc theo chữ gõ). Gõ không dấu vẫn ra; bấm vào ô là
+   hiện gợi ý ngay; hỗ trợ ↑ ↓ Enter Esc. Áp dụng cho:
+   - Danh sách phiếu nhập: gợi ý các SẢN PHẨM trên phiếu (kèm "N phiếu", nhiều nhất trước)
+     và MÃ PHIẾU (kèm ngày + nơi nhập).
+   - Trang Sản phẩm: gợi ý tên + mã + tồn kho hiện có (trước đây tìm phân biệt dấu, không
+     gợi ý gì; nay tìm không dấu, nhiều từ, theo cả SKU và nhóm).
+   - Lịch sử xuất kho: gợi ý các sản phẩm đã xuất kèm tổng đã xuất.
+
+3) Thay các ô <select> chọn sản phẩm bằng ProductSearchSelect (gõ để tìm) ở:
+   - Form sửa dòng hàng của phiếu (ImportFlow.jsx)
+   - Form tạo phiếu nhập tay (CreateReceiptManual.jsx)
+   Kèm MỚI components/ProductSuggestChips.jsx: với dòng CHƯA gán sản phẩm, gợi ý nhanh
+   1-3 sản phẩm trong danh mục khớp tên đang có (vd OCR đọc "Banh keo dua" -> gợi ý "Bánh
+   kẹo dừa"), bấm 1 nút là gán luôn. Chỉ gợi ý khi khớp >= ~60% số từ để tránh gợi ý nhiễu.
+   Mục đích: giảm số dòng "chưa gán SP" (đang xuất hiện nhiều ở các phiếu OCR thật).
+
+4) Ảnh phiếu to hơn, không bị cắt (ImportFlow.jsx + styles/listing.css)
+   Trước: ảnh 76x100px, object-fit: cover nên phiếu ngang bị cắt mất 1 nửa. Nay: ảnh ~220x160px
+   (điện thoại: rộng hết thẻ, nằm TRÊN, cao 200px), object-fit: contain hiện trọn tờ phiếu.
+   Thêm nút chuyển kiểu hiển thị "▦ Ảnh lớn / ☰ Gọn" (nhớ lựa chọn qua localStorage).
+   Phiếu nhập tay (không có ảnh) dùng ô giữ chỗ thấp thay vì ô trống cao. Màn chi tiết phiếu:
+   ảnh giới hạn cao 300px (trước đây ảnh dọc hiện nguyên chiều cao, đẩy danh sách dòng hàng
+   xuống rất xa), bấm vào để xem lớn.
+
+5) Sửa lỗi nhỏ trong lúc rà soát/test
+   - ProductSearchSelect: chữ trong ô được đồng bộ bằng useEffect nên có 1 khung hình hiện chữ
+     cũ khi sản phẩm đổi từ bên ngoài (bấm gợi ý, xoá dòng làm dòng dưới dồn lên...). Đổi sang
+     đồng bộ ngay trong lúc render. Ô của dòng còn lại cũng không còn giữ chữ của dòng đã xoá.
+   - Form sửa dòng: .lineCard có align-items:center nên ô chọn sản phẩm bị hẹp, nhãn bị căn
+     giữa -> cho giãn đủ chiều ngang thẻ, nhãn căn trái.
+   - listing.css ghi đè có chủ đích rule cũ trong app.css (button.ghost width:100%,
+     max-width 420px của input) cho các thành phần mới.
+
+ĐÃ TEST (Chromium thật qua Playwright, API giả, múi giờ Asia/Ho_Chi_Minh): 123 kiểm tra
+pass, chạy lặp nhiều lần cho kết quả ổn định. Gồm: bấm ảnh KHÔNG mở tab mới; ✕/Esc/bấm nền
+đều đóng khung; phóng to - thu nhỏ; khoá cuộn nền + trả focus; kích thước ảnh lớn + contain;
+kiểu Gọn nhớ sau khi tải lại trang; gợi ý tìm kiếm (focus, gõ không dấu, chuột, phím, mã
+phiếu); form sửa dòng (gợi ý, gán sản phẩm, tên tự cập nhật); form tạo phiếu tay (gợi ý,
+xoá dòng đầu không để lại chữ cũ); trang Sản phẩm; lịch sử xuất; không tràn ngang ở 390px;
+không có lỗi JS. vite build thành công, oxlint 0 lỗi (còn 2 cảnh báo CŨ ở Alerts.jsx và
+Toast.jsx).
+
+CẦN LƯU Ý / TỰ KIỂM TRA THÊM:
+- Test dùng DỮ LIỆU GIẢ, chưa chạy với backend + dữ liệu thật. Thử trên máy bằng npm run dev.
+- Làm trên bản code ngày 18/9: ImportFlow.jsx, ExportHistory.jsx, CreateReceiptManual.jsx,
+  Products.jsx sẽ bị GHI ĐÈ HOÀN TOÀN — nếu đã sửa các file này từ đó, xem diff trước khi đè.
+- CHƯA rà soát: trang Tổng quan, Cảnh báo, Trợ lý AI, Quét phiếu.
+- Ảnh thu nhỏ vẫn tải ảnh gốc về rồi thu nhỏ bằng CSS (loading="lazy"); nhiều phiếu + ảnh nặng
+  có thể chậm — khi đó nên cho backend sinh ảnh thumbnail riêng.

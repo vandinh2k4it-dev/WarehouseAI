@@ -4,7 +4,11 @@ import { api, API_BASE } from "../api";
 import { useToast } from "../components/Toast";
 import CountingScreen from "../components/CountingScreen";
 import Highlight from "../components/Highlight";
-import { matchesQuery, toLocalDateKey, dateGroupLabel, formatDateTimeVN } from "../utils/search";
+import ImageLightbox from "../components/ImageLightbox";
+import SmartSearchBox from "../components/SmartSearchBox";
+import ProductSearchSelect from "../components/ProductSearchSelect";
+import ProductSuggestChips from "../components/ProductSuggestChips";
+import { matchesQuery, normalizeVN, toLocalDateKey, dateGroupLabel, formatDateTimeVN } from "../utils/search";
 import "../styles/listing.css";
 
 const LINE_STATUS_LABEL = {
@@ -70,6 +74,25 @@ export default function ImportFlow() {
   const [receiptDateFilter, setReceiptDateFilter] = useState(""); // "YYYY-MM-DD"
   const [receiptSearch, setReceiptSearch] = useState(""); // tìm theo tên sản phẩm / mã phiếu / nơi nhập
   const [receiptSourceFilter, setReceiptSourceFilter] = useState("all"); // all | ocr | manual
+  // Ảnh phiếu đang xem phóng to trong khung (thay cho mở tab mới) — null = đang đóng.
+  const [lightbox, setLightbox] = useState(null); // { src, title, subtitle }
+  // Kiểu hiển thị danh sách phiếu: "large" (ảnh lớn, mặc định) hoặc "compact"
+  // (gọn, ảnh nhỏ) — nhớ lựa chọn cho lần mở sau.
+  const [viewMode, setViewMode] = useState(() => {
+    try {
+      return localStorage.getItem("receiptViewMode") === "compact" ? "compact" : "large";
+    } catch {
+      return "large";
+    }
+  });
+  function changeViewMode(mode) {
+    setViewMode(mode);
+    try {
+      localStorage.setItem("receiptViewMode", mode);
+    } catch {
+      // trình duyệt chặn lưu trữ: bỏ qua, chỉ không nhớ được lựa chọn
+    }
+  }
   // Form "Xác nhận ghi đè" cho dòng đang lệch (needs_review) — mở theo từng
   // dòng 1 lúc (line_id đang mở), bắt buộc phải ghi lý do trước khi gửi,
   // khớp đúng validate bắt buộc override_note ở backend (xem camera.py).
@@ -158,6 +181,17 @@ export default function ImportFlow() {
       batch_code: "",
       expiry_date: "",
     });
+  }
+
+  // Chọn sản phẩm trong danh mục cho dòng đang sửa (từ ô chọn hoặc từ nút gợi ý):
+  // gán product_id và điền luôn tên chuẩn của sản phẩm.
+  function pickEditProduct(val) {
+    const p = products.find((pp) => pp.id === parseInt(val, 10));
+    setEditDraft((d) => ({
+      ...d,
+      product_id: val,
+      product_name_raw: p ? p.name : d.product_name_raw,
+    }));
   }
 
   // Tạo nhanh sản phẩm mới lấy đúng tên OCR đọc được (line.product_name_raw
@@ -265,6 +299,16 @@ export default function ImportFlow() {
     }
   }
 
+  // Khung xem ảnh phóng to — dùng chung cho màn danh sách và màn chi tiết phiếu.
+  const lightboxEl = lightbox ? (
+    <ImageLightbox
+      src={lightbox.src}
+      title={lightbox.title}
+      subtitle={lightbox.subtitle}
+      onClose={() => setLightbox(null)}
+    />
+  ) : null;
+
   // ---------- Màn hình đếm ----------
   if (activeSession) {
     return (
@@ -284,6 +328,7 @@ export default function ImportFlow() {
   if (selectedReceipt) {
     return (
       <main className="page-main">
+        {lightboxEl}
         <a className="backlink" onClick={backToReceiptList} style={{ cursor: "pointer" }}>
           ← Chọn phiếu khác
         </a>
@@ -301,9 +346,21 @@ export default function ImportFlow() {
           {selectedReceipt.image_url && (
             <div className="receiptImage">
               <div className="receiptImage-label">📷 Ảnh phiếu gốc đã quét</div>
-              <a href={`${API_BASE}${selectedReceipt.image_url}`} target="_blank" rel="noreferrer">
+              <button
+                type="button"
+                className="receiptImage-btn"
+                title="Bấm để xem ảnh lớn"
+                onClick={() =>
+                  setLightbox({
+                    src: `${API_BASE}${selectedReceipt.image_url}`,
+                    title: selectedReceipt.receipt_code || `Phiếu #${selectedReceipt.id}`,
+                    subtitle: formatDateTimeVN(selectedReceipt.received_at),
+                  })
+                }
+              >
                 <img src={`${API_BASE}${selectedReceipt.image_url}`} alt="Ảnh phiếu nhập gốc" className="receiptImage-img" />
-              </a>
+                <span className="zoomBadge">🔍 Bấm để phóng to</span>
+              </button>
             </div>
           )}
 
@@ -354,26 +411,19 @@ export default function ImportFlow() {
                       <label className="text-muted" style={{ fontSize: 12 }}>
                         Sản phẩm trong danh mục
                       </label>
-                      <select
+                      <ProductSearchSelect
+                        products={products}
                         value={editDraft.product_id}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          const p = products.find((pp) => pp.id === parseInt(val, 10));
-                          setEditDraft((d) => ({
-                            ...d,
-                            product_id: val,
-                            product_name_raw: p ? p.name : d.product_name_raw,
-                          }));
-                        }}
-                      >
-                        <option value="">— Chưa có trong danh mục —</option>
-                        {products.map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {p.name}
-                            {p.sku ? ` (${p.sku})` : ""}
-                          </option>
-                        ))}
-                      </select>
+                        onChange={pickEditProduct}
+                        placeholder="Gõ tên để tìm sản phẩm…"
+                      />
+                      {!editDraft.product_id && (
+                        <ProductSuggestChips
+                          products={products}
+                          text={editDraft.product_name_raw}
+                          onPick={pickEditProduct}
+                        />
+                      )}
                       {!editDraft.product_id && (
                         <button
                           type="button"
@@ -580,6 +630,35 @@ export default function ImportFlow() {
   const sourceCount = (key) =>
     allReceipts.filter((r) => passes(r, { source: true }) && (key === "all" || (r.source_type || "ocr") === key)).length;
 
+  // Gợi ý cho ô tìm kiếm: các SẢN PHẨM xuất hiện trên phiếu (kèm số phiếu chứa nó,
+  // nhiều nhất trước) rồi tới MÃ PHIẾU (kèm ngày + nơi nhập).
+  const productCounts = new Map();
+  allReceipts.forEach((r) => {
+    const seen = new Set();
+    (r.line_items ?? []).forEach((l) => {
+      const k = normalizeVN(l.product_name_raw);
+      if (!k || seen.has(k)) return;
+      seen.add(k);
+      const cur = productCounts.get(k) || { label: l.product_name_raw, count: 0 };
+      cur.count += 1;
+      productCounts.set(k, cur);
+    });
+  });
+  const searchItems = [
+    ...[...productCounts.values()]
+      .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label, "vi"))
+      .map((p) => ({ key: `p:${p.label}`, icon: "📦", label: p.label, right: `${p.count} phiếu` })),
+    ...allReceipts
+      .filter((r) => r.receipt_code)
+      .map((r) => ({
+        key: `r:${r.id}`,
+        icon: "🧾",
+        label: r.receipt_code,
+        sub: [formatDateTimeVN(r.received_at), r.store_location].filter(Boolean).join(" · "),
+        right: `${(r.line_items ?? []).length} dòng`,
+      })),
+  ];
+
   const anyFilterActive =
     hasQuery || receiptDateFilter || receiptSourceFilter !== "all" || receiptFilterTab !== "all";
   function clearAllFilters() {
@@ -610,6 +689,7 @@ export default function ImportFlow() {
 
   return (
     <main className="page-main">
+      {lightboxEl}
       <div className="card">
         <div className="card-headRow">
           <h2>Chọn phiếu nhập</h2>
@@ -623,29 +703,15 @@ export default function ImportFlow() {
           </div>
         </div>
 
-        <div className="searchBox">
-          <span className="searchBox-icon" aria-hidden="true">
-            🔍
-          </span>
-          <input
-            type="text"
-            value={receiptSearch}
-            onChange={(e) => setReceiptSearch(e.target.value)}
-            placeholder="Tìm sản phẩm, mã phiếu…"
-            title="Tìm theo tên sản phẩm, mã phiếu, mã lô hoặc nơi nhập — không cần gõ dấu"
-            aria-label="Tìm phiếu nhập"
-          />
-          {receiptSearch && (
-            <button
-              type="button"
-              className="searchBox-clear"
-              aria-label="Xoá từ khoá tìm kiếm"
-              onClick={() => setReceiptSearch("")}
-            >
-              ✕
-            </button>
-          )}
-        </div>
+        <SmartSearchBox
+          value={receiptSearch}
+          onChange={setReceiptSearch}
+          items={searchItems}
+          placeholder="Tìm sản phẩm, mã phiếu…"
+          title="Gõ tên sản phẩm, mã phiếu, mã lô hoặc nơi nhập để tìm — không cần gõ dấu"
+          ariaLabel="Tìm phiếu nhập"
+          listLabel="Sản phẩm & phiếu gần đây"
+        />
 
         <div className="filterTabs" style={{ marginTop: 0 }}>
           {RECEIPT_FILTER_TABS.map((tab) => (
@@ -696,14 +762,24 @@ export default function ImportFlow() {
 
         {!loadingReceipts && receipts && receipts.length > 0 && (
           <div className="listSummary">
-            <span>
-              Hiển thị <b>{filteredReceipts.length}</b>/{receipts.length} phiếu
-            </span>
-            {anyFilterActive && (
-              <button className="linkBtn" onClick={clearAllFilters}>
-                Xoá tất cả bộ lọc
+            <div className="listSummary-left">
+              <span>
+                Hiển thị <b>{filteredReceipts.length}</b>/{receipts.length} phiếu
+              </span>
+              {anyFilterActive && (
+                <button className="linkBtn" onClick={clearAllFilters}>
+                  Xoá tất cả bộ lọc
+                </button>
+              )}
+            </div>
+            <div className="viewToggle" role="group" aria-label="Kiểu hiển thị phiếu">
+              <button className={viewMode === "large" ? "active" : ""} onClick={() => changeViewMode("large")}>
+                ▦ Ảnh lớn
               </button>
-            )}
+              <button className={viewMode === "compact" ? "active" : ""} onClick={() => changeViewMode("compact")}>
+                ☰ Gọn
+              </button>
+            </div>
           </div>
         )}
         {!loadingReceipts && receipts && receipts.length > 0 && filteredReceipts.length === 0 && (
@@ -728,22 +804,34 @@ export default function ImportFlow() {
               const isManual = r.source_type === "manual";
 
               return (
-                <div className="rcCard" key={r.id} onClick={() => pickReceipt(r)}>
-                  <div className="rcThumb">
+                <div
+                  className={`rcCard ${viewMode === "compact" ? "rcCard--compact" : "rcCard--large"}`}
+                  key={r.id}
+                  onClick={() => pickReceipt(r)}
+                >
+                  <div className={`rcThumb${r.image_url ? "" : " rcThumb--empty"}`}>
                     {r.image_url ? (
-                      <a
-                        href={`${API_BASE}${r.image_url}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        onClick={(e) => e.stopPropagation()}
-                        title="Bấm để xem ảnh phiếu gốc"
+                      <button
+                        type="button"
+                        className="rcThumbBtn"
+                        title="Bấm để xem ảnh lớn"
+                        aria-label={`Xem ảnh phiếu ${r.receipt_code || `#${r.id}`}`}
+                        onClick={(e) => {
+                          e.stopPropagation(); // không mở phiếu, chỉ phóng to ảnh
+                          setLightbox({
+                            src: `${API_BASE}${r.image_url}`,
+                            title: r.receipt_code || `Phiếu #${r.id}`,
+                            subtitle: formatDateTimeVN(r.received_at),
+                          });
+                        }}
                       >
                         <img
                           src={`${API_BASE}${r.image_url}`}
                           alt={`Ảnh phiếu ${r.receipt_code || `#${r.id}`}`}
                           loading="lazy"
                         />
-                      </a>
+                        <span className="zoomBadge">🔍</span>
+                      </button>
                     ) : (
                       <div className="rcThumb-empty">
                         <span>✍️</span>

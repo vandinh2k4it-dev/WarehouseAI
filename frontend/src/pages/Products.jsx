@@ -1,6 +1,9 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { api } from "../api";
 import { useToast } from "../components/Toast";
+import SmartSearchBox from "../components/SmartSearchBox";
+import { matchesQuery } from "../utils/search";
+import "../styles/listing.css";
 
 const SORT_OPTIONS = [
   { value: "default", label: "Mặc định (theo tên)" },
@@ -72,9 +75,19 @@ export default function Products() {
   }, [enriched]);
   const chartMax = topForChart[0]?.total || 1;
 
+  // Tìm không phân biệt hoa/thường, KHÔNG cần gõ dấu, nhiều từ thì khớp đủ các từ;
+  // tìm cả theo SKU và nhóm sản phẩm.
   const filtered = enriched?.filter((e) =>
-    (e.product.name + " " + (e.product.sku || "")).toLowerCase().includes(search.toLowerCase())
+    matchesQuery(`${e.product.name} ${e.product.sku || ""} ${e.product.category || ""}`, search)
   );
+  // Gợi ý khi gõ: tên sản phẩm + mã + tồn kho hiện có.
+  const searchItems = (enriched ?? []).map(({ product: p, total }) => ({
+    key: p.id,
+    icon: "📦",
+    label: p.name,
+    sub: p.sku || "",
+    right: `${total.toLocaleString("vi-VN")} ${p.unit}`,
+  }));
 
   const sorted = useMemo(() => {
     if (!filtered) return null;
@@ -143,11 +156,14 @@ export default function Products() {
         <div className="card-headRow">
           <h2>Sản phẩm ({products?.length ?? "…"})</h2>
         </div>
-        <input
-          type="text"
-          placeholder="Tìm theo tên hoặc SKU…"
+        <SmartSearchBox
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={setSearch}
+          items={searchItems}
+          placeholder="Tìm theo tên hoặc mã sản phẩm…"
+          title="Gõ tên hoặc mã sản phẩm — không cần gõ dấu"
+          ariaLabel="Tìm sản phẩm"
+          listLabel="Sản phẩm"
         />
 
         <label style={{ marginTop: 2 }}>Sắp xếp theo</label>

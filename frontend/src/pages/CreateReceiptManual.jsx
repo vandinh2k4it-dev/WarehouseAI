@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api";
+import ProductSearchSelect from "../components/ProductSearchSelect";
+import ProductSuggestChips from "../components/ProductSuggestChips";
+import "../styles/listing.css";
 
 const EMPTY_LINE = { product_name_raw: "", product_id: "", quantity: "", batch_code: "", expiry_date: "" };
 
@@ -161,15 +164,19 @@ export default function CreateReceiptManual() {
             <label className="text-muted" style={{ fontSize: 12, marginTop: 6 }}>
               Chọn đúng sản phẩm trong danh mục (bắt buộc để đếm được sau này)
             </label>
-            <select value={line.product_id} onChange={(e) => updateLine(idx, "product_id", e.target.value)}>
-              <option value="">— Chưa có trong danh mục —</option>
-              {products.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                  {p.sku ? ` (${p.sku})` : ""}
-                </option>
-              ))}
-            </select>
+            <ProductSearchSelect
+              products={products}
+              value={line.product_id}
+              onChange={(val) => updateLine(idx, "product_id", val)}
+              placeholder="Gõ tên để tìm sản phẩm…"
+            />
+            {!line.product_id && (
+              <ProductSuggestChips
+                products={products}
+                text={line.product_name_raw}
+                onPick={(val) => updateLine(idx, "product_id", val)}
+              />
+            )}
             {!line.product_id && (
               <>
                 <div className="stockHint-warn" style={{ marginTop: 6, fontSize: 12.5 }}>

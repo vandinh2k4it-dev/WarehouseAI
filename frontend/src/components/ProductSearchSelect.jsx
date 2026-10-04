@@ -24,7 +24,6 @@ export default function ProductSearchSelect({
   id,
   placeholder = "Gõ tên hoặc mã sản phẩm…",
 }) {
-  const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
   const wrapRef = useRef(null);
@@ -37,10 +36,20 @@ export default function ProductSearchSelect({
     [products, value]
   );
 
-  // Khi có sản phẩm được chọn (kể cả do code ngoài đặt), hiện tên nó trong ô.
-  useEffect(() => {
-    if (selected) setQuery(selected.name);
-  }, [selected]);
+  // Chữ hiện trong ô. Khi sản phẩm được chọn ĐỔI TỪ BÊN NGOÀI (bấm nút gợi ý, dòng
+  // hàng bị xoá làm các dòng dưới dồn lên, trang cha đặt lại value...) thì ô phải
+  // đổi chữ theo NGAY. Cố ý đồng bộ ngay trong lúc render (React render lại tức thì,
+  // trước khi vẽ ra màn hình) thay vì dùng useEffect: effect chạy SAU khi vẽ nên sẽ
+  // có 1 khung hình hiện chữ cũ nhấp nháy sai. `syncedId` ghi nhớ id mà chữ trong ô
+  // đang ứng với; các thao tác của chính người dùng (chọn, gõ lại, ✕) tự cập nhật
+  // `syncedId` nên KHÔNG bị đồng bộ đè lên chữ họ đang gõ dở.
+  const selectedId = selected ? selected.id : null;
+  const [query, setQuery] = useState(selected ? selected.name : "");
+  const [syncedId, setSyncedId] = useState(selectedId);
+  if (selectedId !== syncedId) {
+    setSyncedId(selectedId);
+    setQuery(selected ? selected.name : "");
+  }
 
   // Đang "tìm" nghĩa là chữ trong ô khác với tên sản phẩm đã chọn. Vừa chọn
   // xong, mở lại danh sách thì phải hiện ĐỦ danh sách chứ không chỉ 1 món đã chọn.
@@ -88,8 +97,9 @@ export default function ProductSearchSelect({
   }, [active, open]);
 
   function pick(p) {
-    onChange(String(p.id));
+    setSyncedId(p.id);
     setQuery(p.name);
+    onChange(String(p.id));
     setOpen(false);
   }
 
@@ -97,11 +107,15 @@ export default function ProductSearchSelect({
     setQuery(e.target.value);
     setOpen(true);
     setActive(0);
-    if (selected) onChange(""); // sửa chữ sau khi đã chọn = bỏ lựa chọn cũ
+    if (selected) {
+      setSyncedId(null); // người dùng tự gõ lại: không để đồng bộ ghi đè lên chữ đang gõ
+      onChange(""); // sửa chữ sau khi đã chọn = bỏ lựa chọn cũ
+    }
   }
 
   function clearAll() {
     setQuery("");
+    setSyncedId(null);
     onChange("");
     setOpen(true);
     setActive(0);

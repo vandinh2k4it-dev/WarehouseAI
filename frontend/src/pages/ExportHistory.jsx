@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api";
 import Highlight from "../components/Highlight";
+import SmartSearchBox from "../components/SmartSearchBox";
 import { matchesQuery, toLocalDateKey } from "../utils/search";
 import "../styles/listing.css";
 
@@ -80,29 +81,21 @@ export default function ExportHistory() {
 
       <div className="card">
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <div className="searchBox" style={{ flex: 1, minWidth: 180, marginBottom: 0 }}>
-            <span className="searchBox-icon" aria-hidden="true">
-              🔍
-            </span>
-            <input
-              type="text"
-              placeholder="Tìm sản phẩm, mã lô…"
-              title="Tìm theo tên sản phẩm, mã lô hoặc ghi chú — không cần gõ dấu"
-              aria-label="Tìm trong lịch sử xuất kho"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-            {search && (
-              <button
-                type="button"
-                className="searchBox-clear"
-                aria-label="Xoá từ khoá tìm kiếm"
-                onClick={() => setSearch("")}
-              >
-                ✕
-              </button>
-            )}
-          </div>
+          <SmartSearchBox
+            value={search}
+            onChange={setSearch}
+            items={productSummary.map((p) => ({
+              key: p.id,
+              icon: "📦",
+              label: p.name,
+              right: `đã xuất ${p.total.toLocaleString("vi-VN")} ${p.unit}`,
+            }))}
+            placeholder="Tìm sản phẩm, mã lô…"
+            title="Gõ tên sản phẩm, mã lô hoặc ghi chú — không cần gõ dấu"
+            ariaLabel="Tìm trong lịch sử xuất kho"
+            listLabel="Sản phẩm đã xuất"
+            style={{ flex: 1, minWidth: 180, marginBottom: 0 }}
+          />
           <input
             type="date"
             value={dateFilter}
