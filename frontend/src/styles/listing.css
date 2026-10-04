@@ -1,0 +1,444 @@
+/* ==========================================================
+   Giao diện danh sách + tìm kiếm thông minh (phiếu nhập, chọn sản phẩm xuất
+   kho, lịch sử xuất kho). Đặt ở FILE RIÊNG thay vì chèn vào app.css để việc
+   cập nhật không ghi đè lên chỉnh sửa CSS khác — dùng lại đúng các biến
+   màu/bo góc đã có ở index.css và app.css (--surface, --accent, --radius...).
+   Các class mới đều có tiền tố riêng (searchBox, combo, rc*, recent*, day*)
+   nên không trùng/đè style cũ.
+   ========================================================== */
+
+/* ---------- Ô tìm kiếm có icon + nút xoá ---------- */
+.searchBox {
+  position: relative;
+  margin-bottom: 12px;
+}
+.searchBox-icon {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 15px;
+  pointer-events: none;
+  opacity: 0.85;
+}
+/* chồng thêm tên class để thắng độ ưu tiên của rule input[type="text"] chung */
+.searchBox input[type="text"] {
+  padding-left: 42px;
+  padding-right: 44px;
+  margin-bottom: 0;
+  max-width: none; /* app.css giới hạn mọi input ở 420px trên màn rộng — ô tìm kiếm cần full chiều ngang */
+}
+.searchBox-clear {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 15px;
+  cursor: pointer;
+}
+.searchBox-clear:hover {
+  background: var(--surface);
+  color: var(--text);
+}
+
+/* Hàng bộ lọc phụ (nguồn phiếu + ngày) */
+.listFilters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.listFilters input[type="date"] {
+  width: auto;
+  margin-bottom: 0;
+  padding: 8px 12px;
+  font-size: 14px;
+}
+.filterTabs.noMargin {
+  margin: 0;
+  flex-wrap: wrap;
+}
+.filterTab-count {
+  margin-left: 6px;
+  font-weight: 700;
+  opacity: 0.75;
+}
+.listSummary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--text-muted);
+  margin: 4px 0 2px;
+}
+.linkBtn {
+  border: none;
+  background: transparent;
+  color: var(--accent);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 6px;
+}
+.linkBtn:hover {
+  text-decoration: underline;
+}
+
+/* Tô sáng chữ khớp từ khoá tìm kiếm */
+mark.hl {
+  background: var(--accent-dim);
+  color: var(--accent);
+  border-radius: 3px;
+  padding: 0 2px;
+  font-weight: 700;
+}
+
+/* ---------- Tiêu đề nhóm theo ngày ---------- */
+.dayHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 18px 0 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+.dayHeader-count {
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+/* ---------- Thẻ phiếu nhập (có ảnh + thông tin đầy đủ) ---------- */
+.rcCard {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+  margin-bottom: 10px;
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+.rcCard:hover {
+  border-color: var(--accent);
+}
+.rcThumb {
+  flex: 0 0 76px;
+  width: 76px;
+  height: 100px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+.rcThumb a,
+.rcThumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.rcThumb img {
+  object-fit: cover;
+}
+.rcThumb-empty {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  color: var(--text-muted);
+  text-align: center;
+}
+.rcThumb-empty span {
+  font-size: 26px;
+}
+.rcThumb-empty small {
+  font-size: 11px;
+}
+.rcBody {
+  flex: 1;
+  min-width: 0;
+}
+.rcHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+/* Tên phiếu là 1 nút thật để dùng được bằng bàn phím (Tab + Enter); bấm vào
+   bất kỳ chỗ nào trên thẻ cũng mở phiếu nhờ onClick ở cả thẻ. */
+.rcTitleBtn {
+  all: unset;
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--text);
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.rcTitleBtn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.rcMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+  margin-top: 4px;
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+.rcMeta b {
+  color: var(--text);
+  font-weight: 600;
+}
+.rcLines {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 8px 0 0;
+  border-top: 1px dashed var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.rcLines li {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 13.5px;
+}
+.rcLine-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rcLine-qty {
+  flex-shrink: 0;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 12.5px;
+  color: var(--accent);
+}
+.rcLines-more {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.rc-tag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 600;
+  vertical-align: middle;
+}
+.rc-tag.warn {
+  background: var(--danger-dim);
+  color: var(--danger);
+}
+.rcFoot {
+  margin-top: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.rcDetailMeta {
+  margin: -4px 0 12px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.rcDetailMeta b {
+  color: var(--text);
+}
+
+@media (max-width: 480px) {
+  .rcThumb {
+    flex-basis: 62px;
+    width: 62px;
+    height: 84px;
+  }
+}
+
+/* ---------- Ô chọn sản phẩm (gõ tên -> chọn từ danh sách) ---------- */
+.combo {
+  position: relative;
+  margin-bottom: 14px;
+}
+.combo-inputWrap {
+  position: relative;
+}
+.combo-icon {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 15px;
+  pointer-events: none;
+  opacity: 0.85;
+}
+.combo-inputWrap input[type="text"] {
+  padding-left: 42px;
+  padding-right: 44px;
+  margin-bottom: 0;
+  max-width: none;
+}
+.combo-clear {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 15px;
+  cursor: pointer;
+}
+.combo-clear:hover {
+  background: var(--surface);
+  color: var(--text);
+}
+.combo-list {
+  position: absolute;
+  z-index: 30;
+  left: 0;
+  right: 0;
+  top: calc(100% + 6px);
+  max-height: 320px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-lg);
+}
+.combo-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px; /* đủ lớn để chạm bằng ngón tay */
+  padding: 8px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.combo-item.active {
+  background: var(--accent-dim);
+}
+.combo-item.selected .combo-name {
+  color: var(--accent);
+}
+.combo-name {
+  min-width: 0;
+  font-weight: 600;
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+.combo-sku {
+  display: block;
+  margin-top: 1px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+.combo-stock {
+  flex-shrink: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--success);
+  text-align: right;
+}
+.combo-stock.low {
+  color: var(--accent);
+}
+.combo-stock.out {
+  color: var(--danger);
+}
+.combo-empty,
+.combo-more {
+  padding: 12px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+/* ---------- Mục "Vừa xuất gần đây" + chip tổng hợp theo sản phẩm ---------- */
+.recentItem {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+.recentItem:last-child {
+  border-bottom: none;
+}
+.recentItem-name {
+  font-weight: 600;
+  font-size: 14.5px;
+}
+.recentItem-sub {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.recentItem-qty {
+  flex-shrink: 0;
+  font-family: "IBM Plex Mono", monospace;
+  font-weight: 600;
+  color: var(--danger);
+}
+.rc-link {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+  text-decoration: none;
+}
+.rc-link:hover {
+  text-decoration: underline;
+}
+.productChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 4px 0 12px;
+}
+.chipsLabel {
+  font-size: 12.5px;
+  color: var(--text-muted);
+  margin: 6px 0 0;
+}
+
+/* Nút nhỏ trong thẻ phiếu / hàng bộ lọc. Rule cũ `button.ghost { width: 100%;
+   max-width: 420px }` có độ ưu tiên CAO HƠN `.lineCard-smallBtn { width: auto }`
+   nên trong bố cục flex mới nút bị trải rộng — ghi đè lại bằng selector dài hơn. */
+.rcFoot .lineCard-smallBtn,
+.listFilters .lineCard-smallBtn {
+  width: auto;
+  max-width: none;
+  flex: 0 0 auto;
+  margin-top: 0;
+  padding: 6px 12px;
+  font-size: 12px;
+}

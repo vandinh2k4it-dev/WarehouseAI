@@ -1,0 +1,73 @@
+feat(frontend): danh sách phiếu nhập có ảnh + tìm kiếm thông minh, ô chọn sản phẩm xuất kho gõ-để-tìm
+
+Chỉ sửa frontend, KHÔNG đổi backend: dữ liệu cần thiết đã có sẵn từ API
+(ảnh phiếu image_url, dòng hàng line_items, ngày nhập kho received_at — backend
+đã tự lưu received_at = thời điểm tạo phiếu cho cả phiếu quét ảnh lẫn nhập tay).
+
+1) MỚI src/utils/search.js — tìm kiếm tiếng Việt "thông minh" dùng chung
+   Không phân biệt hoa/thường, KHÔNG cần gõ dấu ("banh quy" ra "Bánh quy bơ",
+   "duong" ra "Đường"), nhiều từ thì khớp đủ các từ (thứ tự tuỳ ý). Kèm hàm tính
+   đoạn cần tô sáng (ánh xạ ngược về chuỗi gốc có dấu) và hàm ngày giờ dùng chung.
+
+2) MỚI src/components/Highlight.jsx — tô sáng chữ khớp từ khoá (gộp các từ liền
+   nhau thành 1 vùng sáng, vd "Mì Hảo Hảo").
+
+3) MỚI src/components/ProductSearchSelect.jsx — ô chọn sản phẩm "gõ tên -> chọn
+   từ danh sách" thay cho <select> cuộn dài: hiện tồn kho ngay trong danh sách
+   (xanh/vàng sắp hết/đỏ hết hàng), tìm theo tên/mã/nhóm, dùng được bằng bàn phím
+   (↑ ↓ Enter Esc) và chạm trên điện thoại. Sửa chữ sau khi đã chọn = bỏ lựa chọn
+   cũ (tránh xuất nhầm sản phẩm cũ).
+
+4) MỚI src/styles/listing.css — CSS cho phần mới, đặt FILE RIÊNG để không ghi đè
+   app.css. Có ghi đè có chủ đích 2 rule cũ trong app.css: giới hạn max-width 420px
+   của mọi input/nút (màn rộng) và button.ghost{width:100%} — cả 2 làm ô tìm kiếm bị
+   hẹp và nút "Xoá" phình to trong bố cục mới.
+
+5) src/pages/ImportFlow.jsx — danh sách phiếu nhập
+   - Thẻ phiếu: ảnh thu nhỏ (bấm xem ảnh gốc), mã phiếu, trạng thái, NGÀY GIỜ nhập
+     kho nổi bật, nơi nhập, nguồn (quét ảnh/nhập tay), 3 dòng hàng đầu kèm số lượng
+     + đơn vị, "+N sản phẩm khác", cảnh báo "chưa gán SP" cho dòng chưa gán sản phẩm.
+     Phiếu nhập tay (không có ảnh) hiện ô "Nhập tay".
+   - Gom phiếu theo ngày nhập kho (Hôm nay / Hôm qua / dd/mm/yyyy / Chưa có ngày).
+   - Ô tìm kiếm: theo tên sản phẩm, mã lô, mã phiếu, nơi nhập; khi đang tìm thì dòng
+     hàng khớp được đưa lên đầu thẻ (kể cả khi nằm cuối phiếu dài) và tô sáng.
+   - Phân loại: tab trạng thái + lọc theo nguồn, kèm SỐ LƯỢNG từng loại (đếm theo các
+     bộ lọc còn lại đang chọn), dòng "Hiển thị X/Y phiếu", nút "Xoá tất cả bộ lọc".
+   - Màn chi tiết phiếu: thêm dòng ngày giờ nhập kho + nguồn.
+   - Giữ nguyên toàn bộ luồng cũ (đếm, ghi đè, sửa/xoá dòng, tạo SP mới...). Giữ
+     nguyên tiêu đề "Chọn phiếu nhập" và việc tab "Chưa đếm" đã bị gỡ trước đó.
+
+6) src/pages/ExportFlow.jsx
+   - Thay <select> bằng ProductSearchSelect.
+   - Thêm mục "Vừa xuất gần đây" (5 lượt mới nhất). Tải mục này lỗi thì chỉ ẩn đi,
+     không ảnh hưởng form xuất kho.
+   - THAY ĐỔI NHỎ NGOÀI YÊU CẦU: sau khi đếm/xuất xong tự tải lại tồn kho + lịch sử
+     (trước đây số "còn X" trong danh sách bị cũ cho tới khi F5).
+
+7) src/pages/ExportHistory.jsx
+   - Tìm không dấu, nhiều từ, theo tên sản phẩm/mã lô/ghi chú; tô sáng chữ khớp.
+   - Hàng chip "Đã xuất theo sản phẩm" (tổng số lượng, xếp giảm dần, tối đa 10) —
+     bấm 1 chip để lọc nhanh đúng sản phẩm đó, bấm lại để bỏ lọc. Thống kê phía
+     trên cập nhật theo bộ lọc. Có nút "Xoá tất cả bộ lọc".
+
+ĐÃ TEST (trình duyệt Chromium thật qua Playwright, API giả, múi giờ Asia/Ho_Chi_Minh,
+73 kiểm tra đều pass): hiển thị ảnh/ngày/dòng hàng; gom nhóm theo ngày; số đếm trên tab
+cập nhật theo từ khoá; tìm không dấu theo tên/mã phiếu/mã lô/nơi nhập; tô sáng đúng chữ
+có dấu; bộ lọc nguồn/ngày/trạng thái; mở chi tiết rồi quay lại; ô chọn sản phẩm (gõ,
+phím, chuột, ✕, Esc, bấm ra ngoài, sản phẩm hết hàng, chặn xuất quá tồn); lịch sử xuất
+(chip, tìm, xoá bộ lọc); không tràn ngang ở 390px; không có lỗi JS. Ngoài ra: vite
+build thành công, oxlint 0 lỗi (còn 2 cảnh báo CŨ ở Alerts.jsx và Toast.jsx, không
+thuộc thay đổi này), test riêng hàm tìm kiếm tiếng Việt pass.
+Trong lúc test đã bắt và sửa 3 lỗi thật: (a) bấm lại vào ô sản phẩm sau khi đã chọn
+không mở lại danh sách, (b) nút "Xoá" phình to do rule button.ghost, (c) ô tìm kiếm
+bị cắt ở 420px.
+
+CẦN LƯU Ý / TỰ KIỂM TRA THÊM:
+- Test dùng DỮ LIỆU GIẢ, chưa chạy với backend + dữ liệu thật của bạn — mở thử
+  trang Nhập kho / Xuất kho / Lịch sử xuất kho bằng npm run dev với dữ liệu thật.
+- Danh sách phiếu lấy từ GET /receipts chỉ trả tối đa 100 phiếu mới nhất (giới hạn có
+  sẵn ở backend), nên tìm kiếm chỉ tìm được trong 100 phiếu đó.
+- Làm trên bản code ngày 18/9: 3 file ImportFlow.jsx, ExportFlow.jsx, ExportHistory.jsx
+  sẽ bị GHI ĐÈ HOÀN TOÀN — nếu đã sửa các file này từ đó thì xem diff trước khi đè.
+- Ảnh thu nhỏ tải ảnh gốc về rồi thu nhỏ bằng CSS (loading="lazy"); nếu phiếu nhiều và
+  ảnh nặng có thể chậm — khi đó nên cho backend tạo ảnh thumbnail riêng.

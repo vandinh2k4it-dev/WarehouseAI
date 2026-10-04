@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api";
+import Highlight from "../components/Highlight";
+import { matchesQuery, toLocalDateKey } from "../utils/search";
+import "../styles/listing.css";
 
 const REF_TYPE_LABEL = {
   manual: "Gõ tay",
@@ -12,6 +15,7 @@ export default function ExportHistory() {
   const [errorMsg, setErrorMsg] = useState("");
   const [search, setSearch] = useState("");
   const [dateFilter, setDateFilter] = useState(""); // "YYYY-MM-DD"
+  const [productFilter, setProductFilter] = useState(null); // product_id đang lọc nhanh bằng chip (null = không lọc)
 
   useEffect(() => {
     api
@@ -20,17 +24,35 @@ export default function ExportHistory() {
       .catch((err) => setErrorMsg(err.message || String(err)));
   }, []);
 
+  // Tìm không phân biệt hoa/thường, KHÔNG cần gõ dấu, nhiều từ thì khớp đủ
+  // các từ (xem utils/search.js); tìm cả theo mã lô và ghi chú.
   const filtered = history?.filter((h) => {
-    if (!h.product_name.toLowerCase().includes(search.toLowerCase())) return false;
-    if (dateFilter) {
-      const d = new Date(h.created_at);
-      const localDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
-        d.getDate()
-      ).padStart(2, "0")}`;
-      if (localDate !== dateFilter) return false;
-    }
+    if (productFilter !== null && h.product_id !== productFilter) return false;
+    if (!matchesQuery(`${h.product_name} ${h.batch_code || ""} ${h.note || ""}`, search)) return false;
+    if (dateFilter && toLocalDateKey(h.created_at) !== dateFilter) return false;
     return true;
   });
+
+  // Tổng hợp "đã xuất những sản phẩm nào, bao nhiêu" để nhìn qua là biết —
+  // tính theo bộ lọc NGÀY (không theo ô tìm/chip, để bấm chip này sang chip
+  // khác được). Bấm vào chip = lọc nhanh đúng sản phẩm đó.
+  const productSummary = (() => {
+    const map = new Map();
+    (history ?? []).forEach((h) => {
+      if (dateFilter && toLocalDateKey(h.created_at) !== dateFilter) return;
+      const cur = map.get(h.product_id) || { id: h.product_id, name: h.product_name, unit: h.unit, total: 0 };
+      cur.total += h.quantity;
+      map.set(h.product_id, cur);
+    });
+    return [...map.values()].sort((a, b) => b.total - a.total);
+  })();
+  const MAX_CHIPS = 10;
+  const anyFilter = search.trim() !== "" || dateFilter !== "" || productFilter !== null;
+  function clearAllFilters() {
+    setSearch("");
+    setDateFilter("");
+    setProductFilter(null);
+  }
 
   // Tổng số lượng đã xuất (theo đúng danh sách đang lọc) — hiện nhanh 1 con
   // số tổng hợp phía trên bảng, kiểu dashboard thật.
@@ -58,18 +80,35 @@ export default function ExportHistory() {
 
       <div className="card">
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <input
-            type="text"
-            placeholder="Tìm theo tên sản phẩm…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            style={{ flex: 1, minWidth: 180 }}
-          />
+          <div className="searchBox" style={{ flex: 1, minWidth: 180, marginBottom: 0 }}>
+            <span className="searchBox-icon" aria-hidden="true">
+              🔍
+            </span>
+            <input
+              type="text"
+              placeholder="Tìm sản phẩm, mã lô…"
+              title="Tìm theo tên sản phẩm, mã lô hoặc ghi chú — không cần gõ dấu"
+              aria-label="Tìm trong lịch sử xuất kho"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+            {search && (
+              <button
+                type="button"
+                className="searchBox-clear"
+                aria-label="Xoá từ khoá tìm kiếm"
+                onClick={() => setSearch("")}
+              >
+                ✕
+              </button>
+            )}
+          </div>
           <input
             type="date"
             value={dateFilter}
             onChange={(e) => setDateFilter(e.target.value)}
             title="Lọc theo ngày xuất"
+            style={{ width: "auto", marginBottom: 0 }}
           />
           {dateFilter && (
             <button className="ghost lineCard-smallBtn" onClick={() => setDateFilter("")}>
@@ -77,6 +116,41 @@ export default function ExportHistory() {
             </button>
           )}
         </div>
+
+        {productSummary.length > 0 && (
+          <>
+            <div className="chipsLabel">Đã xuất theo sản phẩm (bấm để lọc nhanh):</div>
+            <div className="productChips">
+              {productSummary.slice(0, MAX_CHIPS).map((p) => (
+                <button
+                  key={p.id}
+                  className={`filterTab${productFilter === p.id ? " active" : ""}`}
+                  onClick={() => setProductFilter(productFilter === p.id ? null : p.id)}
+                >
+                  {p.name}
+                  <span className="filterTab-count">
+                    −{p.total.toLocaleString("vi-VN")} {p.unit}
+                  </span>
+                </button>
+              ))}
+            </div>
+            {productSummary.length > MAX_CHIPS && (
+              <div className="chipsLabel" style={{ marginTop: -6, marginBottom: 10 }}>
+                …và {productSummary.length - MAX_CHIPS} sản phẩm khác — gõ tên vào ô tìm kiếm để lọc.
+              </div>
+            )}
+          </>
+        )}
+        {anyFilter && history && history.length > 0 && (
+          <div className="listSummary">
+            <span>
+              Hiển thị <b>{filtered?.length ?? 0}</b>/{history.length} lượt xuất
+            </span>
+            <button className="linkBtn" onClick={clearAllFilters}>
+              Xoá tất cả bộ lọc
+            </button>
+          </div>
+        )}
 
         {errorMsg && <div className="empty" style={{ color: "var(--danger)" }}>{errorMsg}</div>}
         {!history && !errorMsg && <div className="empty">Đang tải…</div>}
@@ -104,8 +178,12 @@ export default function ExportHistory() {
                     <td className="text-muted" style={{ whiteSpace: "nowrap" }}>
                       {new Date(h.created_at).toLocaleString("vi-VN")}
                     </td>
-                    <td className="adminTable-name">{h.product_name}</td>
-                    <td className="mono text-muted">{h.batch_code}</td>
+                    <td className="adminTable-name">
+                      <Highlight text={h.product_name} query={search} />
+                    </td>
+                    <td className="mono text-muted">
+                      <Highlight text={h.batch_code} query={search} />
+                    </td>
                     <td className="mono">
                       {h.quantity.toLocaleString("vi-VN")} {h.unit}
                     </td>

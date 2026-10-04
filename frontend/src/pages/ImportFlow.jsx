@@ -3,6 +3,9 @@ import { Link } from "react-router-dom";
 import { api, API_BASE } from "../api";
 import { useToast } from "../components/Toast";
 import CountingScreen from "../components/CountingScreen";
+import Highlight from "../components/Highlight";
+import { matchesQuery, toLocalDateKey, dateGroupLabel, formatDateTimeVN } from "../utils/search";
+import "../styles/listing.css";
 
 const LINE_STATUS_LABEL = {
   not_started: "chưa đếm",
@@ -24,13 +27,30 @@ const RECEIPT_STATUS_BADGE = {
   reconciled: "matched",
   flagged: "needs_review",
 };
-// Nhóm lọc hiện trên UI — gộp pending_ocr + flagged vào chung 1 nhóm
-// "Chưa đếm" vì cả 2 đều là phiếu CHƯA có dòng hàng nào sẵn sàng để đếm.
+// Nhóm lọc theo trạng thái hiện trên UI. Phiếu pending_ocr/flagged (chưa có
+// dòng hàng sẵn sàng đếm) chỉ hiện ở tab "Tất cả" — tab "Chưa đếm" đã gỡ
+// theo yêu cầu trước đó.
 const RECEIPT_FILTER_TABS = [
   { key: "all", label: "Tất cả" },
   { key: "ocr_done", label: "Chờ đếm hàng", statuses: ["ocr_done"] },
   { key: "reconciled", label: "Đã xong", statuses: ["reconciled"] },
 ];
+// Phân loại theo NGUỒN phiếu: quét ảnh (OCR) hay nhập tay.
+const RECEIPT_SOURCE_FILTERS = [
+  { key: "all", label: "Mọi nguồn" },
+  { key: "ocr", label: "📷 Quét ảnh" },
+  { key: "manual", label: "✍️ Nhập tay" },
+];
+
+// Tìm phiếu theo: mã phiếu, nơi nhập, hoặc TÊN SẢN PHẨM / mã lô của bất kỳ
+// dòng hàng nào trên phiếu. Không cần gõ dấu (xem utils/search.js).
+function receiptMatchesQuery(r, query) {
+  if (!query.trim()) return true;
+  if (matchesQuery(`${r.receipt_code || ""} ${r.store_location || ""}`, query)) return true;
+  return (r.line_items ?? []).some((l) =>
+    matchesQuery(`${l.product_name_raw} ${l.batch_code || ""}`, query)
+  );
+}
 
 export default function ImportFlow() {
   const [receipts, setReceipts] = useState(null);
@@ -48,6 +68,8 @@ export default function ImportFlow() {
   // tải sẵn (số lượng phiếu của 1 kho nhỏ không cần lọc phía server).
   const [receiptFilterTab, setReceiptFilterTab] = useState("all");
   const [receiptDateFilter, setReceiptDateFilter] = useState(""); // "YYYY-MM-DD"
+  const [receiptSearch, setReceiptSearch] = useState(""); // tìm theo tên sản phẩm / mã phiếu / nơi nhập
+  const [receiptSourceFilter, setReceiptSourceFilter] = useState("all"); // all | ocr | manual
   // Form "Xác nhận ghi đè" cho dòng đang lệch (needs_review) — mở theo từng
   // dòng 1 lúc (line_id đang mở), bắt buộc phải ghi lý do trước khi gửi,
   // khớp đúng validate bắt buộc override_note ở backend (xem camera.py).
@@ -270,6 +292,11 @@ export default function ImportFlow() {
             {selectedReceipt.receipt_code || `Phiếu #${selectedReceipt.id}`}
             {selectedReceipt.store_location ? ` — ${selectedReceipt.store_location}` : ""}
           </h2>
+          <div className="rcDetailMeta">
+            📅 Nhập kho: <b>{formatDateTimeVN(selectedReceipt.received_at) || "chưa có ngày"}</b>
+            {" · "}
+            {selectedReceipt.source_type === "manual" ? "✍️ Nhập tay" : "📷 Quét ảnh"}
+          </div>
 
           {selectedReceipt.image_url && (
             <div className="receiptImage">
@@ -522,19 +549,63 @@ export default function ImportFlow() {
   }
 
   // ---------- Danh sách phiếu nhập ----------
-  const filteredReceipts = receipts?.filter((r) => {
-    const tab = RECEIPT_FILTER_TABS.find((t) => t.key === receiptFilterTab);
-    if (tab?.statuses && !tab.statuses.includes(r.status)) return false;
-    if (receiptDateFilter && r.received_at) {
-      const d = new Date(r.received_at);
-      const localDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
-        d.getDate()
-      ).padStart(2, "0")}`;
-      if (localDate !== receiptDateFilter) return false;
-    } else if (receiptDateFilter && !r.received_at) {
-      return false; // đang lọc theo ngày nhưng phiếu chưa có ngày nhận -> loại
+  const query = receiptSearch;
+  const hasQuery = query.trim() !== "";
+  const unitById = {};
+  products.forEach((p) => {
+    unitById[p.id] = p.unit;
+  });
+
+  // 1 phiếu có "qua" được các bộ lọc không. `skip` cho phép bỏ qua 1 nhóm bộ
+  // lọc để đếm số lượng cho CHÍNH nhóm đó (vd số phiếu mỗi tab trạng thái
+  // phải tính theo bộ lọc nguồn/ngày/từ khoá đang chọn, nhưng không theo tab).
+  const passes = (r, skip = {}) => {
+    if (!skip.tab) {
+      const tab = RECEIPT_FILTER_TABS.find((t) => t.key === receiptFilterTab);
+      if (tab?.statuses && !tab.statuses.includes(r.status)) return false;
     }
+    if (!skip.source && receiptSourceFilter !== "all" && (r.source_type || "ocr") !== receiptSourceFilter) {
+      return false;
+    }
+    // Đang lọc theo ngày mà phiếu chưa có ngày nhận -> toLocalDateKey trả "" -> bị loại (như trước)
+    if (receiptDateFilter && toLocalDateKey(r.received_at) !== receiptDateFilter) return false;
+    if (!receiptMatchesQuery(r, query)) return false;
     return true;
+  };
+
+  const allReceipts = receipts ?? [];
+  const filteredReceipts = allReceipts.filter((r) => passes(r));
+  const tabCount = (tab) =>
+    allReceipts.filter((r) => passes(r, { tab: true }) && (!tab.statuses || tab.statuses.includes(r.status))).length;
+  const sourceCount = (key) =>
+    allReceipts.filter((r) => passes(r, { source: true }) && (key === "all" || (r.source_type || "ocr") === key)).length;
+
+  const anyFilterActive =
+    hasQuery || receiptDateFilter || receiptSourceFilter !== "all" || receiptFilterTab !== "all";
+  function clearAllFilters() {
+    setReceiptSearch("");
+    setReceiptDateFilter("");
+    setReceiptSourceFilter("all");
+    setReceiptFilterTab("all");
+  }
+
+  // Gom phiếu theo NGÀY NHẬP KHO (giữ nguyên thứ tự mới -> cũ backend trả về
+  // trong từng ngày); phiếu chưa có ngày nhập xuống cuối.
+  const groups = [];
+  const groupIndex = new Map();
+  filteredReceipts.forEach((r) => {
+    const key = toLocalDateKey(r.received_at);
+    if (!groupIndex.has(key)) {
+      const g = { key, items: [] };
+      groupIndex.set(key, g);
+      groups.push(g);
+    }
+    groupIndex.get(key).items.push(r);
+  });
+  groups.sort((a, b) => {
+    if (!a.key) return 1;
+    if (!b.key) return -1;
+    return b.key.localeCompare(a.key);
   });
 
   return (
@@ -552,7 +623,31 @@ export default function ImportFlow() {
           </div>
         </div>
 
-        <div className="filterTabs">
+        <div className="searchBox">
+          <span className="searchBox-icon" aria-hidden="true">
+            🔍
+          </span>
+          <input
+            type="text"
+            value={receiptSearch}
+            onChange={(e) => setReceiptSearch(e.target.value)}
+            placeholder="Tìm sản phẩm, mã phiếu…"
+            title="Tìm theo tên sản phẩm, mã phiếu, mã lô hoặc nơi nhập — không cần gõ dấu"
+            aria-label="Tìm phiếu nhập"
+          />
+          {receiptSearch && (
+            <button
+              type="button"
+              className="searchBox-clear"
+              aria-label="Xoá từ khoá tìm kiếm"
+              onClick={() => setReceiptSearch("")}
+            >
+              ✕
+            </button>
+          )}
+        </div>
+
+        <div className="filterTabs" style={{ marginTop: 0 }}>
           {RECEIPT_FILTER_TABS.map((tab) => (
             <button
               key={tab.key}
@@ -560,21 +655,37 @@ export default function ImportFlow() {
               onClick={() => setReceiptFilterTab(tab.key)}
             >
               {tab.label}
+              <span className="filterTab-count">{tabCount(tab)}</span>
             </button>
           ))}
         </div>
-        <input
-          type="date"
-          value={receiptDateFilter}
-          onChange={(e) => setReceiptDateFilter(e.target.value)}
-          style={{ marginBottom: 12 }}
-          title="Lọc theo ngày nhận hàng"
-        />
-        {receiptDateFilter && (
-          <button className="ghost lineCard-smallBtn" style={{ marginBottom: 12, marginLeft: 8 }} onClick={() => setReceiptDateFilter("")}>
-            Bỏ lọc ngày
-          </button>
-        )}
+
+        <div className="listFilters">
+          <div className="filterTabs noMargin">
+            {RECEIPT_SOURCE_FILTERS.map((s) => (
+              <button
+                key={s.key}
+                className={`filterTab${receiptSourceFilter === s.key ? " active" : ""}`}
+                onClick={() => setReceiptSourceFilter(s.key)}
+              >
+                {s.label}
+                <span className="filterTab-count">{sourceCount(s.key)}</span>
+              </button>
+            ))}
+          </div>
+          <input
+            type="date"
+            value={receiptDateFilter}
+            onChange={(e) => setReceiptDateFilter(e.target.value)}
+            title="Lọc theo ngày nhập kho"
+            aria-label="Lọc theo ngày nhập kho"
+          />
+          {receiptDateFilter && (
+            <button className="ghost lineCard-smallBtn" onClick={() => setReceiptDateFilter("")}>
+              Bỏ lọc ngày
+            </button>
+          )}
+        </div>
 
         {loadingReceipts && <div className="empty">Đang tải danh sách phiếu…</div>}
         {errorMsg && <div className="empty" style={{ color: "var(--danger)" }}>{errorMsg}</div>}
@@ -582,37 +693,117 @@ export default function ImportFlow() {
         {!loadingReceipts && receipts && receipts.length === 0 && (
           <div className="empty">Chưa có phiếu nhập nào — quét phiếu hoặc tạo phiếu tay.</div>
         )}
-        {!loadingReceipts && receipts && receipts.length > 0 && filteredReceipts.length === 0 && (
-          <div className="empty">Không có phiếu nào khớp bộ lọc đang chọn.</div>
-        )}
 
-        {filteredReceipts && filteredReceipts.length > 0 && (
-          <div className="lineList">
-            {filteredReceipts.map((r) => (
-              <div className="lineCard clickable" key={r.id} onClick={() => pickReceipt(r)}>
-                <div>
-                  <div className="lineCard-name">
-                    {r.receipt_code || `Phiếu #${r.id}`}
-                    {r.source_type === "manual" && <span className="badge not_started" style={{ marginLeft: 6 }}>tay</span>}
-                  </div>
-                  <div className="lineCard-sub">
-                    {r.store_location ? `${r.store_location} · ` : ""}
-                    {r.line_items?.length ?? 0} dòng hàng
-                    {r.received_at ? ` · ${new Date(r.received_at).toLocaleDateString("vi-VN")}` : ""}
-                  </div>
-                </div>
-                <div className="lineCard-actions">
-                  <span className={`badge ${RECEIPT_STATUS_BADGE[r.status] || "not_started"}`}>
-                    {RECEIPT_STATUS_LABEL[r.status] || r.status}
-                  </span>
-                  <button className="ghost lineCard-smallBtn" onClick={(e) => handleDeleteReceipt(r, e)}>
-                    Xoá
-                  </button>
-                </div>
-              </div>
-            ))}
+        {!loadingReceipts && receipts && receipts.length > 0 && (
+          <div className="listSummary">
+            <span>
+              Hiển thị <b>{filteredReceipts.length}</b>/{receipts.length} phiếu
+            </span>
+            {anyFilterActive && (
+              <button className="linkBtn" onClick={clearAllFilters}>
+                Xoá tất cả bộ lọc
+              </button>
+            )}
           </div>
         )}
+        {!loadingReceipts && receipts && receipts.length > 0 && filteredReceipts.length === 0 && (
+          <div className="empty">Không có phiếu nào khớp bộ lọc/từ khoá đang chọn.</div>
+        )}
+
+        {groups.map((g) => (
+          <section key={g.key || "no-date"}>
+            <div className="dayHeader">
+              <span>📅 {dateGroupLabel(g.key)}</span>
+              <span className="dayHeader-count">{g.items.length} phiếu</span>
+            </div>
+
+            {g.items.map((r) => {
+              const lines = [...(r.line_items ?? [])].sort((a, b) => a.line_no - b.line_no);
+              // Khi đang tìm: đưa các dòng khớp từ khoá lên trước để luôn thấy được
+              // dòng hàng người dùng đang tìm, dù nó nằm ở cuối phiếu dài.
+              const isMatch = (l) => hasQuery && matchesQuery(`${l.product_name_raw} ${l.batch_code || ""}`, query);
+              const ordered = hasQuery ? [...lines.filter(isMatch), ...lines.filter((l) => !isMatch(l))] : lines;
+              const shownLines = ordered.slice(0, 3);
+              const hiddenCount = ordered.length - shownLines.length;
+              const isManual = r.source_type === "manual";
+
+              return (
+                <div className="rcCard" key={r.id} onClick={() => pickReceipt(r)}>
+                  <div className="rcThumb">
+                    {r.image_url ? (
+                      <a
+                        href={`${API_BASE}${r.image_url}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        title="Bấm để xem ảnh phiếu gốc"
+                      >
+                        <img
+                          src={`${API_BASE}${r.image_url}`}
+                          alt={`Ảnh phiếu ${r.receipt_code || `#${r.id}`}`}
+                          loading="lazy"
+                        />
+                      </a>
+                    ) : (
+                      <div className="rcThumb-empty">
+                        <span>✍️</span>
+                        <small>Nhập tay</small>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="rcBody">
+                    <div className="rcHead">
+                      <button type="button" className="rcTitleBtn">
+                        <Highlight text={r.receipt_code || `Phiếu #${r.id}`} query={query} />
+                      </button>
+                      <span className={`badge ${RECEIPT_STATUS_BADGE[r.status] || "not_started"}`}>
+                        {RECEIPT_STATUS_LABEL[r.status] || r.status}
+                      </span>
+                    </div>
+
+                    <div className="rcMeta">
+                      <span>
+                        📅 Nhập kho: <b>{formatDateTimeVN(r.received_at) || "chưa có ngày"}</b>
+                      </span>
+                      {r.store_location && (
+                        <span>
+                          📍 <Highlight text={r.store_location} query={query} />
+                        </span>
+                      )}
+                      <span>{isManual ? "✍️ Nhập tay" : "📷 Quét ảnh"}</span>
+                    </div>
+
+                    {lines.length > 0 && (
+                      <ul className="rcLines">
+                        {shownLines.map((l) => (
+                          <li key={l.id}>
+                            <span className="rcLine-name">
+                              <Highlight text={l.product_name_raw} query={query} />
+                              {l.product_id == null && <span className="rc-tag warn">chưa gán SP</span>}
+                            </span>
+                            <span className="rcLine-qty">
+                              ×{Number(l.quantity).toLocaleString("vi-VN")}
+                              {l.product_id != null && unitById[l.product_id] ? ` ${unitById[l.product_id]}` : ""}
+                            </span>
+                          </li>
+                        ))}
+                        {hiddenCount > 0 && <li className="rcLines-more">+{hiddenCount} sản phẩm khác…</li>}
+                      </ul>
+                    )}
+
+                    <div className="rcFoot">
+                      <span>{lines.length} dòng hàng</span>
+                      <button className="ghost lineCard-smallBtn" onClick={(e) => handleDeleteReceipt(r, e)}>
+                        Xoá
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </section>
+        ))}
       </div>
     </main>
   );

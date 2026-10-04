@@ -3,6 +3,14 @@ import { Link } from "react-router-dom";
 import { api } from "../api";
 import { useToast } from "../components/Toast";
 import CountingScreen from "../components/CountingScreen";
+import ProductSearchSelect from "../components/ProductSearchSelect";
+import { formatDateTimeVN } from "../utils/search";
+import "../styles/listing.css";
+
+const REF_TYPE_LABEL = {
+  manual: "Gõ tay",
+  camera_session: "Qua camera",
+};
 
 export default function ExportFlow() {
   const [products, setProducts] = useState([]);
@@ -11,6 +19,7 @@ export default function ExportFlow() {
   const [qty, setQty] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
   const [activeSession, setActiveSession] = useState(null); // { session, expected, label }
+  const [recent, setRecent] = useState(null); // 5 lượt xuất gần nhất (null = đang tải)
   const showToast = useToast();
 
   useEffect(() => {
@@ -20,7 +29,17 @@ export default function ExportFlow() {
         setInventory(inv);
       })
       .catch((err) => setErrorMsg(err.message || String(err)));
+    loadRecent();
   }, []);
+
+  async function loadRecent() {
+    try {
+      const hist = await api.listExportHistory();
+      setRecent(hist.slice(0, 5)); // backend đã sắp mới -> cũ
+    } catch {
+      setRecent([]); // không tải được thì chỉ ẩn mục này, không ảnh hưởng form xuất kho
+    }
+  }
 
   function stockOf(productId) {
     return inventory
@@ -52,9 +71,17 @@ export default function ExportFlow() {
     }
   }
 
-  function backToForm() {
+  async function backToForm() {
     setActiveSession(null);
     setQty("");
+    // Tải lại để số "còn X" trong danh sách + mục "Vừa xuất gần đây" cập nhật
+    // ngay sau khi xuất xong (trước đây phải tải lại trang mới thấy số mới).
+    try {
+      setInventory(await api.listInventory());
+    } catch {
+      // giữ nguyên số cũ nếu tải lỗi
+    }
+    loadRecent();
   }
 
   if (activeSession) {
@@ -90,16 +117,14 @@ export default function ExportFlow() {
       </div>
       <div className="card">
         <h2>Chọn sản phẩm cần xuất</h2>
-        <label>Sản phẩm</label>
-        <select value={productId} onChange={(e) => setProductId(e.target.value)}>
-          <option value="">— Chọn sản phẩm —</option>
-          {products.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name}
-              {p.sku ? ` (${p.sku})` : ""} — còn {stockOf(p.id).toLocaleString("vi-VN")} {p.unit}
-            </option>
-          ))}
-        </select>
+        <label htmlFor="export-product">Sản phẩm (gõ tên để tìm, không cần dấu)</label>
+        <ProductSearchSelect
+          id="export-product"
+          products={products}
+          value={productId}
+          onChange={setProductId}
+          stockOf={stockOf}
+        />
 
         {selectedProduct && (
           <div className="stockHint">
@@ -141,6 +166,31 @@ export default function ExportFlow() {
 
         {errorMsg && <div className="empty" style={{ color: "var(--danger)" }}>{errorMsg}</div>}
       </div>
+
+      {recent && recent.length > 0 && (
+        <div className="card">
+          <div className="card-headRow">
+            <h2>Vừa xuất gần đây</h2>
+            <Link to="/export/history" className="rc-link">
+              Xem tất cả →
+            </Link>
+          </div>
+          {recent.map((h) => (
+            <div className="recentItem" key={h.id}>
+              <div>
+                <div className="recentItem-name">{h.product_name}</div>
+                <div className="recentItem-sub">
+                  {formatDateTimeVN(h.created_at)} · lô {h.batch_code} ·{" "}
+                  {REF_TYPE_LABEL[h.reference_type] || h.reference_type || "—"}
+                </div>
+              </div>
+              <div className="recentItem-qty">
+                −{h.quantity.toLocaleString("vi-VN")} {h.unit}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </main>
   );
 }
