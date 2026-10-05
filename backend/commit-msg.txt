@@ -1,0 +1,26 @@
+feat(db): make_test_receipts.py — tạo ảnh phiếu nhập mẫu để test chức năng "Quét phiếu mới" (OCR)
+
+Thêm db/make_test_receipts.py (độc lập, KHÔNG đụng cơ sở dữ liệu, chỉ cần Pillow) + thư mục
+phieu_test/ gồm 6 ảnh phiếu sinh sẵn và README_phieu_test.txt ghi NỘI DUNG ĐÚNG của từng phiếu
+để đối chiếu với kết quả OCR. Chạy lại để sinh mới:  python -m db.make_test_receipts [--out DIR] [--font FILE.ttf]
+
+6 phiếu, từ dễ đến khó:
+  01 sạch, tên đúng 100%            -> luồng cơ bản (quét -> đếm -> cộng kho)
+  02 ảnh chụp (nghiêng, nhiễu nhẹ)  -> giống chụp bằng điện thoại
+  03 tên KHÔNG DẤU / IN HOA / rút gọn -> thử so khớp gần đúng + nút "Gợi ý từ danh mục"
+  04 có 2 sản phẩm CHƯA có trong danh mục (7Up, Hura) -> thử "Tạo sản phẩm mới từ tên …"
+  05 dài 8 dòng, ảnh chụp           -> thử danh sách phiếu ("+N sản phẩm khác"), đếm nhiều loại
+  06 thiếu sáng, nhoè, nghiêng nhiều -> ca xấu, thử cách ứng dụng xử lý khi OCR đọc kém
+
+Thiết kế theo đúng ràng buộc của bộ đọc bảng (ocr/ocr_engine.py): gom 4 ô liên tiếp
+[tên][số lượng][mã lô][HSD] nên MỌI dòng đều đủ 4 ô (không có dòng thiếu HSD); mã lô dạng L###X
+(không trùng mã lô của seed_realistic); HSD luôn ở tương lai; bố cục giống phiếu mẫu đã đọc tốt.
+
+ĐÃ KIỂM TRA: mọi ô của cả 6 phiếu qua đúng các hàm _looks_like_quantity/_batch/_date và
+postprocess.parse_* của dự án (0 ô bị loại); điểm khớp tên với danh mục tính bằng đúng match_product_name.
+CHƯA CHẠY OCR THẬT (không có trọng số PaddleOCR/VietOCR trong môi trường kiểm tra) — độ chính xác đọc ảnh
+thực tế, nhất là phiếu 02, 05, 06, cần bạn tự thử.
+
+LƯU Ý: ảnh trong phieu_test/ chỉ để test, không cần commit (có thể thêm phieu_test/ vào .gitignore).
+Phát hiện (chưa sửa): match_product_name so khớp chuỗi thô (token_sort_ratio) nên tên KHÔNG DẤU khớp rất
+kém (vd "DAU AN SIMPLY 1L" chỉ 0,38) — chuẩn hoá bỏ dấu trước khi so khớp sẽ giúp ích.
