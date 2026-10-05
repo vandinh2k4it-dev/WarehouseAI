@@ -1,42 +1,44 @@
-feat(receipts): mã phiếu nhập luôn liên tục — xoá 1 phiếu thì các phiếu sau tự đánh số lại
+feat(alerts): phân loại cảnh báo theo loại/mức độ, xếp theo ưu tiên, tìm kiếm có gợi ý, xác nhận hàng loạt
 
-Trước: mã phiếu (PN0001, PN0002...) sinh theo "số lớn nhất + 1" nên xoá 1 phiếu giữa dãy để lại LỖ HỔNG
-mã vĩnh viễn (vd xoá PN0003 -> dãy còn PN0001, PN0002, PN0004...). Nay: dãy mã luôn liên tục 1..N.
+Trước: trang Cảnh báo chỉ là 1 danh sách phẳng + 2 nút "Đang mở/Đã xử lý", xác nhận được TỪNG cái một. Với dữ liệu thực tế
+(~550 cảnh báo, ~20 đang mở) rất khó kiểm soát. Nay:
 
-backend/app/code_generator.py
-  - Thêm renumber_codes(db, model, cột, tiền_tố): dồn các mã tự sinh cùng tiền tố thành dãy liên tục
-    theo đúng thứ tự hiện có; trả về số bản ghi đã đổi mã. KHÔNG commit (để gộp chung giao dịch với
-    thao tác xoá). Đổi TỪNG bản ghi theo thứ tự tăng dần vì cột mã có UNIQUE kiểm tra ngay từng dòng
-    — 1 câu UPDATE dồn cả loạt có thể đụng mã đích chưa kịp được giải phóng.
-  - Thêm is_auto_code(): chỉ mã đúng dạng PN + số mới thuộc diện đánh số lại; mã người dùng tự đặt
-    (vd HD-2026-01) được bỏ qua.
-backend/app/routers/receipts.py — DELETE /receipts/{id}
-  - Xoá xong, flush (giải phóng mã vừa xoá) rồi renumber_codes, rồi mới commit: xoá + đánh số lại là 1
-    giao dịch, lỗi thì hoàn tác cả hai.
-  - Phản hồi thêm deleted_code và renumbered (số phiếu đã bị đổi mã). Vẫn giữ nguyên quy tắc cũ: chỉ cho
-    xoá phiếu CHƯA có dòng nào được đếm (409 nếu đã đếm).
-  - Phiếu mới vẫn sinh bằng generate_next_code (số lớn nhất + 1) nên luôn nối ngay sau số cuối.
-frontend/src/pages/ImportFlow.jsx — handleDeleteReceipt
-  - Hộp xác nhận xoá BÁO TRƯỚC khi có phiếu phía sau sẽ bị đổi mã ("N phiếu phía sau sẽ được đánh số
-    lại…"); xoá phiếu mới nhất thì không báo vì không phiếu nào đổi.
-  - Thông báo sau khi xoá nêu rõ đã đánh số lại bao nhiêu phiếu.
+frontend/src/pages/Alerts.jsx (viết lại phần chính; PushNotificationBanner giữ nguyên)
+  - Thẻ phân loại theo LOẠI (Chênh lệch / Sắp hết hàng / Sắp hết hạn — thẻ cuối chỉ hiện khi từng có cảnh báo loại đó) kèm
+    số lượng và số cảnh báo MỨC CAO; bấm thẻ để lọc, bấm lại để bỏ lọc.
+  - Lọc theo MỨC ĐỘ (Cao / Trung bình / Thấp) kèm số lượng. Mọi con số tính theo các bộ lọc còn lại đang chọn.
+  - Nút trạng thái hiện số lượng: "Đang mở (N)" / "Đã xử lý (M)" (tải cả 2 danh sách một lượt).
+  - Tab "Đang mở": xếp theo MỨC ƯU TIÊN — "Cần xử lý ngay" (cao) -> "Cần theo dõi" (trung bình) -> "Mức thấp", mới nhất trước,
+    viền trái đổi màu theo mức độ. Tab "Đã xử lý": gom theo NGÀY (Hôm nay/Hôm qua/dd/mm) và PHÂN TRANG 40 dòng/lần
+    ("Xem thêm …") vì danh sách có thể rất dài.
+  - Mỗi dòng có nhãn loại, nhãn Nhập kho/Xuất kho (tách từ [IMPORT]/[EXPORT] của cảnh báo chênh lệch), nhãn mức độ, giờ.
+  - Ô tìm kiếm có gợi ý (SmartSearchBox): gõ không dấu, tìm theo tên sản phẩm / mã lô trong nội dung cảnh báo, tô sáng chữ khớp,
+    gợi ý các sản phẩm đang có cảnh báo kèm số cảnh báo.
+  - Nút "✓ Xác nhận tất cả N cảnh báo này" xử lý hàng loạt đúng tập đang lọc; hộp xác nhận ghi rõ số lượng và CẢNH BÁO TRƯỚC khi
+    trong đó có cảnh báo CHÊNH LỆCH ("chỉ xác nhận khi đã xử lý xong ở phiếu nhập"). Số đếm trên thanh điều hướng cập nhật 1 lần.
+backend/app/routers/alerts.py
+  - Thêm POST /alerts/acknowledge-bulk {alert_ids: [...]} (tối đa 2000 id): đổi nhiều cảnh báo sang 'acknowledged' trong 1 giao dịch,
+    chỉ đổi cảnh báo đang 'open' (id không tồn tại/đã xử lý/trùng thì bỏ qua), trả {"acknowledged": n}. Không đụng endpoint cũ.
+frontend/src/api.js — thêm acknowledgeAlertsBulk(ids) (phát sự kiện "alerts-changed" đúng 1 lần).
+frontend/src/styles/alerts.css — MỚI (file riêng, không ghi đè app.css/listing.css); có bố cục riêng cho điện thoại.
 
-CHỈ ĐỔI CỘT MÃ HIỂN THỊ receipt_code. KHÔNG đổi khoá chính id: id được dòng phiếu, phiên đếm, đối chiếu
-tham chiếu qua khoá ngoại — đổi nó rất dễ làm hỏng dữ liệu. Mọi liên kết, tồn kho, giao dịch giữ nguyên.
+PHỤ THUỘC: Alerts.jsx dùng SmartSearchBox, Highlight, utils/search.js, styles/listing.css đã giao ở các bản trước — cần đã áp dụng.
 
-ĐÃ TEST qua API thật của ứng dụng, trên SQLite VÀ PostgreSQL 16 thật (dựng từ db/schema.sql):
-  tạo 4 phiếu -> mã nối tiếp; xoá phiếu giữa 4 phiếu -> 2 phiếu sau dồn lên, phiếu mới nối đúng;
-  xoá phiếu lỗi OCR GIỮA lịch sử -> 10 phiếu phía sau (kể cả phiếu đã đếm) đổi mã đúng, số giao dịch/
-  tồn kho/phiên đếm/liên kết phiên-phiếu/id KHÔNG đổi; xoá phiếu đã đếm -> 409, không đổi mã nào;
-  xoá phiếu mã tự đặt -> không đánh số lại; xoá phiếu cuối -> không đổi; chạy lại renumber -> 0 thay đổi.
-  Giao diện (Chromium/Playwright, API giả): hộp xác nhận báo đúng số phiếu, thông báo đúng; toàn bộ 127
-  kiểm tra pass; vite build + oxlint 0 lỗi.
+ĐÃ TEST:
+  - Backend (SQLite VÀ PostgreSQL 16 thật): xác nhận 5 cảnh báo kèm id trùng/không tồn tại/đã xử lý -> chỉ đổi đúng 5; chạy lại -> 0;
+    danh sách rỗng -> 0; >2000 id, sai kiểu, thiếu trường -> 422; endpoint xác nhận từng cái vẫn chạy, id lạ vẫn 404.
+  - Giao diện (Chromium/Playwright, API giả): 39 kiểm tra pass — phân loại, số lượng theo bộ lọc, nhóm theo ưu tiên, nhãn nhập/xuất, lọc,
+    tìm kiếm không dấu/mã lô/gợi ý, xác nhận từng cái, hàng loạt (Huỷ/Đồng ý, có/không có cảnh báo chênh lệch), số đếm thanh điều hướng,
+    nhóm theo ngày, phân trang 40->80->105, bố cục 390px không tràn ngang, không lỗi JS. Bộ test cũ của các trang khác vẫn pass.
+  - ĐẦU-CUỐI trên backend thật + Postgres thật (bộ dữ liệu seed): số liệu khớp API; xác nhận hàng loạt 20 cảnh báo sắp hết hàng ghi thật vào DB
+    (đang mở 22->2, đã xử lý 532->552), 2 cảnh báo chênh lệch còn nguyên; tải lại trang vẫn giữ kết quả; tab "Đã xử lý" 552 cảnh báo vẽ mượt.
+  - vite build thành công, oxlint 0 lỗi.
 
 LƯU Ý:
-  - Mã của phiếu ĐÃ ĐẾM vẫn có thể đổi nếu xoá 1 phiếu chưa đếm nằm TRƯỚC nó (vd xoá phiếu lỗi OCR cũ).
-    Nếu đã in/ghi tay mã phiếu ra giấy hay nhắn cho người khác thì mã đó sẽ trỏ sang phiếu khác. Kho thật
-    thường KHÔNG đánh số lại chứng từ — làm vậy theo yêu cầu; nếu muốn an toàn hơn có thể chỉ cho phép xoá
-    phiếu mới nhất, hoặc chỉ đánh số lại khi chưa phiếu nào phía sau đã đếm.
-  - Lần xoá đầu tiên sẽ dồn luôn các lỗ hổng mã đã có từ trước (nếu có).
-  - ImportFlow.jsx bị ghi đè hoàn toàn (làm trên bản đã giao ở lần trước) — xem diff nếu bạn đã sửa thêm.
+  - Cần KHỞI ĐỘNG LẠI backend (có endpoint mới) rồi F5 trình duyệt.
+  - "Xác nhận" chỉ đóng cảnh báo, KHÔNG tự xử lý chênh lệch thật — chênh lệch vẫn phải xử lý ở màn phiếu nhập/đối chiếu.
+  - Ứng dụng không tự sinh cảnh báo 'expiring_soon' (hạn dùng chỉ tính tại chỗ từ tồn kho) nên thẻ đó thường không hiện.
+  - Cảnh báo "sắp hết hàng" sinh theo TỪNG LÔ (kể cả lô đã bán hết, tồn 0) nên cùng 1 sản phẩm có thể có nhiều cảnh báo — nút hàng loạt
+    giúp dọn nhanh. Có thể cải thiện ở backend: tự đóng cảnh báo khi sản phẩm đã nhập thêm hàng, hoặc gộp cảnh báo theo sản phẩm.
+  - Alerts.jsx và api.js bị ghi đè hoàn toàn (làm trên bản code đã giao) — xem diff nếu bạn đã sửa thêm.
   - Chưa test trên máy/CSDL thật của bạn.

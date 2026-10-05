@@ -76,6 +76,16 @@ export const api = {
     window.dispatchEvent(new CustomEvent("alerts-changed"));
     return result;
   },
+  // Xác nhận NHIỀU cảnh báo cùng lúc (1 lần gọi API) rồi báo cho TopNav cập nhật số đếm đúng 1 lần.
+  acknowledgeAlertsBulk: async (alertIds) => {
+    const result = await request("/alerts/acknowledge-bulk", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ alert_ids: alertIds }),
+    });
+    window.dispatchEvent(new CustomEvent("alerts-changed"));
+    return result;
+  },
 
   // Nhập hàng — theo từng dòng trên phiếu
   listReceipts: (status) => request(`/receipts${status ? `?status=${status}` : ""}`),

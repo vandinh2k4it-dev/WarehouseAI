@@ -1,0 +1,143 @@
+/* Trang Cảnh báo: thẻ phân loại theo loại, nhãn mức độ, nhóm theo mức ưu tiên / theo ngày.
+   File RIÊNG (không chèn vào app.css/listing.css) để việc cập nhật không ghi đè chỉnh sửa khác. */
+.alertSummary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 10px;
+  margin: 6px 0 14px;
+}
+.alertCard {
+  width: auto;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 12px 14px;
+  text-align: left;
+  font: inherit;
+  color: var(--text);
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+.alertCard:hover {
+  border-color: var(--accent);
+}
+.alertCard.active {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+}
+.alertCard-count {
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+.alertCard.type-discrepancy .alertCard-count {
+  color: var(--danger);
+}
+.alertCard.type-low_stock .alertCard-count,
+.alertCard.type-expiring_soon .alertCard-count {
+  color: var(--accent);
+}
+.alertCard-label {
+  font-size: 13.5px;
+  font-weight: 700;
+}
+.alertCard-hint {
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+.alertCard-high {
+  margin-top: 4px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--danger);
+}
+.filterLabel {
+  align-self: center;
+  white-space: nowrap;
+  margin-right: 2px;
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+.alertRow.sev-high {
+  border-left: 4px solid var(--danger);
+}
+.alertRow.sev-medium {
+  border-left: 4px solid var(--accent);
+}
+.alertRow.sev-low {
+  border-left: 4px solid var(--text-muted);
+}
+.alertRow-badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+.sevTag {
+  padding: 1px 9px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+.sevTag.sev-high {
+  color: var(--danger);
+}
+.badge.dirBadge {
+  background: var(--surface);
+  color: var(--text-muted);
+}
+.bulkBtn {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.moreBtn {
+  width: 100%;
+  max-width: none;
+  margin-top: 14px;
+}
+
+/* Điện thoại: thẻ loại xếp lưới 2 cột (ẩn dòng mô tả) để không chiếm gần hết màn hình; nút hàng loạt rộng hết hàng. */
+@media (max-width: 640px) {
+  .alertSummary {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+  .alertCard {
+    padding: 10px 12px;
+  }
+  .alertCard-count {
+    font-size: 22px;
+  }
+  .alertCard-hint {
+    display: none;
+  }
+  .alertCard:first-child {
+    grid-column: 1 / -1; /* "Tất cả loại" trải hết hàng, các thẻ loại nằm 2 cột bên dưới (không bị lẻ 1 thẻ) */
+    flex-direction: row;
+    align-items: baseline;
+    gap: 10px;
+  }
+  /* Nút "Đã xử lý" nằm DƯỚI nội dung (thay vì bên phải làm nội dung bị ép thành cột hẹp) */
+  .alertRow {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+  .alertRow .tapbtn {
+    width: 100%;
+  }
+  .listSummary {
+    flex-wrap: wrap;
+  }
+  .bulkBtn {
+    width: 100%;
+    white-space: normal;
+  }
+}

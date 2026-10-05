@@ -1,6 +1,7 @@
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -26,3 +27,25 @@ def acknowledge_alert(alert_id: int, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(alert)
     return alert
+
+
+class BulkAckRequest(BaseModel):
+    alert_ids: list[int] = Field(max_length=2000)
+
+
+@router.post("/acknowledge-bulk")
+def acknowledge_alerts_bulk(payload: BulkAckRequest, db: Session = Depends(get_db)):
+    """Đánh dấu NHIỀU cảnh báo là đã xử lý trong 1 lần gọi (1 giao dịch) — dùng cho nút
+    "Xác nhận tất cả đang hiển thị" ở trang Cảnh báo, thay vì gọi /acknowledge hàng trăm lần.
+    Chỉ đổi các cảnh báo đang 'open'; id không tồn tại hoặc đã xử lý rồi thì bỏ qua êm.
+    Trả về số cảnh báo thực sự được đổi."""
+    ids = list(set(payload.alert_ids))
+    if not ids:
+        return {"acknowledged": 0}
+    n = (
+        db.query(models.Alert)
+        .filter(models.Alert.id.in_(ids), models.Alert.status == "open")
+        .update({"status": "acknowledged"}, synchronize_session=False)
+    )
+    db.commit()
+    return {"acknowledged": n}
