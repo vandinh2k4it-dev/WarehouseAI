@@ -1,0 +1,42 @@
+feat(receipts): mã phiếu nhập luôn liên tục — xoá 1 phiếu thì các phiếu sau tự đánh số lại
+
+Trước: mã phiếu (PN0001, PN0002...) sinh theo "số lớn nhất + 1" nên xoá 1 phiếu giữa dãy để lại LỖ HỔNG
+mã vĩnh viễn (vd xoá PN0003 -> dãy còn PN0001, PN0002, PN0004...). Nay: dãy mã luôn liên tục 1..N.
+
+backend/app/code_generator.py
+  - Thêm renumber_codes(db, model, cột, tiền_tố): dồn các mã tự sinh cùng tiền tố thành dãy liên tục
+    theo đúng thứ tự hiện có; trả về số bản ghi đã đổi mã. KHÔNG commit (để gộp chung giao dịch với
+    thao tác xoá). Đổi TỪNG bản ghi theo thứ tự tăng dần vì cột mã có UNIQUE kiểm tra ngay từng dòng
+    — 1 câu UPDATE dồn cả loạt có thể đụng mã đích chưa kịp được giải phóng.
+  - Thêm is_auto_code(): chỉ mã đúng dạng PN + số mới thuộc diện đánh số lại; mã người dùng tự đặt
+    (vd HD-2026-01) được bỏ qua.
+backend/app/routers/receipts.py — DELETE /receipts/{id}
+  - Xoá xong, flush (giải phóng mã vừa xoá) rồi renumber_codes, rồi mới commit: xoá + đánh số lại là 1
+    giao dịch, lỗi thì hoàn tác cả hai.
+  - Phản hồi thêm deleted_code và renumbered (số phiếu đã bị đổi mã). Vẫn giữ nguyên quy tắc cũ: chỉ cho
+    xoá phiếu CHƯA có dòng nào được đếm (409 nếu đã đếm).
+  - Phiếu mới vẫn sinh bằng generate_next_code (số lớn nhất + 1) nên luôn nối ngay sau số cuối.
+frontend/src/pages/ImportFlow.jsx — handleDeleteReceipt
+  - Hộp xác nhận xoá BÁO TRƯỚC khi có phiếu phía sau sẽ bị đổi mã ("N phiếu phía sau sẽ được đánh số
+    lại…"); xoá phiếu mới nhất thì không báo vì không phiếu nào đổi.
+  - Thông báo sau khi xoá nêu rõ đã đánh số lại bao nhiêu phiếu.
+
+CHỈ ĐỔI CỘT MÃ HIỂN THỊ receipt_code. KHÔNG đổi khoá chính id: id được dòng phiếu, phiên đếm, đối chiếu
+tham chiếu qua khoá ngoại — đổi nó rất dễ làm hỏng dữ liệu. Mọi liên kết, tồn kho, giao dịch giữ nguyên.
+
+ĐÃ TEST qua API thật của ứng dụng, trên SQLite VÀ PostgreSQL 16 thật (dựng từ db/schema.sql):
+  tạo 4 phiếu -> mã nối tiếp; xoá phiếu giữa 4 phiếu -> 2 phiếu sau dồn lên, phiếu mới nối đúng;
+  xoá phiếu lỗi OCR GIỮA lịch sử -> 10 phiếu phía sau (kể cả phiếu đã đếm) đổi mã đúng, số giao dịch/
+  tồn kho/phiên đếm/liên kết phiên-phiếu/id KHÔNG đổi; xoá phiếu đã đếm -> 409, không đổi mã nào;
+  xoá phiếu mã tự đặt -> không đánh số lại; xoá phiếu cuối -> không đổi; chạy lại renumber -> 0 thay đổi.
+  Giao diện (Chromium/Playwright, API giả): hộp xác nhận báo đúng số phiếu, thông báo đúng; toàn bộ 127
+  kiểm tra pass; vite build + oxlint 0 lỗi.
+
+LƯU Ý:
+  - Mã của phiếu ĐÃ ĐẾM vẫn có thể đổi nếu xoá 1 phiếu chưa đếm nằm TRƯỚC nó (vd xoá phiếu lỗi OCR cũ).
+    Nếu đã in/ghi tay mã phiếu ra giấy hay nhắn cho người khác thì mã đó sẽ trỏ sang phiếu khác. Kho thật
+    thường KHÔNG đánh số lại chứng từ — làm vậy theo yêu cầu; nếu muốn an toàn hơn có thể chỉ cho phép xoá
+    phiếu mới nhất, hoặc chỉ đánh số lại khi chưa phiếu nào phía sau đã đếm.
+  - Lần xoá đầu tiên sẽ dồn luôn các lỗ hổng mã đã có từ trước (nếu có).
+  - ImportFlow.jsx bị ghi đè hoàn toàn (làm trên bản đã giao ở lần trước) — xem diff nếu bạn đã sửa thêm.
+  - Chưa test trên máy/CSDL thật của bạn.

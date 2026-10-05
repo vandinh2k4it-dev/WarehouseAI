@@ -162,10 +162,22 @@ export default function ImportFlow() {
 
   async function handleDeleteReceipt(receipt, e) {
     e.stopPropagation(); // không cho nổi bọt lên onClick của cả dòng (mở phiếu)
-    if (!window.confirm(`Xoá hẳn phiếu "${receipt.receipt_code || `#${receipt.id}`}"? Không thể hoàn tác.`)) return;
+    const label = receipt.receipt_code || `#${receipt.id}`;
+    // Mã phiếu tự sinh (PN0001, PN0002...) luôn liên tục: xoá 1 phiếu thì các phiếu phía sau
+    // tự đánh số lại (backend làm). Báo trước cho người dùng biết mã của các phiếu đó sẽ đổi.
+    const num = (c) => (/^PN\d+$/.test(c || "") ? parseInt(c.slice(2), 10) : null);
+    const mine = num(receipt.receipt_code);
+    const later = mine === null ? 0 : (receipts ?? []).filter((r) => num(r.receipt_code) > mine).length;
+    const warn = later > 0 ? `\n\n${later} phiếu phía sau sẽ được đánh số lại để mã luôn liên tục.` : "";
+    if (!window.confirm(`Xoá hẳn phiếu "${label}"? Không thể hoàn tác.${warn}`)) return;
     try {
-      await api.deleteReceipt(receipt.id);
-      showToast("Đã xoá phiếu", "success");
+      const res = await api.deleteReceipt(receipt.id);
+      showToast(
+        res?.renumbered > 0
+          ? `Đã xoá phiếu ${label} — ${res.renumbered} phiếu phía sau đã được đánh số lại`
+          : "Đã xoá phiếu",
+        "success"
+      );
       loadReceipts();
     } catch (err) {
       showToast(err.message || String(err), "error");

@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app import models, schemas
-from app.code_generator import generate_next_code
+from app.code_generator import generate_next_code, is_auto_code, renumber_codes
 from ocr.ocr_engine import ReceiptOCREngine
 from ocr.postprocess import match_product_name
 
@@ -203,9 +203,19 @@ def delete_receipt(receipt_id: int, db: Session = Depends(get_db)):
                 ),
             )
 
+    deleted_code = receipt.receipt_code
     db.delete(receipt)  # cascade="all, delete-orphan" trên line_items tự xoá kèm theo
+    db.flush()  # giải phóng mã của phiếu vừa xoá TRƯỚC khi dồn mã các phiếu còn lại
+
+    # Mã phiếu tự sinh (PN0001, PN0002...) luôn là dãy LIÊN TỤC: xoá 1 phiếu thì các phiếu
+    # phía sau tự dồn lên lấp chỗ trống (vd xoá PN0003 -> PN0004 thành PN0003...), và phiếu
+    # mới luôn nối tiếp ngay sau số cuối. Làm chung 1 giao dịch với việc xoá: lỗi thì hoàn tác
+    # cả hai. Chỉ đổi MÃ HIỂN THỊ, khoá chính id (và mọi liên kết tới phiếu) giữ nguyên.
+    renumbered = 0
+    if is_auto_code(deleted_code, "PN"):
+        renumbered = renumber_codes(db, models.ImportReceipt, "receipt_code", "PN")
     db.commit()
-    return {"deleted": True, "receipt_id": receipt_id}
+    return {"deleted": True, "receipt_id": receipt_id, "deleted_code": deleted_code, "renumbered": renumbered}
 
 
 @router.post("/{receipt_id}/lines", response_model=schemas.LineItemOut)

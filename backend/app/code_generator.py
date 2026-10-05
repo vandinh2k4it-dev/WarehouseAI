@@ -10,7 +10,7 @@ phiếu cùng lúc, rủi ro trùng mã gần như không xảy ra trong thực 
 """
 import re
 
-from sqlalchemy import func
+from sqlalchemy import func, update
 from sqlalchemy.orm import Session
 
 
@@ -43,3 +43,42 @@ def generate_next_code(db: Session, model, code_column_name: str, prefix: str, p
 
     next_num = max_num + 1
     return f"{prefix}{str(next_num).zfill(pad_width)}"
+
+
+def is_auto_code(code: str | None, prefix: str) -> bool:
+    """True nếu `code` đúng dạng mã tự sinh của hệ thống (vd PN0007) — mã người dùng
+    tự đặt theo kiểu khác (vd HD-2026-01) thì không thuộc diện đánh số lại."""
+    return bool(code) and re.fullmatch(rf"{re.escape(prefix)}\d+", code) is not None
+
+
+def renumber_codes(db: Session, model, code_column_name: str, prefix: str, pad_width: int = 4) -> int:
+    """Dồn lại các mã tự sinh cùng tiền tố thành dãy LIÊN TỤC 1, 2, 3... theo đúng thứ tự
+    hiện có (số nhỏ trước) — dùng sau khi xoá 1 bản ghi để không còn "lỗ hổng" mã.
+    Vd có PN0001, PN0002, PN0004, PN0005 -> PN0001, PN0002, PN0003, PN0004.
+
+    CHỈ đổi cột mã hiển thị, KHÔNG đổi khoá chính `id` (id được các bảng khác tham chiếu
+    qua khoá ngoại). Mã không đúng dạng tiền tố + số (vd mã người dùng tự đặt) được bỏ qua.
+    Trả về số bản ghi đã đổi mã. KHÔNG commit — để hàm gọi gộp chung 1 giao dịch với thao tác
+    xoá, lỗi thì hoàn tác cả hai.
+
+    Vì sao đổi TỪNG bản ghi theo thứ tự tăng dần: cột mã có ràng buộc UNIQUE kiểm tra ngay
+    từng dòng, nên 1 câu UPDATE dồn cả loạt có thể đụng mã đích chưa kịp được giải phóng.
+    Đi từ số nhỏ đến lớn thì mã đích (<= mã hiện tại) luôn đã trống lúc cần dùng."""
+    column = getattr(model, code_column_name)
+    pattern = re.compile(rf"^{re.escape(prefix)}(\d+)$")
+    rows = db.query(model.id, column).filter(column.isnot(None)).filter(column.like(f"{prefix}%")).all()
+
+    numbered = []
+    for row_id, code in rows:
+        m = pattern.match(code or "")
+        if m:
+            numbered.append((int(m.group(1)), row_id))
+    numbered.sort()  # theo số, cùng số (không thể xảy ra vì UNIQUE) thì theo id
+
+    changed = 0
+    for new_num, (old_num, row_id) in enumerate(numbered, start=1):
+        if old_num == new_num:
+            continue
+        db.execute(update(model).where(model.id == row_id).values({code_column_name: f"{prefix}{new_num:0{pad_width}d}"}))
+        changed += 1
+    return changed
