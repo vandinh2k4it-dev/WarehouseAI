@@ -1,44 +1,55 @@
-feat(alerts): phân loại cảnh báo theo loại/mức độ, xếp theo ưu tiên, tìm kiếm có gợi ý, xác nhận hàng loạt
+feat(chatbot): trang Trợ lý AI chiếm trọn màn hình, hiển thị markdown, dùng tốt trên máy tính lẫn điện thoại
 
-Trước: trang Cảnh báo chỉ là 1 danh sách phẳng + 2 nút "Đang mở/Đã xử lý", xác nhận được TỪNG cái một. Với dữ liệu thực tế
-(~550 cảnh báo, ~20 đang mở) rất khó kiểm soát. Nay:
+Chỉ sửa frontend, KHÔNG đổi backend/API (vẫn dùng api.chatbotAsk, vẫn lưu lịch sử bằng localStorage như cũ).
 
-frontend/src/pages/Alerts.jsx (viết lại phần chính; PushNotificationBanner giữ nguyên)
-  - Thẻ phân loại theo LOẠI (Chênh lệch / Sắp hết hàng / Sắp hết hạn — thẻ cuối chỉ hiện khi từng có cảnh báo loại đó) kèm
-    số lượng và số cảnh báo MỨC CAO; bấm thẻ để lọc, bấm lại để bỏ lọc.
-  - Lọc theo MỨC ĐỘ (Cao / Trung bình / Thấp) kèm số lượng. Mọi con số tính theo các bộ lọc còn lại đang chọn.
-  - Nút trạng thái hiện số lượng: "Đang mở (N)" / "Đã xử lý (M)" (tải cả 2 danh sách một lượt).
-  - Tab "Đang mở": xếp theo MỨC ƯU TIÊN — "Cần xử lý ngay" (cao) -> "Cần theo dõi" (trung bình) -> "Mức thấp", mới nhất trước,
-    viền trái đổi màu theo mức độ. Tab "Đã xử lý": gom theo NGÀY (Hôm nay/Hôm qua/dd/mm) và PHÂN TRANG 40 dòng/lần
-    ("Xem thêm …") vì danh sách có thể rất dài.
-  - Mỗi dòng có nhãn loại, nhãn Nhập kho/Xuất kho (tách từ [IMPORT]/[EXPORT] của cảnh báo chênh lệch), nhãn mức độ, giờ.
-  - Ô tìm kiếm có gợi ý (SmartSearchBox): gõ không dấu, tìm theo tên sản phẩm / mã lô trong nội dung cảnh báo, tô sáng chữ khớp,
-    gợi ý các sản phẩm đang có cảnh báo kèm số cảnh báo.
-  - Nút "✓ Xác nhận tất cả N cảnh báo này" xử lý hàng loạt đúng tập đang lọc; hộp xác nhận ghi rõ số lượng và CẢNH BÁO TRƯỚC khi
-    trong đó có cảnh báo CHÊNH LỆCH ("chỉ xác nhận khi đã xử lý xong ở phiếu nhập"). Số đếm trên thanh điều hướng cập nhật 1 lần.
-backend/app/routers/alerts.py
-  - Thêm POST /alerts/acknowledge-bulk {alert_ids: [...]} (tối đa 2000 id): đổi nhiều cảnh báo sang 'acknowledged' trong 1 giao dịch,
-    chỉ đổi cảnh báo đang 'open' (id không tồn tại/đã xử lý/trùng thì bỏ qua), trả {"acknowledged": n}. Không đụng endpoint cũ.
-frontend/src/api.js — thêm acknowledgeAlertsBulk(ids) (phát sự kiện "alerts-changed" đúng 1 lần).
-frontend/src/styles/alerts.css — MỚI (file riêng, không ghi đè app.css/listing.css); có bố cục riêng cho điện thoại.
+Lỗi thấy trên ảnh chụp trước khi sửa:
+  1) Khung chat bị khoá height:72vh nên không bao giờ đầy màn hình (nửa dưới màn hình để trống).
+  2) Nút "Xoá lịch sử" phình rộng ~420px do luật button.ghost { width:100%; max-width:420px }.
+  3) Câu trả lời của Gemini (markdown) hiện NGUYÊN KÝ HIỆU thô: **đậm**, ### tiêu đề, * danh sách.
+  4) Thanh cuộn trắng chói trên nền tối.
 
-PHỤ THUỘC: Alerts.jsx dùng SmartSearchBox, Highlight, utils/search.js, styles/listing.css đã giao ở các bản trước — cần đã áp dụng.
+frontend/src/pages/Chatbot.jsx (viết lại phần giao diện; logic gọi API + lưu lịch sử giữ nguyên)
+  - Bố cục đầy màn hình: thanh tiêu đề (có nút "Xoá lịch sử" nhỏ gọn) / vùng tin nhắn tự cuộn / ô nhập GHIM ĐÁY.
+    Cột nội dung giới hạn ~860px cho dễ đọc trên màn rộng; vùng cuộn vẫn trải hết bề ngang.
+  - Tin nhắn có avatar trợ lý; câu trả lời hiển thị bằng Markdown.
+  - Màn chào có 8 gợi ý theo 4 nhóm (Tồn kho, Hạn sử dụng, Chênh lệch, Cảnh báo) — đều là câu chatbot THỰC SỰ trả lời được.
+  - Ô nhập tự giãn theo số dòng (tối đa ~140px rồi cuộn trong ô). Máy tính: Enter gửi, Shift+Enter xuống dòng.
+    Máy cảm ứng: Enter XUỐNG DÒNG (không có Shift) và gửi bằng nút Gửi — nhận diện bằng media (pointer: coarse).
+  - Gặp lỗi: hiện thông báo + nút "↻ Thử lại" (gửi lại đúng câu vừa lỗi, KHÔNG nhân đôi tin nhắn của người dùng).
+  - Trả lời bắt đầu bằng "MOCK" (chế độ mô phỏng do Gemini hết hạn mức/thiếu key) được đánh dấu rõ
+    "⚠ Chế độ mô phỏng — Gemini đang không dùng được" để khỏi nhầm với câu trả lời của AI thật.
+  - Tự cuộn xuống cuối khi có tin mới — cuộn ngay trong khung tin nhắn (không cuộn cả trang).
+  - Gắn class "is-chat-page" lên <body> khi vào trang và gỡ khi rời trang (chat.css dùng để bỏ đệm cuối trang).
+frontend/src/components/Markdown.jsx — MỚI, bộ hiển thị markdown tự viết (không thêm thư viện)
+  Hỗ trợ: tiêu đề #, **đậm**, *nghiêng*, `mã`, danh sách (kể cả LỒNG nhau, danh sách thưa, đánh số), bảng, trích dẫn,
+  khối mã ```, đường kẻ, liên kết https. AN TOÀN: không dùng dangerouslySetInnerHTML (mọi chữ qua React nên
+  <script>/<img onerror> chỉ hiện như chữ); liên kết chỉ nhận http/https (javascript:/data: không thành liên kết).
+  Cố ý KHÔNG hiểu _gạch_dưới_ là nghiêng để không phá mã/tên có dấu "_"; không hiển thị ảnh và HTML thô.
+frontend/src/styles/chat.css — MỚI (file riêng, không ghi đè app.css)
+  - Trang (.page) thành cột flex cao đúng 100dvh; thanh tiêu đề + menu dưới (điện thoại) chiếm phần của chúng, khung chat lấy
+    toàn bộ phần còn lại (flex:1) — KHÔNG đoán chiều cao thanh nên không bị tràn/bị che. Máy tính: bên phải menu trái, trọn
+    chiều cao. 100dvh (tính cả thanh địa chỉ co giãn trên điện thoại), 100vh làm dự phòng.
+  - Thanh cuộn tối (scrollbar-color + ::-webkit-scrollbar); bảng markdown rộng đúng nội dung, KHÔNG bẻ chữ giữa chừng,
+    cuộn ngang trong bong bóng; ô nhập 16px trên điện thoại để iPhone không tự phóng to khi chạm.
+  - Bộ .chatbot-* cũ trong app.css không còn được dùng (để nguyên cũng không ảnh hưởng gì, có thể xoá sau).
 
-ĐÃ TEST:
-  - Backend (SQLite VÀ PostgreSQL 16 thật): xác nhận 5 cảnh báo kèm id trùng/không tồn tại/đã xử lý -> chỉ đổi đúng 5; chạy lại -> 0;
-    danh sách rỗng -> 0; >2000 id, sai kiểu, thiếu trường -> 422; endpoint xác nhận từng cái vẫn chạy, id lạ vẫn 404.
-  - Giao diện (Chromium/Playwright, API giả): 39 kiểm tra pass — phân loại, số lượng theo bộ lọc, nhóm theo ưu tiên, nhãn nhập/xuất, lọc,
-    tìm kiếm không dấu/mã lô/gợi ý, xác nhận từng cái, hàng loạt (Huỷ/Đồng ý, có/không có cảnh báo chênh lệch), số đếm thanh điều hướng,
-    nhóm theo ngày, phân trang 40->80->105, bố cục 390px không tràn ngang, không lỗi JS. Bộ test cũ của các trang khác vẫn pass.
-  - ĐẦU-CUỐI trên backend thật + Postgres thật (bộ dữ liệu seed): số liệu khớp API; xác nhận hàng loạt 20 cảnh báo sắp hết hàng ghi thật vào DB
-    (đang mở 22->2, đã xử lý 532->552), 2 cảnh báo chênh lệch còn nguyên; tải lại trang vẫn giữ kết quả; tab "Đã xử lý" 552 cảnh báo vẽ mượt.
-  - vite build thành công, oxlint 0 lỗi.
+ĐÃ TEST (Chromium/Playwright, API giả; máy tính 1280x800 và điện thoại cảm ứng 390x844, 46 kiểm tra pass):
+  Máy tính: khung chat cao đúng bằng màn hình, không có thanh cuộn cả trang, trải hết phần bên phải menu, ô nhập sát đáy,
+  nút xoá lịch sử 108px (trước ~420px); markdown (đậm, tiêu đề, danh sách lồng, mã, bảng) không còn ký hiệu thô; chèn
+  <script>/<img onerror> không chạy; nhãn MOCK; lỗi + thử lại không nhân đôi tin nhắn; Shift+Enter/Enter; ô nhập tự giãn
+  rồi dừng ở 140px; 12 tin nhắn vẫn ghim đáy và tự cuộn xuống cuối; tải lại trang giữ nguyên tin nhắn và gửi đúng history;
+  xoá lịch sử có hỏi xác nhận.
+  Điện thoại: ô nhập nằm TRÊN thanh menu dưới (không bị che), không tràn ngang, không có thanh cuộn cả trang, gợi ý 1 cột,
+  Enter xuống dòng và gửi bằng nút, bảng rộng cuộn ngang trong bong bóng.
+  Rời trang chat: class is-chat-page được gỡ, các trang khác giữ nguyên bố cục. Bộ test cũ của các trang khác vẫn pass.
+  Bộ hiển thị markdown: 18 kiểm tra riêng, gồm CHÍNH đoạn trả lời trong ảnh chụp (8 chỗ đậm, 2 tiêu đề, 4 danh sách lồng nhau).
+  vite build thành công, oxlint 0 lỗi.
+  Trong lúc test đã bắt và sửa 2 lỗi thật: (a) trên điện thoại khung chat tràn xuống dưới thanh menu vì quên trừ thanh tiêu đề
+  phía trên -> đổi sang bố cục cột flex; (b) ô bảng bị bẻ chữ giữa chừng ("Số lượn/g").
 
 LƯU Ý:
-  - Cần KHỞI ĐỘNG LẠI backend (có endpoint mới) rồi F5 trình duyệt.
-  - "Xác nhận" chỉ đóng cảnh báo, KHÔNG tự xử lý chênh lệch thật — chênh lệch vẫn phải xử lý ở màn phiếu nhập/đối chiếu.
-  - Ứng dụng không tự sinh cảnh báo 'expiring_soon' (hạn dùng chỉ tính tại chỗ từ tồn kho) nên thẻ đó thường không hiện.
-  - Cảnh báo "sắp hết hàng" sinh theo TỪNG LÔ (kể cả lô đã bán hết, tồn 0) nên cùng 1 sản phẩm có thể có nhiều cảnh báo — nút hàng loạt
-    giúp dọn nhanh. Có thể cải thiện ở backend: tự đóng cảnh báo khi sản phẩm đã nhập thêm hàng, hoặc gộp cảnh báo theo sản phẩm.
-  - Alerts.jsx và api.js bị ghi đè hoàn toàn (làm trên bản code đã giao) — xem diff nếu bạn đã sửa thêm.
-  - Chưa test trên máy/CSDL thật của bạn.
+  - Test dùng API giả; chưa thử với câu trả lời Gemini thật và máy thật của bạn. Điện thoại mới giả lập trên trình duyệt —
+    chưa thử bàn phím ảo thật (iPhone/Android có thể xử lý khác khi bàn phím bật lên).
+  - Nhãn "Chế độ mô phỏng" dựa vào chữ mở đầu "MOCK"/"[MOCK" của backend hiện tại; nếu sau này đổi cách ghi thì nhãn mất.
+  - Nhờ các điều kiện media hiện đại (100dvh, pointer: coarse); trình duyệt quá cũ sẽ dùng 100vh và coi Enter là gửi.
+  - Chatbot.jsx bị ghi đè hoàn toàn (làm trên bản code đã giao) — xem diff nếu bạn đã sửa thêm.

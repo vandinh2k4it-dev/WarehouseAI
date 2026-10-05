@@ -1,0 +1,470 @@
+/* ==========================================================
+   TRANG TRỢ LÝ AI — chiếm TRỌN màn hình, dùng tốt cho cả máy tính lẫn điện thoại.
+   File RIÊNG (không chèn vào app.css) để cập nhật không ghi đè chỉnh sửa khác. Thay thế bộ
+   .chatbot-* cũ trong app.css (không còn dùng, để nguyên cũng không ảnh hưởng gì).
+   ========================================================== */
+
+/* Chiều cao = đúng phần màn hình còn lại giữa các thanh điều hướng, KHÔNG đoán số cứng:
+   trang (.page) thành cột flex cao đúng 100dvh; thanh tiêu đề + menu dưới (điện thoại) chiếm phần của
+   chúng, khung chat lấy toàn bộ phần còn lại (flex:1) — nên dù thanh cao bao nhiêu cũng không bị tràn
+   hay bị che. Máy tính (>=768px): menu nằm bên trái nên khung chat chiếm trọn chiều cao, bỏ đệm cuối trang.
+   100dvh (chiều cao thật, tính cả thanh địa chỉ co giãn trên điện thoại); 100vh là phương án dự phòng. */
+body.is-chat-page .page {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+}
+.page-main.chatPage {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  max-width: none;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+}
+@media (min-width: 768px) {
+  body.is-chat-page .page {
+    padding-bottom: 0;
+  }
+}
+.chatShell {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+
+/* ---------- Thanh tiêu đề ---------- */
+.chatHeader {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.chatHeader-avatar {
+  flex: none;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 20px;
+  background: var(--accent-dim);
+}
+.chatHeader-text {
+  flex: 1;
+  min-width: 0;
+}
+.chatHeader-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.chatHeader-sub {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+/* Nút xoá nhỏ gọn — ghi đè button.ghost { width:100%; max-width:420px } nên chọn 2 class cho đủ độ ưu tiên. */
+.chatHeader .chatClearBtn {
+  flex: none;
+  width: auto;
+  max-width: none;
+  margin: 0;
+  padding: 8px 12px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+/* ---------- Vùng tin nhắn (cuộn) ---------- */
+.chatMessages {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 16px 16px 8px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.chatMessages::-webkit-scrollbar {
+  width: 8px;
+}
+.chatMessages::-webkit-scrollbar-track {
+  background: transparent;
+}
+.chatMessages::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 8px;
+}
+.chatMessages::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+/* Cột nội dung giới hạn ~860px để dòng chữ không quá dài trên màn rộng; vùng cuộn thì vẫn trải hết bề ngang. */
+.chatCol {
+  max-width: 860px;
+  min-height: 100%;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* ---------- Màn hình chào + gợi ý ---------- */
+.chatEmpty {
+  margin: auto;
+  width: 100%;
+  padding: 12px 0;
+  text-align: center;
+}
+.chatEmpty-icon {
+  font-size: 40px;
+  margin-bottom: 6px;
+}
+.chatEmpty-title {
+  font-size: 18px;
+  font-weight: 700;
+}
+.chatEmpty-sub {
+  max-width: 520px;
+  margin: 6px auto 0;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+.chatSuggestGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 22px;
+  text-align: left;
+}
+.chatSuggestGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+}
+.chatSuggestGroup-title {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.chatSuggestBtn {
+  width: auto;
+  max-width: none;
+  margin: 0;
+  padding: 10px 12px;
+  text-align: left;
+  font: inherit;
+  font-size: 13.5px;
+  line-height: 1.4;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+}
+.chatSuggestBtn:hover {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+}
+
+/* ---------- Tin nhắn ---------- */
+.chatRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.chatRow.user {
+  justify-content: flex-end;
+}
+.chatAvatar {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 16px;
+  background: var(--accent-dim);
+}
+.chatBubble {
+  min-width: 0;
+  padding: 10px 14px;
+  border-radius: 16px;
+  font-size: 15px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.chatBubble.user {
+  max-width: min(85%, 640px);
+  white-space: pre-wrap;
+  color: #1a1200;
+  background: var(--accent);
+  border-bottom-right-radius: 5px;
+}
+.chatBubble.assistant {
+  max-width: min(calc(100% - 42px), 780px);
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-top-left-radius: 5px;
+}
+.chatBubble.assistant.mock {
+  border-color: var(--accent);
+}
+.chatMockTag {
+  margin-bottom: 6px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--accent);
+}
+.chatBubble.chatError {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  color: var(--danger);
+  border-color: var(--danger);
+}
+.chatError .chatRetryBtn {
+  width: auto;
+  max-width: none;
+  margin: 0;
+  padding: 6px 12px;
+  font-size: 13px;
+}
+.chatThinking {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 16px 14px;
+}
+.chatDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  animation: chatDotBlink 1.2s infinite ease-in-out;
+}
+.chatDot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+.chatDot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+@keyframes chatDotBlink {
+  0%,
+  80%,
+  100% {
+    opacity: 0.3;
+  }
+  40% {
+    opacity: 1;
+  }
+}
+
+/* ---------- Ô nhập (ghim đáy) ---------- */
+.chatComposer {
+  flex: none;
+  padding: 10px 16px 8px;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+}
+.chatComposer-inner {
+  max-width: 860px;
+  margin: 0 auto;
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+.chatComposer .chatInput {
+  flex: 1;
+  min-width: 0;
+  max-height: 140px;
+  margin: 0;
+  padding: 12px 14px;
+  resize: none;
+  font: inherit;
+  font-size: 15px;
+  line-height: 1.4;
+  color: var(--text);
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+}
+.chatComposer .chatInput:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.chatComposer .chatSendBtn {
+  flex: none;
+  width: auto;
+  max-width: none;
+  margin: 0;
+  padding: 12px 18px;
+  white-space: nowrap;
+  border-radius: 14px;
+}
+.chatComposer-hint {
+  max-width: 860px;
+  margin: 4px auto 0;
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+/* ---------- Điện thoại ---------- */
+@media (max-width: 640px) {
+  .chatHeader {
+    padding: 8px 12px;
+  }
+  .chatHeader-sub {
+    display: none;
+  }
+  .chatMessages {
+    padding: 12px 12px 6px;
+  }
+  .chatBubble {
+    font-size: 14.5px;
+  }
+  .chatSuggestGrid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+    margin-top: 16px;
+  }
+  .chatEmpty-icon {
+    font-size: 32px;
+  }
+  .chatComposer {
+    padding: 8px 12px;
+  }
+  /* >=16px để iPhone không tự phóng to trang khi chạm vào ô nhập */
+  .chatComposer .chatInput {
+    font-size: 16px;
+  }
+}
+@media (pointer: coarse) {
+  .chatComposer-hint {
+    display: none; /* máy cảm ứng: Enter xuống dòng, gửi bằng nút — không cần dòng gợi ý phím */
+  }
+}
+
+/* ---------- Nội dung markdown trong bong bóng trả lời ---------- */
+.md > :first-child {
+  margin-top: 0;
+}
+.md > :last-child {
+  margin-bottom: 0;
+}
+.md p {
+  margin: 0 0 0.65em;
+}
+.md-h1,
+.md-h2,
+.md-h3 {
+  margin: 0.9em 0 0.4em;
+  font-weight: 700;
+  line-height: 1.35;
+}
+.md-h1 {
+  font-size: 17px;
+}
+.md-h2 {
+  font-size: 16px;
+}
+.md-h3 {
+  font-size: 15.5px;
+  color: var(--accent);
+}
+.md ul,
+.md ol {
+  margin: 0.2em 0 0.65em;
+  padding-left: 1.3em;
+}
+.md li {
+  margin: 0.25em 0;
+}
+.md li > ul,
+.md li > ol {
+  margin: 0.25em 0 0.1em;
+}
+.md code {
+  padding: 1px 6px;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.88em;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.md pre {
+  margin: 0.5em 0;
+  padding: 10px 12px;
+  overflow-x: auto;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.md pre code {
+  padding: 0;
+  background: none;
+  border: none;
+}
+.md blockquote {
+  margin: 0.5em 0;
+  padding: 4px 12px;
+  color: var(--text-muted);
+  border-left: 3px solid var(--accent);
+}
+.md hr {
+  margin: 12px 0;
+  border: none;
+  border-top: 1px solid var(--border);
+}
+.md a {
+  color: var(--accent);
+}
+.md-tableWrap {
+  margin: 0.5em 0;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+/* Bảng: rộng đúng bằng nội dung (không ép co lại), vừa khung thì giãn đầy khung, quá khung thì CUỘN NGANG
+   trong .md-tableWrap. Ô KHÔNG bị bẻ chữ giữa chừng (bong bóng chat có overflow-wrap:anywhere nên phải
+   tắt lại ở đây — nếu không "Số lượng" bị bẻ thành "Số lượn/g", mã lô "L260/901A"). */
+.md table {
+  width: max-content;
+  min-width: 100%;
+  max-width: none;
+  border-collapse: collapse;
+  font-size: 13.5px;
+}
+.md th,
+.md td {
+  padding: 7px 12px;
+  text-align: left;
+  vertical-align: top;
+  overflow-wrap: normal;
+  word-break: normal;
+  border-bottom: 1px solid var(--border);
+}
+.md th {
+  font-weight: 700;
+  background: var(--surface);
+}
+.md tr:last-child td {
+  border-bottom: none;
+}
