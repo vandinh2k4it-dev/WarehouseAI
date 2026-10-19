@@ -11,3 +11,15 @@ venv/
 
 .vscode/
 .idea/
+
+# File sinh ra khi chạy / dữ liệu cục bộ — không đưa vào git
+backend/uploads/
+backend/phieu_test/
+backend/runs/
+runs/
+/uploads/
+backup*.sql
+*.sql.bak
+
+# Cấu hình riêng của Claude Code trên máy này
+.claude/

@@ -1,7 +1,7 @@
 # Bối cảnh dự án — ĐỌC FILE NÀY TRƯỚC KHI LÀM BẤT KỲ VIỆC GÌ
 
 Khóa luận tốt nghiệp: **"Hệ thống Quản lý Kho hàng Thông minh dựa trên Thị giác
-Máy tính và Chatbot AI"** — Cao Văn Định (backend/OCR/chatbot/hệ thống) +
+Máy tính và Chatbot AI"** — Cao Văn Định (CSDL/API, OCR, chatbot, giao diện) +
 Nguyễn Thành Luân (thu thập dữ liệu/huấn luyện model YOLOv8), ĐH Công nghiệp
 TP.HCM K18, lớp DHKHMT18CTT, GVHD TS. Lê Thị Vĩnh Thanh.
 
@@ -18,18 +18,24 @@ nhập hàng tiếng Việt (VietOCR + PaddleOCR lai). YOLOv8 + ByteTrack đếm
 lượng thùng carton qua camera (KHÔNG phân loại loại hàng bằng thị giác máy
 tính — con người chọn loại hàng, camera chỉ đếm số lượng, đây là quyết định
 lõi đã duyệt trong đề cương, không được thay đổi). Đối chiếu số đếm với
-phiếu nhập để tự động cập nhật tồn kho theo FEFO. Chatbot Claude API (tool-
-use, tra DB thật) để nhân viên hỏi đáp tồn kho/cảnh báo.
+phiếu nhập để tự động cập nhật tồn kho theo FEFO. Chatbot **Gemini**
+(google-genai, function calling, tra DB thật) để nhân viên hỏi đáp tồn
+kho/cảnh báo. Giao diện chính là **React PWA** ở thư mục `frontend/` (xem
+`CLAUDE.md` ở gốc repo để biết công nghệ, quy tắc nghiệp vụ đã chốt và các
+"bẫy" kỹ thuật); hệ thống chạy hoàn toàn trên máy local (đã gỡ Railway).
 
 ## 2. TRẠNG THÁI HIỆN TẠI (theo từng phần)
 
 ### 2.1 Backend + Database — ĐÃ HOÀN THIỆN, đã test kỹ
 - FastAPI + PostgreSQL, 8 bảng, chạy ổn định.
-- Đã test 6/6 bước luồng nghiệp vụ qua `test/verify_full_flow.py`.
-- Data thực tế: `python -m db.seed_main` tạo 30 sản phẩm tạp hoá VN thật
-  (Vinamilk, Lavie, Omo, Hảo Hảo...), có sẵn tình huống low_stock/expiring
-  soon/discrepancy để demo ngay. **CẢNH BÁO: script này XOÁ SẠCH data cũ**
-  trừ khi chạy với `--no-wipe`.
+- Đã test 6/6 bước luồng nghiệp vụ qua `test/verify_full_flow.py`; các bản
+  sửa gần đây có bài test riêng `test/check_*.py` (chạy trên PostgreSQL thật,
+  dùng dữ liệu tạm rồi rollback).
+- Data mẫu: **`python -m db.seed_realistic`** (mô phỏng 12 tuần nhập/xuất thực
+  tế; hỏi xác nhận gõ `XOA`; tuỳ chọn `--yes --clear-uploads --days N --seed N`).
+  `db/seed_main.py` chỉ là bộ demo dàn dựng cũ (30 sản phẩm + tình huống
+  dựng sẵn). **CẢNH BÁO: cả hai đều XOÁ SẠCH data cũ** (seed_main có
+  `--no-wipe`) — sao lưu trước bằng `pg_dump`.
 
 ### 2.2 OCR — ĐÃ HOÀN THIỆN
 File: `ocr/ocr_engine.py`. Kiến trúc lai: **PaddleOCR chỉ dò vị trí dòng chữ
@@ -40,12 +46,15 @@ thật.
 
 ### 2.3 Chatbot — ĐÃ HOÀN THIỆN
 Thư mục `app/chatbot/`:
-- `service.py` — gọi Claude API thật (tool-use, model `claude-haiku-4-5-20251001`),
-  8 tool truy vấn DB thật (tồn kho, sản phẩm, cảnh báo, phiếu nhập, đối
-  chiếu lệch...).
-- `mock_service.py` — chế độ mô phỏng, KHÔNG cần credit Claude API, tự
-  chọn tool theo từ khoá, vẫn tra DB thật (không bịa số). Tự động fallback
-  khi hết credit thật hoặc chưa cấu hình `ANTHROPIC_API_KEY`.
+- `service.py` — gọi **Gemini** qua `google-genai` (function calling; hằng
+  `MODEL_NAME`, hiện `gemini-3.5-flash-lite` — free tier 500 lượt/ngày), 8
+  tool CHỈ ĐỌC truy vấn DB thật (tồn kho, sản phẩm, cảnh báo, phiếu nhập,
+  đối chiếu lệch...). Biến môi trường: `GEMINI_API_KEY`, `CHATBOT_MOCK`.
+- `mock_service.py` — chế độ mô phỏng, không cần key, tự chọn tool theo từ
+  khoá, vẫn tra DB thật (không bịa số). Tự động fallback khi thiếu
+  `GEMINI_API_KEY` hoặc Gemini lỗi (vd hết hạn mức 429). Khi chạy thực
+  nghiệm chatbot phải dùng Gemini thật — mock định tuyến theo từ khoá nên
+  không phản ánh đúng.
 - Endpoint: `POST /chatbot/ask`.
 
 ### 2.4 Camera + Model YOLOv8 — VỪA HOÀN THÀNH TRAIN, ĐANG TÍCH HỢP
@@ -113,21 +122,24 @@ debug):**
   Truy cập: `http://<IP-máy-tính>:8000/app/mobile.html` (điện thoại và máy
   tính phải cùng mạng WiFi).
 
-**`camera/count_pipeline.py` (CLI, dùng để test bằng dòng lệnh):**
-- ĐÃ SỬA lỗi treo (xem mục 3.7 bên dưới).
-- **CHƯA nối vào luồng mới** — vẫn dùng endpoint cũ `POST /camera-sessions`
-  (tạo 1 session độc lập, không qua `start-import`/`stop`). Việc này còn
-  dang dở, cần làm tiếp nếu muốn dùng CLI đúng luồng đối chiếu theo dòng.
+**`camera/count_pipeline.py`:**
+- ĐÃ SỬA lỗi treo (xem mục 3.7 bên dưới). Nay tự đọc video bằng OpenCV, tự
+  vẽ khung + số đếm ra `annotated.mp4`, theo dõi từng khung với
+  `persist=True`, hỗ trợ giới hạn vùng nhận dạng `--roi` (`camera/pick_roi.py`
+  để chọn vùng), cấu hình ByteTrack riêng `camera/carton_bytetrack.yaml`.
+- Luồng chính trên giao diện là `/camera-sessions/{id}/count-video` (gọi
+  trực tiếp `count_boxes_in_video`, đã chạy trong threadpool để không chặn
+  server) rồi `/stop` nội bộ. Endpoint cũ `POST /camera-sessions` và
+  `/reconciliation/run` (đối chiếu theo CẢ PHIẾU) chỉ còn để tương thích
+  ngược/test, KHÔNG dùng trên giao diện.
 
-**VẤN ĐỀ ĐANG DEBUG DỞ (khi file này được cập nhật lần cuối):** trang
-`mobile.html` mở trên điện thoại (Chrome iOS) hiện màn hình trắng hoàn
-toàn, kể cả `/app/` (trang chính) và `/health` cũng trắng — nghi ngờ hàng
-đầu là **WiFi có chế độ cô lập thiết bị (AP/Client Isolation)** khiến điện
-thoại và máy tính cùng mạng nhưng không thấy nhau. Đã hướng dẫn test bằng
-cách bật Personal Hotspot trên iPhone, cho máy tính kết nối vào mạng đó,
-thử lại — **chưa có kết quả xác nhận cuối cùng tại thời điểm ghi chú này.**
-Nếu bạn đọc file này và vấn đề đã được giải quyết, XOÁ đoạn này và ghi lại
-nguyên nhân thật + cách sửa vào mục 3 bên dưới.
+**Ghi chú về `static/mobile.html` (trang demo cũ):** từng bị trắng trên
+điện thoại, nghi do WiFi bật chế độ cô lập thiết bị (AP/Client Isolation) —
+chưa có kết luận. Mục này nhiều khả năng ĐÃ LỖI THỜI: giao diện chính nay là
+React PWA (`frontend/`), `static/*.html` chỉ còn là bản demo cũ. Nếu cần dùng
+điện thoại truy cập máy tính: chạy `uvicorn ... --host 0.0.0.0`, cùng mạng
+WiFi (hoặc bật hotspot) và mở đúng IP máy tính — chưa test bàn phím ảo/camera
+trên điện thoại thật.
 
 ## 3. CHUỖI LỖI MÔI TRƯỜNG ĐÃ GẶP VÀ CÁCH SỬA (rất hữu ích nếu gặp lại)
 
@@ -178,8 +190,17 @@ nguyên nhân thật + cách sửa vào mục 3 bên dưới.
 - Windows, Python 3.11, venv tại `venv\`. Postgres local (`warehouse_db`,
   user `postgres`).
 - Chạy server: `uvicorn app.main:app --reload` (thêm `--host 0.0.0.0` nếu
-  cần truy cập từ điện thoại/thiết bị khác trong mạng).
-- Data thực tế: `python -m db.seed_main` (XOÁ SẠCH data cũ trừ `--no-wipe`).
+  cần truy cập từ điện thoại/thiết bị khác trong mạng). Frontend: `cd frontend
+  ; npm run dev`.
+- Data thực tế: `python -m db.seed_realistic` (hoặc `seed_main` bộ demo cũ);
+  cả hai XOÁ SẠCH data cũ — `pg_dump` sao lưu trước (xem `CLAUDE.md` mục 4).
+- Kiểm tra `schema.sql` khớp `models.py`: `python db/check_schema_sync.py`.
+- Tạo ảnh phiếu test OCR: `python -m db.make_test_receipts`.
+- Dọn cảnh báo `low_stock` cũ (theo lô) về dạng gộp theo sản phẩm:
+  `python -m db.migrate_merge_low_stock_alerts [--confirm]` (mặc định chỉ xem trước).
+- Thư mục `uploads/`, `phieu_test/`, `backup*.sql` KHÔNG nằm trong git
+  (xem `.gitignore`); model `models/carton_counter_best.pt` (~22 MB) vẫn
+  được commit để người khác clone về dùng ngay.
 - Test toàn bộ luồng nghiệp vụ 1 lệnh: `python test\verify_full_flow.py <receipt_id>`.
 - Test chatbot tiếng Việt AN TOÀN (không qua PowerShell `-c`):
   `python test\debug_chatbot_msg.py`.
@@ -192,9 +213,11 @@ nguyên nhân thật + cách sửa vào mục 3 bên dưới.
 
 ## 6. VIỆC CÒN LẠI (theo thứ tự ưu tiên gợi ý)
 
-1. Debug xong vụ trang điện thoại trắng (mục 2.4, đang dở).
-2. Nối `camera/count_pipeline.py` (CLI) vào luồng `start-import`/`stop` mới.
-3. Test thật lần đầu: điện thoại quay video thật → model thật → đối chiếu
-   thành công end-to-end (chưa test được vì đang vướng mục 1).
-4. Báo GVHD kết quả train (bảng số liệu + biểu đồ đã có sẵn, đáng báo ngay).
-5. Cập nhật báo cáo tiến độ với toàn bộ tiến trình mới.
+(Danh sách cũ đã xong/lỗi thời — xem `CLAUDE.md` mục 8 để biết việc còn mở.)
+1. Xác thực (auth): hiện mọi API mở — thêm 1 lớp bảo vệ đơn giản (API key/PIN
+   chung) hoặc ghi rõ vào mục "Hạn chế" của báo cáo.
+2. Chatbot: bổ sung công cụ (thống kê nhập–xuất, tra theo mã lô, lọc phiếu,
+   lô đã hết hạn...), chạy thực nghiệm theo nhóm câu hỏi bằng Gemini thật.
+3. Test OCR thật trên ảnh khó (tối/nghiêng) và test trên điện thoại thật.
+4. Chưa có chức năng kiểm kê/điều chỉnh tồn (loại giao dịch `adjustment`
+   chưa có endpoint) và chưa có Alembic migration (đang `create_all`).

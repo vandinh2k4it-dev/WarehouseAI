@@ -1,15 +1,10 @@
-fix(backend): validate ảnh phiếu, số lượng dương, VAPID mailto, phiếu reconciled đúng điều kiện, recount có mã, bỏ giới hạn 100, đếm video không chặn server
+chore: dọn repo — bỏ video/ảnh/dump khỏi git, cập nhật .gitignore, .env.example, PROJECT_CONTEXT.md
 
-Rà soát phát hiện 4 bản sửa mà CLAUDE.md ghi "đã làm" nhưng không có trong code (validate ảnh, số lượng dương, VAPID, phiếu không tự xong) — nay làm lại đầy đủ, cộng thêm 3 lỗi mới tìm ra.
-
-- validate ảnh phiếu (routers/receipts.py): chỉ nhận .jpg/.jpeg/.png/.webp/.bmp, content-type phải là image/*, tối đa 15 MB (env MAX_RECEIPT_IMAGE_MB), mở thử bằng Pillow. Kiểm tra TRƯỚC khi tạo phiếu: file sai không tốn mã PN, không để lại phiếu 'flagged' rác hay file trong uploads/. Trước đây upload .exe vẫn lưu file + tạo phiếu rồi mới lỗi OCR.
-- số lượng dương (schemas.py): Field(gt=0) cho số lượng dòng phiếu (tạo tay/thêm/sửa), xuất kho, số dự kiến xuất camera; counted_quantity >= 0. main.py thêm handler đổi lỗi 422 thành 1 câu tiếng Việt trong "detail" (frontend chỉ hiện detail dạng chuỗi, trước đây hiện nguyên cục JSON).
-- VAPID (push_service.py): bỏ "mailto:" thừa và khoảng trắng của VAPID_CLAIM_EMAIL, tránh ghép thành "mailto:mailto:...".
-- phiếu reconciled (routers/camera.py _maybe_complete_receipt): chỉ khi MỌI dòng đã gán sản phẩm và đã đếm xong (trước đây bỏ qua dòng chưa gán SP nên phiếu "xong" sớm).
-- recount thiếu session_code (routers/camera.py resolve_segment): phiên đếm lại nay có mã DEM… (nhập) / PX… (xuất); trước đây NULL nên phiếu xuất in ra không có mã.
-- giới hạn 100: /receipts và /inventory/export-history nay có tham số limit (mặc định 1000, tối đa 5000). DB thật có 120 phiếu nên 20 phiếu cũ đã biến mất khỏi giao diện, và trang Lịch sử xuất chỉ thấy 100/2794 lượt. Frontend: api.listExportHistory(limit=5000); ExportFlow chỉ xin 5 dòng.
-- đếm video chặn server: count-video và live-frame đổi từ async def sang def (chạy trong threadpool) — YOLO nặng không còn đóng băng event loop (/health và request khác vẫn phản hồi). Video ghi ra đĩa theo khối (copyfileobj) thay vì nạp cả file vào RAM; tên file client gửi được làm sạch (Path.name).
-
-- đã test: backend/test/check_group_a.py trên PostgreSQL thật (dữ liệu tạm + rollback, đã xác nhận DB không còn dữ liệu rác): cả 7 mục đạt; 4 bài test cũ (kpi, fefo, cảnh báo, match tên) vẫn đạt; `npx vite build` OK, `npx oxlint src` chỉ còn 1 cảnh báo cũ ở Toast.jsx.
-- chưa test: đếm video / live-frame thật sau khi đổi sang def (chỉ kiểm tra không còn là coroutine); giao diện sau khi đổi limit; OCR thật với ảnh hợp lệ qua endpoint /upload (chỉ test hàm lưu+kiểm tra ảnh).
-- lưu ý: trang Lịch sử xuất vẫn tính thống kê phía trình duyệt trên tối đa 5000 dòng — nếu vượt thì cần phân trang/tổng hợp phía server. Thay đổi hành vi: số lượng 0/âm nay trả 422 thay vì 400 (endpoint xuất) — frontend đọc "detail" nên không ảnh hưởng. Phần của Định.
+- đổi gì:
+  * .gitignore: thêm backend/uploads/, backend/phieu_test/, runs/, /uploads/, backup*.sql, .claude/.
+  * `git rm --cached` 129 file đã lỡ đưa vào git (121 video/ảnh trong backend/uploads, 7 file backend/phieu_test, backend/backup.sql). File vẫn còn nguyên trên đĩa, chỉ không theo dõi nữa. Giữ nguyên backend/models/carton_counter_best.pt (~22 MB) để Luân/GVHD clone về chạy được ngay.
+  * backend/.env.example: bỏ ANTHROPIC_API_KEY (đã chuyển sang Gemini), thêm GEMINI_API_KEY, CHATBOT_MOCK, RECEIPT_UPLOAD_DIR, MAX_RECEIPT_IMAGE_MB; sửa chú thích CORS (không còn Railway/Vercel), chú thích VAPID_CLAIM_EMAIL (không cần gõ 'mailto:').
+  * backend/PROJECT_CONTEXT.md: sửa các chỗ lỗi thời theo CLAUDE.md mục 9 — chatbot Gemini (không phải Claude), seed_realistic, count_pipeline mới (OpenCV/ROI/persist), mục mobile.html trắng chuyển thành ghi chú lỗi thời, lệnh chạy/kiểm tra mới (check_schema_sync, make_test_receipts, migrate_merge_low_stock_alerts), danh sách "việc còn lại" mới, bỏ nhắc Railway.
+- vì sao: uploads/ nặng ~430 MB (video đếm, video đã vẽ khung) làm repo phình và dễ commit nhầm mỗi lần chạy thử; tài liệu/ví dụ cấu hình đang chỉ sai hướng (Claude API, ANTHROPIC_API_KEY).
+- đã test: kiểm tra `git check-ignore` đúng các đường dẫn mới và schema.sql KHÔNG bị ignore; đếm file trên đĩa còn nguyên sau khi gỡ khỏi git (136 file uploads, 7 file phieu_test, backup.sql); các chuỗi lỗi thời (anthropic, claude api, railway…) không còn trong PROJECT_CONTEXT.md/.env.example trừ 1 câu nói "đã gỡ Railway".
+- chưa làm / lưu ý: các file này VẪN nằm trong LỊCH SỬ git (clone mới vẫn tải về) — muốn thu nhỏ hẳn phải chạy git filter-repo + force-push (thao tác phá huỷ, cần Luân clone lại, chưa làm). backend/README.md còn nhắc Claude API và ví dụ threshold_pct 0.02 (chưa sửa); backend/models/README.md ghi "file gửi qua Claude" (chưa sửa); frontend/CSS_CAN_THEM.css và frontend/commit-msg.txt là file thừa (chưa xoá). Phần của Định.
