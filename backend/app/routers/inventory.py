@@ -36,13 +36,32 @@ def update_inventory_location(
     return inv
 
 
+def _low_stock_product_ids(db: Session) -> list[int]:
+    """Sản phẩm có TỔNG tồn (cộng mọi lô) < ngưỡng riêng — cùng cách tính với
+    chatbot `get_low_stock_products`. Tính theo sản phẩm chứ không theo lô, vì
+    các lô đã bán hết (tồn 0) tích luỹ theo thời gian sẽ làm số liệu phình to."""
+    total = func.coalesce(func.sum(models.Inventory.quantity), 0)
+    rows = (
+        db.query(models.Product.id)
+        .outerjoin(models.Inventory, models.Inventory.product_id == models.Product.id)
+        .group_by(models.Product.id, models.Product.low_stock_threshold)
+        .having(total < models.Product.low_stock_threshold)
+        .all()
+    )
+    return [r.id for r in rows]
+
+
 @router.get("/low-stock", response_model=list[schemas.InventoryOut])
 def low_stock(db: Session = Depends(get_db)):
-    """Dùng cho chatbot: 'kho nào sắp hết hàng?' — join với ngưỡng riêng của từng sản phẩm."""
+    """Dùng cho chatbot: 'kho nào sắp hết hàng?' — các lô CÒN HÀNG (tồn > 0) của
+    những sản phẩm có tổng tồn dưới ngưỡng. Lô tồn 0 bị bỏ."""
+    product_ids = _low_stock_product_ids(db)
+    if not product_ids:
+        return []
     return (
         db.query(models.Inventory)
-        .join(models.Product)
-        .filter(models.Inventory.quantity <= models.Product.low_stock_threshold)
+        .filter(models.Inventory.product_id.in_(product_ids))
+        .filter(models.Inventory.quantity > 0)
         .all()
     )
 
@@ -124,12 +143,7 @@ def analytics(days: int = 30, db: Session = Depends(get_db)):
 
     # --- KPI nhanh cho đầu trang Dashboard ---
     open_alerts = db.query(models.Alert).filter(models.Alert.status == "open").count()
-    low_stock_products = (
-        db.query(models.Inventory)
-        .join(models.Product)
-        .filter(models.Inventory.quantity <= models.Product.low_stock_threshold)
-        .count()
-    )
+    low_stock_products = len(_low_stock_product_ids(db))
     cutoff = date.today() + timedelta(days=30)
     expiring_soon_batches = (
         db.query(models.Inventory)
@@ -251,15 +265,31 @@ def perform_fefo_export(
                 detail=f"Không tìm thấy lô '{batch_code}' của sản phẩm #{product_id} trong tồn kho",
             )
     else:
+        # Tự động FEFO: bỏ các lô ĐÃ HẾT HẠN (không bán được). Muốn xuất/huỷ lô
+        # hết hạn thì phải chỉ định rõ batch_code.
+        today = date.today()
+        query = query.filter(
+            (models.Inventory.expiry_date.is_(None)) | (models.Inventory.expiry_date >= today)
+        )
         batches = query.order_by(models.Inventory.expiry_date.asc().nullslast()).all()
+        expired_qty = float(
+            db.query(func.coalesce(func.sum(models.Inventory.quantity), 0))
+            .filter(models.Inventory.product_id == product_id, models.Inventory.expiry_date < today)
+            .scalar()
+        )
 
     available_total = sum(float(b.quantity) for b in batches)
     if available_total < quantity:
+        expired_note = (
+            f" (chưa tính {expired_qty} đã hết hạn — muốn xuất/huỷ phải chỉ định mã lô)"
+            if not batch_code and expired_qty > 0
+            else ""
+        )
         raise HTTPException(
             status_code=400,
             detail=(
                 f"Không đủ tồn kho: yêu cầu xuất {quantity}, "
-                f"hiện chỉ còn {available_total} (sản phẩm '{product.name}')"
+                f"hiện chỉ còn {available_total} (sản phẩm '{product.name}'){expired_note}"
             ),
         )
 

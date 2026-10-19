@@ -1,55 +1,14 @@
-feat(chatbot): trang Trợ lý AI chiếm trọn màn hình, hiển thị markdown, dùng tốt trên máy tính lẫn điện thoại
+fix(inventory): kpi "sắp hết hàng" đếm theo sản phẩm; xuất kho FEFO tự động bỏ lô đã hết hạn
 
-Chỉ sửa frontend, KHÔNG đổi backend/API (vẫn dùng api.chatbotAsk, vẫn lưu lịch sử bằng localStorage như cũ).
+1) kpi sắp hết hàng
+- đổi gì: thêm _low_stock_product_ids (tổng tồn của sản phẩm < ngưỡng, cùng cách tính với công cụ chatbot get_low_stock_products). GET /inventory/analytics đếm số sản phẩm; GET /inventory/low-stock chỉ trả các lô còn hàng (tồn > 0) của những sản phẩm đó.
+- vì sao: trước đây đếm từng lô có tồn <= ngưỡng nên các lô đã bán hết (tồn 0, tích luỹ theo thời gian) bị tính là "sắp hết" -> KPI ra 390.
+- đã test: PostgreSQL thật, backend/test/check_low_stock_kpi.py (chỉ đọc): cũ 390 -> mới 3, khớp chatbot (3).
+- lưu ý: ngưỡng đổi từ <= sang < để khớp chatbot; sản phẩm tồn 0 vẫn tính vào KPI nhưng không có lô trong /low-stock.
 
-Lỗi thấy trên ảnh chụp trước khi sửa:
-  1) Khung chat bị khoá height:72vh nên không bao giờ đầy màn hình (nửa dưới màn hình để trống).
-  2) Nút "Xoá lịch sử" phình rộng ~420px do luật button.ghost { width:100%; max-width:420px }.
-  3) Câu trả lời của Gemini (markdown) hiện NGUYÊN KÝ HIỆU thô: **đậm**, ### tiêu đề, * danh sách.
-  4) Thanh cuộn trắng chói trên nền tối.
-
-frontend/src/pages/Chatbot.jsx (viết lại phần giao diện; logic gọi API + lưu lịch sử giữ nguyên)
-  - Bố cục đầy màn hình: thanh tiêu đề (có nút "Xoá lịch sử" nhỏ gọn) / vùng tin nhắn tự cuộn / ô nhập GHIM ĐÁY.
-    Cột nội dung giới hạn ~860px cho dễ đọc trên màn rộng; vùng cuộn vẫn trải hết bề ngang.
-  - Tin nhắn có avatar trợ lý; câu trả lời hiển thị bằng Markdown.
-  - Màn chào có 8 gợi ý theo 4 nhóm (Tồn kho, Hạn sử dụng, Chênh lệch, Cảnh báo) — đều là câu chatbot THỰC SỰ trả lời được.
-  - Ô nhập tự giãn theo số dòng (tối đa ~140px rồi cuộn trong ô). Máy tính: Enter gửi, Shift+Enter xuống dòng.
-    Máy cảm ứng: Enter XUỐNG DÒNG (không có Shift) và gửi bằng nút Gửi — nhận diện bằng media (pointer: coarse).
-  - Gặp lỗi: hiện thông báo + nút "↻ Thử lại" (gửi lại đúng câu vừa lỗi, KHÔNG nhân đôi tin nhắn của người dùng).
-  - Trả lời bắt đầu bằng "MOCK" (chế độ mô phỏng do Gemini hết hạn mức/thiếu key) được đánh dấu rõ
-    "⚠ Chế độ mô phỏng — Gemini đang không dùng được" để khỏi nhầm với câu trả lời của AI thật.
-  - Tự cuộn xuống cuối khi có tin mới — cuộn ngay trong khung tin nhắn (không cuộn cả trang).
-  - Gắn class "is-chat-page" lên <body> khi vào trang và gỡ khi rời trang (chat.css dùng để bỏ đệm cuối trang).
-frontend/src/components/Markdown.jsx — MỚI, bộ hiển thị markdown tự viết (không thêm thư viện)
-  Hỗ trợ: tiêu đề #, **đậm**, *nghiêng*, `mã`, danh sách (kể cả LỒNG nhau, danh sách thưa, đánh số), bảng, trích dẫn,
-  khối mã ```, đường kẻ, liên kết https. AN TOÀN: không dùng dangerouslySetInnerHTML (mọi chữ qua React nên
-  <script>/<img onerror> chỉ hiện như chữ); liên kết chỉ nhận http/https (javascript:/data: không thành liên kết).
-  Cố ý KHÔNG hiểu _gạch_dưới_ là nghiêng để không phá mã/tên có dấu "_"; không hiển thị ảnh và HTML thô.
-frontend/src/styles/chat.css — MỚI (file riêng, không ghi đè app.css)
-  - Trang (.page) thành cột flex cao đúng 100dvh; thanh tiêu đề + menu dưới (điện thoại) chiếm phần của chúng, khung chat lấy
-    toàn bộ phần còn lại (flex:1) — KHÔNG đoán chiều cao thanh nên không bị tràn/bị che. Máy tính: bên phải menu trái, trọn
-    chiều cao. 100dvh (tính cả thanh địa chỉ co giãn trên điện thoại), 100vh làm dự phòng.
-  - Thanh cuộn tối (scrollbar-color + ::-webkit-scrollbar); bảng markdown rộng đúng nội dung, KHÔNG bẻ chữ giữa chừng,
-    cuộn ngang trong bong bóng; ô nhập 16px trên điện thoại để iPhone không tự phóng to khi chạm.
-  - Bộ .chatbot-* cũ trong app.css không còn được dùng (để nguyên cũng không ảnh hưởng gì, có thể xoá sau).
-
-ĐÃ TEST (Chromium/Playwright, API giả; máy tính 1280x800 và điện thoại cảm ứng 390x844, 46 kiểm tra pass):
-  Máy tính: khung chat cao đúng bằng màn hình, không có thanh cuộn cả trang, trải hết phần bên phải menu, ô nhập sát đáy,
-  nút xoá lịch sử 108px (trước ~420px); markdown (đậm, tiêu đề, danh sách lồng, mã, bảng) không còn ký hiệu thô; chèn
-  <script>/<img onerror> không chạy; nhãn MOCK; lỗi + thử lại không nhân đôi tin nhắn; Shift+Enter/Enter; ô nhập tự giãn
-  rồi dừng ở 140px; 12 tin nhắn vẫn ghim đáy và tự cuộn xuống cuối; tải lại trang giữ nguyên tin nhắn và gửi đúng history;
-  xoá lịch sử có hỏi xác nhận.
-  Điện thoại: ô nhập nằm TRÊN thanh menu dưới (không bị che), không tràn ngang, không có thanh cuộn cả trang, gợi ý 1 cột,
-  Enter xuống dòng và gửi bằng nút, bảng rộng cuộn ngang trong bong bóng.
-  Rời trang chat: class is-chat-page được gỡ, các trang khác giữ nguyên bố cục. Bộ test cũ của các trang khác vẫn pass.
-  Bộ hiển thị markdown: 18 kiểm tra riêng, gồm CHÍNH đoạn trả lời trong ảnh chụp (8 chỗ đậm, 2 tiêu đề, 4 danh sách lồng nhau).
-  vite build thành công, oxlint 0 lỗi.
-  Trong lúc test đã bắt và sửa 2 lỗi thật: (a) trên điện thoại khung chat tràn xuống dưới thanh menu vì quên trừ thanh tiêu đề
-  phía trên -> đổi sang bố cục cột flex; (b) ô bảng bị bẻ chữ giữa chừng ("Số lượn/g").
-
-LƯU Ý:
-  - Test dùng API giả; chưa thử với câu trả lời Gemini thật và máy thật của bạn. Điện thoại mới giả lập trên trình duyệt —
-    chưa thử bàn phím ảo thật (iPhone/Android có thể xử lý khác khi bàn phím bật lên).
-  - Nhãn "Chế độ mô phỏng" dựa vào chữ mở đầu "MOCK"/"[MOCK" của backend hiện tại; nếu sau này đổi cách ghi thì nhãn mất.
-  - Nhờ các điều kiện media hiện đại (100dvh, pointer: coarse); trình duyệt quá cũ sẽ dùng 100vh và coi Enter là gửi.
-  - Chatbot.jsx bị ghi đè hoàn toàn (làm trên bản code đã giao) — xem diff nếu bạn đã sửa thêm.
+2) FEFO bỏ lô hết hạn
+- đổi gì: perform_fefo_export, khi KHÔNG chỉ định batch_code, chỉ lấy lô chưa hết hạn (hoặc không có HSD). Nếu không đủ hàng, thông báo lỗi nói rõ số lượng đã hết hạn bị loại. Chỉ định rõ batch_code vẫn xuất được lô hết hạn (để xuất huỷ).
+- vì sao: trước đây sắp theo HSD tăng dần nhưng không loại lô hết hạn nên lô hết hạn bị xuất đầu tiên như hàng bán được. Hàm này cũng được dùng khi xuất qua camera nên cũng được sửa theo.
+- đã test: PostgreSQL thật, backend/test/check_fefo_expired.py (tạo dữ liệu tạm, rollback, đã kiểm tra không còn dữ liệu rác): xuất 7 lấy SOON 5 + LATER 2, lô EXPIRED không bị trừ; xuất 4 khi chỉ còn 3 lô hợp lệ -> lỗi 400 có ghi chú hết hạn; chỉ định lô EXPIRED vẫn xuất được.
+- chưa test: xuất qua camera thật, giao diện xuất kho (frontend hiển thị chi tiết lỗi 400 như cũ).
+- lưu ý: lô hết hạn vẫn nằm trong tồn kho (tổng tồn trên giao diện vẫn tính cả lô hết hạn) — chưa đổi. Cảnh báo low_stock theo lô (lỗi 4) chưa đụng tới. Phần của Định.
