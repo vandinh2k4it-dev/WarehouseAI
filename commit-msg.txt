@@ -1,7 +1,7 @@
-fix(ocr): match_product_name bỏ dấu + hạ chữ thường trước khi so khớp tên sản phẩm
+fix(frontend): chip lọc theo sản phẩm ở Lịch sử xuất không còn tràn khung trên điện thoại
 
-- đổi gì: ocr/postprocess.py thêm _strip_accents (NFD bỏ dấu, đổi đ/Đ tay, hạ chữ thường, gộp khoảng trắng) và truyền làm `processor` cho rapidfuzz trong match_product_name. Chỉ dùng để so khớp; tên trả về vẫn là tên gốc có dấu trong danh mục. Hai nơi gọi (ocr_engine.py, routers/receipts.py) không cần sửa.
-- vì sao: so khớp chuỗi thô nên tên không dấu khớp rất kém (vd "DAU AN SIMPLY 1L" chỉ 0,38 < ngưỡng 0,75) -> dòng phiếu không tự gán được sản phẩm.
-- đã test: backend/test/check_match_product_name.py — "DAU AN SIMPLY 1L" nay 1,00; thêm ca viết thường, chữ đ (Đường/Biên Hòa), tên có dấu như cũ; tên không có trong danh mục vẫn ra None (0,36).
-- chưa test: OCR thật trên ảnh phiếu, và ảnh hưởng lên toàn bộ danh mục thật (kiểm tra bằng make_test_receipts + quét phiếu).
-- lưu ý: vì bỏ dấu nên 2 sản phẩm chỉ khác nhau về dấu (vd "Sữa" và "Sưa") sẽ cùng điểm 1,00 và lấy cái đầu tiên; hiếm nhưng có thể xảy ra. Ngưỡng 0,75 giữ nguyên. Phần của Định.
+- đổi gì: styles/listing.css thêm luật `.productChips .filterTab { max-width:100%; white-space:normal; text-align:left; flex-shrink:1 }` để chip tên dài tự xuống dòng. Dùng selector 2 class vì app.css (nạp sau listing.css) đặt `.filterTab { flex-shrink:0 }`. Luật này cũng áp cho ProductSuggestChips (cùng class .productChips) — chip gợi ý tên dài cũng xuống dòng, không tràn.
+- vì sao: tên sản phẩm dài làm chip rộng hơn màn hình điện thoại 390px, trang bị cuộn ngang.
+- đã test: Vite dev + backend + DB thật, viewport 390px, trang #/export/history. Thêm 1 chip tên rất dài: trước sửa (mô phỏng lại CSS cũ) rìa phải chip = 536px, scrollWidth trang 536 > 390; sau sửa rìa phải 355px, scrollWidth = 390, chip cao 2 dòng. Cũng chụp màn hình xác nhận. `npx vite build` OK; `npx oxlint src` chỉ còn 1 cảnh báo cũ ở Toast.jsx (không liên quan).
+- chưa test: điện thoại thật; các cỡ màn hình khác (768/1024/1920) — luật chỉ làm chip được phép xuống dòng nên không ảnh hưởng chip ngắn.
+- lưu ý: dữ liệu mẫu hiện tại không có tên đủ dài để tự gây lỗi nên phải chèn chip thử bằng JS. Phần của Định.
