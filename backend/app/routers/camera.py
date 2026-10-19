@@ -1,4 +1,5 @@
 import os
+import shutil
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
@@ -314,7 +315,7 @@ def _finalize_stop(
 
 
 @router.post("/{session_id}/live-frame")
-async def live_frame(
+def live_frame(  # def (không phải async): chạy YOLO nặng trong threadpool, không chặn event loop của server
     session_id: int, file: UploadFile = File(...),
     conf: float = 0.35,  # trùng DEFAULT_CONF trong live_tracking.py — không
     # tham chiếu trực tiếp live_tracking.DEFAULT_CONF ở đây được vì module
@@ -356,7 +357,7 @@ async def live_frame(
         )
 
     model_path = os.getenv("CARTON_MODEL_PATH", "yolov8s.pt")
-    frame_bytes = await file.read()
+    frame_bytes = file.file.read()
     try:
         result = live_tracking.process_frame(session_id, model_path, frame_bytes, conf=conf, iou=iou)
     except Exception as e:
@@ -397,7 +398,7 @@ def _reencode_to_h264(src_path: Path, dst_path: Path) -> bool:
 
 
 @router.post("/{session_id}/count-video", response_model=schemas.CameraSegmentStopResult)
-async def count_video_segment(
+def count_video_segment(  # def (không phải async): đếm video là việc nặng, chạy trong threadpool để /health và request khác vẫn phản hồi
     session_id: int,
     file: UploadFile = File(...),
     threshold_pct: float = Form(DEFAULT_THRESHOLD_PCT),
@@ -444,10 +445,11 @@ async def count_video_segment(
     model_path = os.getenv("CARTON_MODEL_PATH", "yolov8s.pt")
     upload_dir = Path("uploads/camera_videos")
     upload_dir.mkdir(parents=True, exist_ok=True)
-    video_path = upload_dir / f"session_{session_id}_{datetime.now(timezone.utc).timestamp():.0f}_{file.filename}"
+    safe_name = Path(file.filename or "video.mp4").name  # bỏ mọi thành phần thư mục trong tên file client gửi
+    video_path = upload_dir / f"session_{session_id}_{datetime.now(timezone.utc).timestamp():.0f}_{safe_name}"
 
     with open(video_path, "wb") as f:
-        f.write(await file.read())
+        shutil.copyfileobj(file.file, f)  # ghi theo khối, không nạp cả video (có thể hàng trăm MB) vào RAM
 
     # Thư mục riêng cho từng phiên — tránh 2 phiên xử lý cùng lúc ghi đè
     # nhau lên cùng 1 file.
@@ -542,6 +544,11 @@ def resolve_segment(session_id: int, payload: schemas.CameraSegmentResolveReques
     if payload.action == "recount":
         session.status = "superseded"
         new_session = models.CameraCountSession(
+            # Phiên đếm lại cũng phải có mã riêng (DEM… nhập / PX… xuất) — PX dùng
+            # làm mã phiếu xuất khi in, thiếu mã thì phiếu in ra trống.
+            session_code=generate_next_code(
+                db, models.CameraCountSession, "session_code", "PX" if session.direction == "export" else "DEM"
+            ),
             direction=session.direction,
             linked_receipt_id=session.linked_receipt_id,
             receipt_line_item_id=session.receipt_line_item_id,
@@ -608,11 +615,12 @@ def _maybe_complete_receipt(db: Session, receipt_id: int):
     receipt = db.get(models.ImportReceipt, receipt_id)
     if not receipt:
         return
-    lines_with_product = [l for l in receipt.line_items if l.product_id is not None]
-    if not lines_with_product:
+    # Phiếu chỉ "xong" khi MỌI dòng đã gán sản phẩm VÀ đã đếm xong — còn dòng
+    # chưa gán sản phẩm (không đếm được) thì chưa được coi là hoàn tất cả phiếu.
+    if not receipt.line_items or any(l.product_id is None for l in receipt.line_items):
         return
 
-    for line in lines_with_product:
+    for line in receipt.line_items:
         done = (
             db.query(models.CameraCountSession)
             .filter(

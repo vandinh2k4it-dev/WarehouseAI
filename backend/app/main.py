@@ -3,7 +3,9 @@ import asyncio
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -80,6 +82,27 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.exception_handler(RequestValidationError)
+async def validation_error_handler(request: Request, exc: RequestValidationError):
+    """Đổi lỗi 422 (mảng tiếng Anh) thành 1 câu tiếng Việt dễ đọc trong "detail" —
+    frontend (api.js) chỉ hiển thị detail dạng chuỗi nên trước đây người dùng thấy
+    nguyên cục JSON khó hiểu."""
+    parts = []
+    for err in exc.errors():
+        field = next((str(p) for p in reversed(err.get("loc", ())) if not isinstance(p, int)), "dữ liệu")
+        ctx = err.get("ctx") or {}
+        kind = err.get("type", "")
+        if kind == "greater_than":
+            parts.append(f"'{field}' phải lớn hơn {ctx.get('gt')}")
+        elif kind == "greater_than_equal":
+            parts.append(f"'{field}' phải từ {ctx.get('ge')} trở lên")
+        elif kind == "missing":
+            parts.append(f"thiếu '{field}'")
+        else:
+            parts.append(f"'{field}': {err.get('msg')}")
+    return JSONResponse(status_code=422, content={"detail": "Dữ liệu không hợp lệ — " + "; ".join(parts)})
+
 
 app.include_router(receipts.router)
 app.include_router(camera.router)

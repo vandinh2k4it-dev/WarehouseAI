@@ -1,6 +1,6 @@
 from datetime import datetime, date
 from typing import Optional, List, Any
-from pydantic import BaseModel, ConfigDict, computed_field
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 
 # ---------- Product ----------
@@ -59,7 +59,7 @@ class ReceiptOut(BaseModel):
 class ReceiptLineItemManualCreate(BaseModel):
     product_name_raw: str
     product_id: Optional[int] = None  # để trống nếu chưa có trong danh mục — vẫn tạo được dòng, gán sau ở /products/unmapped-lines
-    quantity: float
+    quantity: float = Field(gt=0)  # số lượng phải dương
     batch_code: Optional[str] = None
     expiry_date: Optional[date] = None
 
@@ -85,7 +85,7 @@ class ReceiptLineItemCreateRequest(BaseModel):
     hoàn toàn mới, không đụng tới dữ liệu tồn kho/đếm nào đã có."""
     product_name_raw: str
     product_id: Optional[int] = None
-    quantity: float
+    quantity: float = Field(gt=0)
     batch_code: Optional[str] = None
     expiry_date: Optional[date] = None
 
@@ -97,7 +97,7 @@ class ReceiptLineItemUpdateRequest(BaseModel):
     cộng dựa trên số cũ, gây sai lệch dữ liệu âm thầm."""
     product_name_raw: Optional[str] = None
     product_id: Optional[int] = None
-    quantity: Optional[float] = None
+    quantity: Optional[float] = Field(None, gt=0)
     batch_code: Optional[str] = None
     expiry_date: Optional[date] = None
 
@@ -109,7 +109,7 @@ class CameraSessionCreate(BaseModel):
     camera_id: Optional[str] = None
     linked_receipt_id: Optional[int] = None
     video_path: Optional[str] = None
-    counted_quantity: int
+    counted_quantity: int = Field(ge=0)
     avg_detection_confidence: Optional[float] = None
     model_version: Optional[str] = None
     started_at: Optional[datetime] = None
@@ -147,14 +147,14 @@ class CameraSegmentStartExport(BaseModel):
     """Bắt đầu đếm khi xuất hàng — chưa có phiếu xuất trước, nhân viên gõ
     tay số lượng dự kiến xuất ngay lúc này để camera đối chiếu."""
     product_id: int
-    expected_quantity: float
+    expected_quantity: float = Field(gt=0)
     camera_id: Optional[str] = None
     note: Optional[str] = None
 
 
 class CameraSegmentStopRequest(BaseModel):
     """Nhân viên bấm 'Xong loại này' — gửi kèm số camera đã đếm được."""
-    counted_quantity: int
+    counted_quantity: int = Field(ge=0)
     avg_detection_confidence: Optional[float] = None
     model_version: Optional[str] = None
     video_path: Optional[str] = None
@@ -236,7 +236,7 @@ class InventoryLocationUpdate(BaseModel):
 # ---------- Xuất kho ----------
 class ExportRequest(BaseModel):
     product_id: int
-    quantity: float
+    quantity: float = Field(gt=0)
     batch_code: Optional[str] = None  # chỉ định đúng lô; bỏ trống -> tự động FEFO (hết hạn sớm nhất trước)
     note: Optional[str] = None
 

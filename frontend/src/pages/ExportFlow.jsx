@@ -34,7 +34,7 @@ export default function ExportFlow() {
 
   async function loadRecent() {
     try {
-      const hist = await api.listExportHistory();
+      const hist = await api.listExportHistory(5);
       setRecent(hist.slice(0, 5)); // backend đã sắp mới -> cũ
     } catch {
       setRecent([]); // không tải được thì chỉ ẩn mục này, không ảnh hưởng form xuất kho

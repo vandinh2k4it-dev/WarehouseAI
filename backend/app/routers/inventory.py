@@ -1,7 +1,7 @@
 from datetime import date, timedelta, datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, case
 from sqlalchemy.orm import Session
 
@@ -171,7 +171,8 @@ def analytics(days: int = 30, db: Session = Depends(get_db)):
 
 @router.get("/export-history", response_model=list[schemas.ExportHistoryItem])
 def export_history(
-    limit: int = 100,
+    limit: int = Query(1000, ge=1, le=5000),  # trước đây 100 -> trang Lịch sử xuất bị cắt cụt, số liệu thống kê sai
+
     reference_type: Optional[str] = None,
     reference_id: Optional[int] = None,
     db: Session = Depends(get_db),

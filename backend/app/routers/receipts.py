@@ -1,10 +1,9 @@
 import os
-import shutil
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
+from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -17,6 +16,49 @@ router = APIRouter(prefix="/receipts", tags=["receipts"])
 
 UPLOAD_DIR = os.getenv("RECEIPT_UPLOAD_DIR", "./uploads/receipts")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+# Chỉ nhận ảnh: kiểm tra đuôi file + loại nội dung khai báo + giới hạn dung lượng,
+# rồi mở thử bằng Pillow — chặn file rác/độc hại (vd .exe đổi tên) TRƯỚC khi lưu
+# vào uploads/ và trước khi tạo phiếu (không tốn mã PN, không để lại phiếu rác).
+ALLOWED_IMAGE_EXT = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
+MAX_RECEIPT_IMAGE_MB = float(os.getenv("MAX_RECEIPT_IMAGE_MB", "15"))
+
+
+def _save_validated_image(file: UploadFile) -> str:
+    """Lưu ảnh phiếu lên đĩa nếu hợp lệ, trả về đường dẫn; sai thì xoá file và raise 400/413."""
+    ext = os.path.splitext(file.filename or "")[1].lower()
+    if ext not in ALLOWED_IMAGE_EXT:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Chỉ nhận file ảnh ({', '.join(sorted(ALLOWED_IMAGE_EXT))}); file gửi lên có đuôi '{ext or 'không có'}'.",
+        )
+    ctype = (file.content_type or "").lower()
+    if ctype and not ctype.startswith("image/") and ctype != "application/octet-stream":
+        raise HTTPException(status_code=400, detail=f"Loại nội dung '{ctype}' không phải ảnh.")
+
+    saved_path = os.path.join(UPLOAD_DIR, f"{uuid.uuid4().hex}{ext}")
+    max_bytes = int(MAX_RECEIPT_IMAGE_MB * 1024 * 1024)
+    size = 0
+    try:
+        with open(saved_path, "wb") as out:
+            while chunk := file.file.read(1024 * 1024):
+                size += len(chunk)
+                if size > max_bytes:
+                    raise HTTPException(status_code=413, detail=f"Ảnh quá lớn (tối đa {MAX_RECEIPT_IMAGE_MB:g} MB).")
+                out.write(chunk)
+        if size == 0:
+            raise HTTPException(status_code=400, detail="File ảnh rỗng.")
+        try:
+            from PIL import Image
+            with Image.open(saved_path) as img:
+                img.verify()
+        except Exception:
+            raise HTTPException(status_code=400, detail="File không phải ảnh hợp lệ (không đọc được nội dung).")
+    except HTTPException:
+        if os.path.exists(saved_path):
+            os.remove(saved_path)
+        raise
+    return saved_path
 
 # Khởi tạo 1 lần — PaddleOCR load model khá lâu (vài giây), không nên khởi tạo lại mỗi request
 _ocr_engine: Optional[ReceiptOCREngine] = None
@@ -38,11 +80,7 @@ def upload_receipt(
     """Nhận ảnh Phiếu nhập hàng, chạy OCR ngay, lưu kết quả từng dòng hàng.
     Test nhanh bằng: curl -F "file=@sample_receipt.jpg" http://localhost:8000/receipts/upload
     """
-    ext = os.path.splitext(file.filename)[1] or ".jpg"
-    saved_name = f"{uuid.uuid4().hex}{ext}"
-    saved_path = os.path.join(UPLOAD_DIR, saved_name)
-    with open(saved_path, "wb") as out:
-        shutil.copyfileobj(file.file, out)
+    saved_path = _save_validated_image(file)
 
     receipt = models.ImportReceipt(
         receipt_code=generate_next_code(db, models.ImportReceipt, "receipt_code", "PN"),
@@ -329,11 +367,15 @@ def get_receipt(receipt_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("", response_model=list[schemas.ReceiptOut])
-def list_receipts(status: Optional[str] = None, db: Session = Depends(get_db)):
+def list_receipts(
+    status: Optional[str] = None,
+    limit: int = Query(1000, ge=1, le=5000),  # trước đây cứng 100 -> phiếu cũ hơn biến mất khỏi giao diện
+    db: Session = Depends(get_db),
+):
     query = db.query(models.ImportReceipt)
     if status:
         query = query.filter(models.ImportReceipt.status == status)
-    return query.order_by(models.ImportReceipt.created_at.desc()).limit(100).all()
+    return query.order_by(models.ImportReceipt.created_at.desc(), models.ImportReceipt.id.desc()).limit(limit).all()
 
 
 @router.get("/{receipt_id}/lines-progress", response_model=list[schemas.ReceiptLineProgressOut])

@@ -207,7 +207,8 @@ export const api = {
 
   // Lịch sử xuất kho — đọc lại InventoryTransaction đã có sẵn (xem
   // app/routers/inventory.py, endpoint export-history), không phải bảng mới.
-  listExportHistory: () => request("/inventory/export-history"),
+  // limit: backend mặc định 1000, tối đa 5000 — trang Lịch sử xuất xin 5000 để không bị cắt cụt, nơi chỉ cần vài dòng gần nhất thì truyền số nhỏ.
+  listExportHistory: (limit = 5000) => request(`/inventory/export-history?limit=${limit}`),
 
   // Chi tiết ĐÚNG 1 lượt xuất cụ thể (theo camera_session hoặc manual) —
   // dùng để in phiếu xuất kho ngay sau khi xuất xong, không cần API mới,

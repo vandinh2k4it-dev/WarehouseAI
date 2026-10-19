@@ -18,7 +18,11 @@ logger = logging.getLogger(__name__)
 
 VAPID_PRIVATE_KEY = os.getenv("VAPID_PRIVATE_KEY", "")
 VAPID_PUBLIC_KEY = os.getenv("VAPID_PUBLIC_KEY", "")
-VAPID_CLAIM_EMAIL = os.getenv("VAPID_CLAIM_EMAIL", "")
+VAPID_CLAIM_EMAIL = os.getenv("VAPID_CLAIM_EMAIL", "").strip()
+# Chuẩn VAPID cần "mailto:<email>"; người dùng hay dán luôn cả "mailto:" vào .env
+# -> bỏ tiền tố đó đi để lúc ghép không bị thành "mailto:mailto:...".
+if VAPID_CLAIM_EMAIL.lower().startswith("mailto:"):
+    VAPID_CLAIM_EMAIL = VAPID_CLAIM_EMAIL[len("mailto:"):].strip()
 
 _ENABLED = bool(VAPID_PRIVATE_KEY and VAPID_PUBLIC_KEY and VAPID_CLAIM_EMAIL)
 
