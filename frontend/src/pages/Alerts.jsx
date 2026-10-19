@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import AlertDetail from "../components/AlertDetail";
+import { alertTarget } from "../utils/alertLinks";
 import {
   isPushSupported,
   getPermissionState,
@@ -337,7 +338,18 @@ export default function Alerts() {
                             <span className="alertRow-time text-muted">{formatDateTimeVN(a.created_at)}</span>
                           </div>
                           <div className="alertRow-msg">
-                            <Highlight text={a.message} query={search} />
+                            {alertTarget(a) ? (
+                              <Link
+                                className="alertRow-msgLink"
+                                to={alertTarget(a)}
+                                onClick={stop}
+                                title={a.receipt_id ? "Bấm để mở phiếu nhập này" : "Bấm để mở sản phẩm này"}
+                              >
+                                <Highlight text={a.message} query={search} />
+                              </Link>
+                            ) : (
+                              <Highlight text={a.message} query={search} />
+                            )}
                           </div>
                           <div className="alertRow-links">
                             {a.product_id && (

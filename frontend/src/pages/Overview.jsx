@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api";
+import { alertTarget } from "../utils/alertLinks";
+import "../styles/alerts.css";
 
 const ALERT_TYPE_LABEL = {
   discrepancy: "Chênh lệch",
@@ -188,7 +190,20 @@ export default function Overview() {
                     onClick={hasMore ? () => setExpandedAlertId(isExpanded ? null : a.id) : undefined}
                   >
                     <span className={`badge alertType-${a.alert_type}`}>{ALERT_TYPE_LABEL[a.alert_type] || a.alert_type}</span>
-                    <div className="alertRow-msg">{isExpanded ? a.message : shortMsg}</div>
+                    <div className="alertRow-msg">
+                      {alertTarget(a) ? (
+                        <Link
+                          className="alertRow-msgLink"
+                          to={alertTarget(a)}
+                          onClick={(e) => e.stopPropagation()}
+                          title={a.receipt_id ? "Bấm để mở phiếu nhập này" : "Bấm để mở sản phẩm này"}
+                        >
+                          {isExpanded ? a.message : shortMsg}
+                        </Link>
+                      ) : (
+                        isExpanded ? a.message : shortMsg
+                      )}
+                    </div>
                     {hasMore && (
                       <span className="alertRow-toggle">{isExpanded ? "Thu gọn" : "Xem thêm"}</span>
                     )}
