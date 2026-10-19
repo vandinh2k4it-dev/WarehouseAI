@@ -323,9 +323,9 @@ def perform_fefo_export(
             )
         )
 
-        alert_msg = _check_low_stock_alert(db, batch, product)
-        if alert_msg:
-            triggered_alert_messages.append(alert_msg)
+    alert_msg = sync_low_stock_alert(db, product_id, batches[0] if batches else None)
+    if alert_msg:
+        triggered_alert_messages.append(alert_msg)
 
     db.commit()
 
@@ -337,40 +337,69 @@ def perform_fefo_export(
     return schemas.ExportResult(product_id=product.id, total_exported=quantity, details=details)
 
 
-def _check_low_stock_alert(db: Session, inventory_row: models.Inventory, product: models.Product) -> str | None:
-    """Sau khi trừ kho, nếu số lượng còn lại <= ngưỡng cảnh báo của sản phẩm,
-    tạo cảnh báo mới — trừ khi đã có cảnh báo 'low_stock' đang mở cho đúng
-    lô này rồi (tránh tạo trùng lặp mỗi lần xuất thêm 1 chút).
-
-    Trả về nội dung cảnh báo (str) nếu vừa tạo mới, hoặc None nếu không tạo
-    gì — hàm gọi (perform_fefo_export) tự quyết định lúc nào gửi push, KHÔNG
-    commit/gửi push ngay tại đây vì hàm này chạy giữa 1 vòng lặp, commit sớm
-    sẽ phá vỡ tính toàn vẹn giao dịch của cả lượt xuất kho."""
-    if float(inventory_row.quantity) > float(product.low_stock_threshold):
+def sync_low_stock_alert(
+    db: Session, product_id: int, inventory_row: models.Inventory | None = None
+) -> str | None:
+    """Đồng bộ cảnh báo 'low_stock' của 1 SẢN PHẨM (gộp mọi lô) theo TỔNG tồn:
+    - tổng < ngưỡng và chưa có cảnh báo mở -> tạo 1 cảnh báo (trả về nội dung để
+      hàm gọi gửi push sau khi commit);
+    - tổng < ngưỡng và đã có cảnh báo mở -> giữ 1 cái (mới nhất), cập nhật số
+      còn lại, đóng các cái trùng (dữ liệu cũ tạo theo từng lô), không push lại;
+    - tổng >= ngưỡng (vd đã nhập thêm) -> tự đóng mọi cảnh báo low_stock đang mở.
+    "Đóng" = status 'acknowledged' + resolved_at (app chỉ có open/acknowledged).
+    KHÔNG commit/push ở đây — hàm gọi tự commit (xem lý do ở perform_fefo_export)."""
+    product = db.get(models.Product, product_id)
+    if product is None:
         return None
+    db.flush()  # để SUM thấy số lượng vừa sửa trong cùng giao dịch
+    total = float(
+        db.query(func.coalesce(func.sum(models.Inventory.quantity), 0))
+        .filter(models.Inventory.product_id == product_id)
+        .scalar()
+    )
+    threshold = float(product.low_stock_threshold or 0)
 
-    existing_open_alert = (
+    open_alerts = (
         db.query(models.Alert)
+        .join(models.Inventory, models.Alert.inventory_id == models.Inventory.id)
         .filter(
-            models.Alert.inventory_id == inventory_row.id,
+            models.Inventory.product_id == product_id,
             models.Alert.alert_type == "low_stock",
             models.Alert.status == "open",
         )
-        .first()
+        .order_by(models.Alert.id.desc())
+        .all()
     )
-    if existing_open_alert:
+    now = datetime.now(timezone.utc)
+
+    def close(alert: models.Alert):
+        alert.status = "acknowledged"
+        alert.resolved_at = now
+
+    if total >= threshold:
+        for a in open_alerts:
+            close(a)
         return None
 
-    alert_message = (
-        f"Sản phẩm '{product.name}' (lô {inventory_row.batch_code}) chỉ còn "
-        f"{inventory_row.quantity} {product.unit} — dưới ngưỡng {product.low_stock_threshold}."
+    message = (
+        f"Sản phẩm '{product.name}' chỉ còn {total:g} {product.unit} "
+        f"(tổng các lô) — dưới ngưỡng {product.low_stock_threshold:g}."
     )
-    db.add(
-        models.Alert(
-            alert_type="low_stock",
-            severity="medium" if inventory_row.quantity > 0 else "high",
-            inventory_id=inventory_row.id,
-            message=alert_message,
-        )
+    severity = "high" if total <= 0 else "medium"
+    if open_alerts:
+        keep, *dups = open_alerts
+        keep.message, keep.severity = message, severity
+        for a in dups:
+            close(a)
+        return None
+
+    anchor = inventory_row or (
+        db.query(models.Inventory)
+        .filter(models.Inventory.product_id == product_id)
+        .order_by(models.Inventory.quantity.desc(), models.Inventory.id.desc())
+        .first()
     )
-    return alert_message
+    if anchor is None:
+        return None  # sản phẩm chưa có lô nào -> không có chỗ gắn cảnh báo
+    db.add(models.Alert(alert_type="low_stock", severity=severity, inventory_id=anchor.id, message=message))
+    return message

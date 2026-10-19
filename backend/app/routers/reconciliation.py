@@ -161,4 +161,8 @@ def apply_line_import(db: Session, line: models.ReceiptLineItem, qty_override: f
             reference_id=line.id,
         )
     )
+    # Nhập thêm hàng -> nếu tổng tồn của sản phẩm đã lên đủ ngưỡng thì tự đóng
+    # cảnh báo 'low_stock' đang mở (không commit ở đây; hàm gọi tự commit).
+    from app.routers.inventory import sync_low_stock_alert  # import trễ tránh vòng lặp
+    sync_low_stock_alert(db, line.product_id, inv)
     return inv
