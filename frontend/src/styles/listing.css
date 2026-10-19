@@ -696,3 +696,23 @@ mark.hl {
 .lineCard-editing label {
   text-align: left;
 }
+
+/* ---- Liên kết sâu từ trang Cảnh báo: tô sáng tạm thời mục được mở tới (tự tắt sau vài giây ở JS) ---- */
+@keyframes focusPulse {
+  0% { box-shadow: 0 0 0 0 var(--accent); }
+  70% { box-shadow: 0 0 0 8px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+.adminTable-row.rowFocus > td {
+  background: var(--accent-dim);
+}
+.productCard-batchRow.batchFocus {
+  background: var(--accent-dim);
+  border-radius: 6px;
+  outline: 1px solid var(--accent);
+  padding: 4px 6px;
+}
+.lineCard.lineCard-focus {
+  border-color: var(--accent);
+  animation: focusPulse 1.4s ease-out 2;
+}

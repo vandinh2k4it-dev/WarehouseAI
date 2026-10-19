@@ -192,6 +192,10 @@ export default function Overview() {
                     {hasMore && (
                       <span className="alertRow-toggle">{isExpanded ? "Thu gọn" : "Xem thêm"}</span>
                     )}
+                    {" "}
+                    <Link className="alertRow-toggle" to={`/alerts?alert=${a.id}`} onClick={(e) => e.stopPropagation()}>
+                      Mở chi tiết →
+                    </Link>
                   </div>
                   <button className="tapbtn" disabled={ackBusy === a.id} onClick={() => handleAck(a.id)}>
                     {ackBusy === a.id ? "…" : "Đã xử lý"}

@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { api, API_BASE } from "../api";
 import { useToast } from "../components/Toast";
 import CountingScreen from "../components/CountingScreen";
@@ -100,6 +100,10 @@ export default function ImportFlow() {
   const [overrideNote, setOverrideNote] = useState("");
   const [overrideSubmitting, setOverrideSubmitting] = useState(false);
   const showToast = useToast();
+  // Liên kết sâu /import?receipt=ID&line=ID (từ trang Cảnh báo): mở thẳng phiếu đó và tô sáng dòng hàng.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [focusLineId, setFocusLineId] = useState(null);
+  const deepLinkDone = useRef(false);
 
   useEffect(() => {
     api.listProducts().then(setProducts).catch(() => {});
@@ -121,6 +125,29 @@ export default function ImportFlow() {
       setLoadingReceipts(false);
     }
   }
+
+  useEffect(() => {
+    if (deepLinkDone.current || loadingReceipts) return;
+    const rid = Number(searchParams.get("receipt"));
+    if (!rid) return;
+    deepLinkDone.current = true;
+    const lid = Number(searchParams.get("line")) || null;
+    setSearchParams({}, { replace: true });
+    (async () => {
+      try {
+        const found = (receipts ?? []).find((r) => r.id === rid) || (await api.getReceipt(rid));
+        await pickReceipt(found);
+        if (lid) {
+          setFocusLineId(lid);
+          setTimeout(() => document.getElementById(`line-${lid}`)?.scrollIntoView({ block: "center", behavior: "smooth" }), 250);
+          setTimeout(() => setFocusLineId(null), 6000); // tô sáng tạm thời, tự tắt
+        }
+      } catch (err) {
+        showToast(err.message || "Không mở được phiếu nhập này.", "error");
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadingReceipts]);
 
   async function pickReceipt(receipt) {
     setSelectedReceipt(receipt);
@@ -483,7 +510,12 @@ export default function ImportFlow() {
                 const isOverriding = overridingLineId === line.line_id;
 
                 return (
-                  <div className="lineCard" key={line.line_id} style={isOverriding ? { flexDirection: "column", alignItems: "stretch" } : undefined}>
+                  <div
+                    className={`lineCard${focusLineId === line.line_id ? " lineCard-focus" : ""}`}
+                    id={`line-${line.line_id}`}
+                    key={line.line_id}
+                    style={isOverriding ? { flexDirection: "column", alignItems: "stretch" } : undefined}
+                  >
                     <div>
                       <div className="lineCard-name">{line.product_name_raw}</div>
                       <div className="lineCard-sub">

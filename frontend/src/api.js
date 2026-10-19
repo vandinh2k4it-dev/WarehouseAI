@@ -67,6 +67,9 @@ export const api = {
     }),
   testPush: () => request("/push/test", { method: "POST" }),
   listAlerts: (status) => request(`/alerts?status=${status ?? "open"}`),
+  // Chi tiết 1 cảnh báo kèm sản phẩm / lô / phiếu nhập / dòng phiếu / đối chiếu / phiên đếm liên quan.
+  getAlertDetail: (alertId) => request(`/alerts/${alertId}/detail`),
+  getReceipt: (receiptId) => request(`/receipts/${receiptId}`),
   acknowledgeAlert: async (alertId) => {
     const result = await request(`/alerts/${alertId}/acknowledge`, { method: "POST" });
     // Báo cho TopNav (và bất kỳ ai đang lắng nghe) biết số cảnh báo vừa đổi,

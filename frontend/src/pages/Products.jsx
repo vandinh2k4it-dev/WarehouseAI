@@ -1,4 +1,5 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import { useToast } from "../components/Toast";
 import SmartSearchBox from "../components/SmartSearchBox";
@@ -28,6 +29,10 @@ export default function Products() {
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState("stock_desc");
   const [expandedId, setExpandedId] = useState(null);
+  // Liên kết sâu /products?product=ID&batch=MÃ_LÔ (từ trang Cảnh báo): mở sẵn sản phẩm đó và tô sáng lô.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [focus, setFocus] = useState(null); // { productId, batch }
+  const deepLinkDone = useRef(false);
   // Sửa vị trí kệ cho 1 lô — editingLocationId = id của bản ghi inventory
   // đang mở form sửa (chỉ mở 1 lô tại 1 thời điểm).
   const [editingLocationId, setEditingLocationId] = useState(null);
@@ -42,6 +47,25 @@ export default function Products() {
       })
       .catch((err) => setErrorMsg(err.message || String(err)));
   }, []);
+
+  const focusRaw = searchParams.get("product");
+  const focusBatchRaw = searchParams.get("batch");
+  useEffect(() => {
+    if (deepLinkDone.current || !products || !inventory) return;
+    const pid = Number(focusRaw);
+    if (!pid) return;
+    deepLinkDone.current = true;
+    if (!products.some((p) => p.id === pid)) {
+      showToast("Không tìm thấy sản phẩm này trong danh mục.", "error");
+    } else {
+      setSearch("");
+      setExpandedId(pid);
+      setFocus({ productId: pid, batch: focusBatchRaw });
+      setTimeout(() => document.getElementById(`product-row-${pid}`)?.scrollIntoView({ block: "center", behavior: "smooth" }), 150);
+      setTimeout(() => setFocus(null), 6000); // tô sáng tạm thời, tự tắt
+    }
+    setSearchParams({}, { replace: true });
+  }, [products, inventory, focusRaw, focusBatchRaw, setSearchParams, showToast]);
 
   // Với mỗi sản phẩm, tính sẵn: tổng tồn kho, HSD gần nhất (để ưu tiên FEFO),
   // và ngày nhập gần nhất (dựa trên last_updated của lô mới nhất) — dùng
@@ -200,7 +224,11 @@ export default function Products() {
                   const isExpanded = expandedId === p.id;
                   return (
                     <Fragment key={p.id}>
-                      <tr className="adminTable-row" onClick={() => setExpandedId(isExpanded ? null : p.id)}>
+                      <tr
+                        id={`product-row-${p.id}`}
+                        className={`adminTable-row${focus?.productId === p.id ? " rowFocus" : ""}`}
+                        onClick={() => setExpandedId(isExpanded ? null : p.id)}
+                      >
                         <td className="text-muted">{idx + 1}</td>
                         <td>
                           <div className="adminTable-name">{p.name}</div>
@@ -226,13 +254,21 @@ export default function Products() {
                       {isExpanded && (
                         <tr className="adminTable-expandRow">
                           <td colSpan={7}>
+                            {focus?.productId === p.id && focus.batch && !batches.some((b) => b.batch_code === focus.batch) && (
+                              <div className="text-muted" style={{ fontSize: 12, marginBottom: 6 }}>
+                                ℹ️ Lô {focus.batch} hiện đã hết hàng (tồn 0) nên không nằm trong danh sách lô còn hàng.
+                              </div>
+                            )}
                             {batches.length > 0 ? (
                               <div className="productCard-batches">
                                 {batches
                                   .slice()
                                   .sort((a, b) => (a.expiry_date || "9999").localeCompare(b.expiry_date || "9999"))
                                   .map((b) => (
-                                    <div key={b.id} className="productCard-batchRow">
+                                    <div
+                                      key={b.id}
+                                      className={`productCard-batchRow${focus?.productId === p.id && focus.batch === b.batch_code ? " batchFocus" : ""}`}
+                                    >
                                       <span className="mono">{b.batch_code}</span>
                                       <span>
                                         {b.quantity} {p.unit}

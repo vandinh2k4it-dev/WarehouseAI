@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import Highlight from "../components/Highlight";
 import SmartSearchBox from "../components/SmartSearchBox";
@@ -12,11 +12,13 @@ const REF_TYPE_LABEL = {
 };
 
 export default function ExportHistory() {
+  const [searchParams] = useSearchParams();
   const [history, setHistory] = useState(null);
   const [errorMsg, setErrorMsg] = useState("");
   const [search, setSearch] = useState("");
   const [dateFilter, setDateFilter] = useState(""); // "YYYY-MM-DD"
-  const [productFilter, setProductFilter] = useState(null); // product_id đang lọc nhanh bằng chip (null = không lọc)
+  // product_id đang lọc nhanh bằng chip (null = không lọc); có thể được đặt sẵn qua /export/history?product=ID (từ trang Cảnh báo)
+  const [productFilter, setProductFilter] = useState(() => Number(searchParams.get("product")) || null);
 
   useEffect(() => {
     api

@@ -309,6 +309,99 @@ class AlertOut(BaseModel):
     message: str
     status: str
     created_at: datetime
+    # Liên kết tới dữ liệu gốc (để giao diện bấm vào là mở đúng sản phẩm/phiếu/lô).
+    # Chỉ GET /alerts điền các trường này; mặc định None nên không ảnh hưởng nơi khác.
+    inventory_id: Optional[int] = None
+    reconciliation_id: Optional[int] = None
+    product_id: Optional[int] = None
+    product_name: Optional[str] = None
+    batch_code: Optional[str] = None
+    receipt_id: Optional[int] = None
+    receipt_code: Optional[str] = None
+    receipt_line_id: Optional[int] = None
+    session_id: Optional[int] = None
+
+
+class AlertProductInfo(BaseModel):
+    id: int
+    name: str
+    sku: Optional[str] = None
+    category: Optional[str] = None
+    unit: str
+    low_stock_threshold: float
+    total_stock: float
+
+
+class AlertBatchInfo(BaseModel):
+    id: int
+    batch_code: str
+    quantity: float
+    expiry_date: Optional[date] = None
+    days_to_expiry: Optional[int] = None  # âm = đã hết hạn
+    location: Optional[str] = None
+
+
+class AlertReconciliationInfo(BaseModel):
+    id: int
+    status: str
+    receipt_total: float
+    camera_total: int
+    difference: float
+    threshold_used: float
+    resolved_by: Optional[str] = None
+    resolved_note: Optional[str] = None
+    resolved_at: Optional[datetime] = None
+
+
+class AlertSessionInfo(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+    id: int
+    session_code: Optional[str] = None
+    direction: str
+    status: str
+    expected_quantity: Optional[float] = None
+    counted_quantity: Optional[int] = None
+    avg_detection_confidence: Optional[float] = None
+    model_version: Optional[str] = None
+    started_at: Optional[datetime] = None
+    ended_at: Optional[datetime] = None
+    annotated_video_url: Optional[str] = None  # chỉ có nếu file video đã vẽ khung còn trên đĩa
+
+
+class AlertReceiptInfo(BaseModel):
+    id: int
+    receipt_code: Optional[str] = None
+    store_location: Optional[str] = None
+    status: str
+    source_type: str
+    received_at: Optional[datetime] = None
+    image_url: Optional[str] = None
+
+
+class AlertLineInfo(BaseModel):
+    id: int
+    line_no: int
+    product_name_raw: str
+    quantity: float
+    batch_code: Optional[str] = None
+    expiry_date: Optional[date] = None
+    product_id: Optional[int] = None
+
+
+class AlertDetailOut(BaseModel):
+    """Toàn bộ ngữ cảnh của 1 cảnh báo: sản phẩm, lô, phiếu nhập, dòng phiếu, đối chiếu,
+    phiên đếm — thứ nào không liên quan tới loại cảnh báo này thì là None."""
+    alert: AlertOut
+    product: Optional[AlertProductInfo] = None
+    batch: Optional[AlertBatchInfo] = None
+    stocked_batches: List[AlertBatchInfo] = []  # các lô còn hàng của sản phẩm (nhiều nhất 8)
+    reconciliation: Optional[AlertReconciliationInfo] = None
+    session: Optional[AlertSessionInfo] = None
+    receipt: Optional[AlertReceiptInfo] = None
+    line: Optional[AlertLineInfo] = None
+    # Trạng thái phiên đếm MỚI NHẤT của dòng phiếu (chỉ cảnh báo chênh lệch nhập): nếu dòng đã đếm lại
+    # và khớp thì cảnh báo cũ này thực chất đã được xử lý.
+    line_latest_session_status: Optional[str] = None
 
 
 # ---------- Chatbot (mục 6.6) ----------

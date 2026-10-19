@@ -1,5 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api";
+import AlertDetail from "../components/AlertDetail";
 import {
   isPushSupported,
   getPermissionState,
@@ -47,6 +49,9 @@ export default function Alerts() {
   const [sevFilter, setSevFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [limit, setLimit] = useState(PAGE_SIZE);
+  const [expandedId, setExpandedId] = useState(null); // cảnh báo đang mở chi tiết
+  const [searchParams, setSearchParams] = useSearchParams();
+  const deepLinkDone = useRef(false);
   const showToast = useToast();
 
   useEffect(() => {
@@ -63,6 +68,32 @@ export default function Alerts() {
       })
       .catch((err) => setErrorMsg(err.message || String(err)));
   }
+
+  // Liên kết sâu /alerts?alert=ID (từ Tổng quan, thông báo đẩy...): chuyển đúng tab, mở sẵn chi tiết, cuộn tới cảnh báo đó.
+  useEffect(() => {
+    if (deepLinkDone.current || !openAlerts || !doneAlerts) return;
+    const id = Number(searchParams.get("alert"));
+    if (!id) return;
+    deepLinkDone.current = true;
+    const inOpen = openAlerts.some((a) => a.id === id);
+    if (!inOpen && !doneAlerts.some((a) => a.id === id)) {
+      showToast("Không tìm thấy cảnh báo này (có thể đã bị xoá).", "error");
+    } else {
+      setStatusTab(inOpen ? "open" : "acknowledged");
+      setTypeFilter("all");
+      setSevFilter("all");
+      setSearch("");
+      setLimit(100000); // đảm bảo cảnh báo cần mở nằm trong phần đã vẽ
+      setExpandedId(id);
+      // Cuộn 2 lần: lần đầu khi danh sách vừa vẽ xong, lần sau khi phần chi tiết (tải bất đồng bộ) đã làm trang dài ra.
+      const goTo = () => document.getElementById(`alert-${id}`)?.scrollIntoView({ block: "start", behavior: "auto" });
+      setTimeout(goTo, 250);
+      setTimeout(goTo, 1300);
+    }
+    setSearchParams({}, { replace: true });
+  }, [openAlerts, doneAlerts, searchParams, setSearchParams, showToast]);
+
+  const toggleExpanded = (id) => setExpandedId((cur) => (cur === id ? null : id));
 
   // Đổi bộ lọc luôn quay lại đợt hiển thị đầu tiên.
   const pick = (setter) => (value) => {
@@ -103,7 +134,7 @@ export default function Alerts() {
   const passes = (a, skip = {}) => {
     if (!skip.type && typeFilter !== "all" && a.alert_type !== typeFilter) return false;
     if (!skip.sev && sevFilter !== "all" && a.severity !== sevFilter) return false;
-    if (search.trim() && !matchesQuery(`${a.message} ${ALERT_TYPE_LABEL[a.alert_type] || ""}`, search)) return false;
+    if (search.trim() && !matchesQuery(`${a.message} ${ALERT_TYPE_LABEL[a.alert_type] || ""} ${a.receipt_code || ""} ${a.batch_code || ""}`, search)) return false;
     return true;
   };
   const filtered = base
@@ -277,9 +308,24 @@ export default function Alerts() {
                   {g.items.map((a) => {
                     const sev = SEVERITIES.find((s) => s.key === a.severity);
                     const dir = directionOf(a);
+                    const isExpanded = expandedId === a.id;
+                    const stop = (e) => e.stopPropagation();
                     return (
-                      <div className={`alertRow sev-${a.severity}`} key={a.id}>
-                        <div>
+                      <div className={`alertRow sev-${a.severity}${isExpanded ? " expanded" : ""}`} key={a.id} id={`alert-${a.id}`}>
+                        <div
+                          className="alertRow-body"
+                          role="button"
+                          tabIndex={0}
+                          aria-expanded={isExpanded}
+                          title="Bấm để xem chi tiết và các mục liên quan"
+                          onClick={() => toggleExpanded(a.id)}
+                          onKeyDown={(e) => {
+                            if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) {
+                              e.preventDefault();
+                              toggleExpanded(a.id);
+                            }
+                          }}
+                        >
                           <div className="alertRow-badges">
                             <span className={`badge alertType-${a.alert_type}`}>{ALERT_TYPE_LABEL[a.alert_type] || a.alert_type}</span>
                             {dir && <span className="badge dirBadge">{dir}</span>}
@@ -293,12 +339,39 @@ export default function Alerts() {
                           <div className="alertRow-msg">
                             <Highlight text={a.message} query={search} />
                           </div>
+                          <div className="alertRow-links">
+                            {a.product_id && (
+                              <Link className="adChip" to={`/products?product=${a.product_id}`} onClick={stop}>
+                                📦 {a.product_name}
+                              </Link>
+                            )}
+                            {a.product_id && a.batch_code && a.alert_type !== "discrepancy" && (
+                              <Link
+                                className="adChip"
+                                to={`/products?product=${a.product_id}&batch=${encodeURIComponent(a.batch_code)}`}
+                                onClick={stop}
+                              >
+                                🏷️ Lô {a.batch_code}
+                              </Link>
+                            )}
+                            {a.receipt_id && (
+                              <Link
+                                className="adChip"
+                                to={`/import?receipt=${a.receipt_id}${a.receipt_line_id ? `&line=${a.receipt_line_id}` : ""}`}
+                                onClick={stop}
+                              >
+                                🧾 {a.receipt_code || `Phiếu #${a.receipt_id}`}
+                              </Link>
+                            )}
+                            <span className="alertRow-more">{isExpanded ? "▴ Thu gọn" : "▾ Chi tiết"}</span>
+                          </div>
                         </div>
                         {isOpenTab && (
                           <button className="tapbtn" disabled={ackBusy === a.id} onClick={() => handleAck(a.id)}>
                             {ackBusy === a.id ? "…" : "Đã xử lý"}
                           </button>
                         )}
+                        {isExpanded && <AlertDetail alertId={a.id} />}
                       </div>
                     );
                   })}
