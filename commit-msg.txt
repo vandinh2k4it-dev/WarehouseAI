@@ -1,14 +1,7 @@
-fix(inventory): kpi "sắp hết hàng" đếm theo sản phẩm; xuất kho FEFO tự động bỏ lô đã hết hạn
+fix(ocr): match_product_name bỏ dấu + hạ chữ thường trước khi so khớp tên sản phẩm
 
-1) kpi sắp hết hàng
-- đổi gì: thêm _low_stock_product_ids (tổng tồn của sản phẩm < ngưỡng, cùng cách tính với công cụ chatbot get_low_stock_products). GET /inventory/analytics đếm số sản phẩm; GET /inventory/low-stock chỉ trả các lô còn hàng (tồn > 0) của những sản phẩm đó.
-- vì sao: trước đây đếm từng lô có tồn <= ngưỡng nên các lô đã bán hết (tồn 0, tích luỹ theo thời gian) bị tính là "sắp hết" -> KPI ra 390.
-- đã test: PostgreSQL thật, backend/test/check_low_stock_kpi.py (chỉ đọc): cũ 390 -> mới 3, khớp chatbot (3).
-- lưu ý: ngưỡng đổi từ <= sang < để khớp chatbot; sản phẩm tồn 0 vẫn tính vào KPI nhưng không có lô trong /low-stock.
-
-2) FEFO bỏ lô hết hạn
-- đổi gì: perform_fefo_export, khi KHÔNG chỉ định batch_code, chỉ lấy lô chưa hết hạn (hoặc không có HSD). Nếu không đủ hàng, thông báo lỗi nói rõ số lượng đã hết hạn bị loại. Chỉ định rõ batch_code vẫn xuất được lô hết hạn (để xuất huỷ).
-- vì sao: trước đây sắp theo HSD tăng dần nhưng không loại lô hết hạn nên lô hết hạn bị xuất đầu tiên như hàng bán được. Hàm này cũng được dùng khi xuất qua camera nên cũng được sửa theo.
-- đã test: PostgreSQL thật, backend/test/check_fefo_expired.py (tạo dữ liệu tạm, rollback, đã kiểm tra không còn dữ liệu rác): xuất 7 lấy SOON 5 + LATER 2, lô EXPIRED không bị trừ; xuất 4 khi chỉ còn 3 lô hợp lệ -> lỗi 400 có ghi chú hết hạn; chỉ định lô EXPIRED vẫn xuất được.
-- chưa test: xuất qua camera thật, giao diện xuất kho (frontend hiển thị chi tiết lỗi 400 như cũ).
-- lưu ý: lô hết hạn vẫn nằm trong tồn kho (tổng tồn trên giao diện vẫn tính cả lô hết hạn) — chưa đổi. Cảnh báo low_stock theo lô (lỗi 4) chưa đụng tới. Phần của Định.
+- đổi gì: ocr/postprocess.py thêm _strip_accents (NFD bỏ dấu, đổi đ/Đ tay, hạ chữ thường, gộp khoảng trắng) và truyền làm `processor` cho rapidfuzz trong match_product_name. Chỉ dùng để so khớp; tên trả về vẫn là tên gốc có dấu trong danh mục. Hai nơi gọi (ocr_engine.py, routers/receipts.py) không cần sửa.
+- vì sao: so khớp chuỗi thô nên tên không dấu khớp rất kém (vd "DAU AN SIMPLY 1L" chỉ 0,38 < ngưỡng 0,75) -> dòng phiếu không tự gán được sản phẩm.
+- đã test: backend/test/check_match_product_name.py — "DAU AN SIMPLY 1L" nay 1,00; thêm ca viết thường, chữ đ (Đường/Biên Hòa), tên có dấu như cũ; tên không có trong danh mục vẫn ra None (0,36).
+- chưa test: OCR thật trên ảnh phiếu, và ảnh hưởng lên toàn bộ danh mục thật (kiểm tra bằng make_test_receipts + quét phiếu).
+- lưu ý: vì bỏ dấu nên 2 sản phẩm chỉ khác nhau về dấu (vd "Sữa" và "Sưa") sẽ cùng điểm 1,00 và lấy cái đầu tiên; hiếm nhưng có thể xảy ra. Ngưỡng 0,75 giữ nguyên. Phần của Định.

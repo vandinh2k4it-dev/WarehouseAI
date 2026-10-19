@@ -4,6 +4,7 @@
 - đối chiếu tên sản phẩm với danh mục đã biết bằng khoảng cách chỉnh sửa (fuzzy match)
 """
 import re
+import unicodedata
 from datetime import date, datetime
 from typing import Optional
 
@@ -64,14 +65,27 @@ def parse_quantity(raw: str) -> Optional[float]:
     return float(m.group(0)) if m else None
 
 
+def _strip_accents(text: str) -> str:
+    """Bỏ dấu tiếng Việt + hạ chữ thường + gộp khoảng trắng, chỉ để SO KHỚP
+    (tên trả về vẫn là tên gốc trong danh mục). 'đ' không tách được bằng NFD
+    nên phải đổi tay."""
+    text = unicodedata.normalize("NFD", text or "")
+    text = "".join(c for c in text if unicodedata.category(c) != "Mn")
+    text = text.replace("đ", "d").replace("Đ", "D")
+    return " ".join(text.lower().split())
+
+
 def match_product_name(raw_name: str, known_products: list[str], threshold: float = 0.75):
     """So khớp gần đúng tên sản phẩm đọc từ OCR với danh mục đã biết.
-    Trả về (tên_khớp_nhất, điểm_khớp 0-1) hoặc (None, 0.0) nếu không đủ ngưỡng
-    hoặc rapidfuzz chưa được cài.
+    Không phân biệt hoa/thường và dấu tiếng Việt (tên không dấu vẫn khớp tên
+    có dấu). Trả về (tên_khớp_nhất, điểm_khớp 0-1) hoặc (None, 0.0) nếu không
+    đủ ngưỡng hoặc rapidfuzz chưa được cài.
     """
     if not known_products or process is None:
         return None, 0.0
-    best = process.extractOne(raw_name, known_products, scorer=fuzz.token_sort_ratio)
+    best = process.extractOne(
+        raw_name, known_products, scorer=fuzz.token_sort_ratio, processor=_strip_accents
+    )
     if best is None:
         return None, 0.0
     name, score, _ = best
