@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api";
+import { formatDateVN } from "../utils/search";
 
 // GHI CHÚ: OCR (PaddleOCR + VietOCR) chạy trên backend, có thể mất VÀI CHỤC
 // GIÂY cho lần đầu tiên (model load lazy lúc nhận request đầu tiên, các lần
@@ -70,11 +71,11 @@ export default function ScanReceipt() {
                 />
               </label>
               <label className="camBtn secondary">
-                🖼 Chọn ảnh có sẵn
+                🖼 Chọn ảnh hoặc PDF
                 <input
                   ref={inputRef}
                   type="file"
-                  accept="image/*"
+                  accept="image/*,application/pdf,.pdf"
                   onChange={handleFileSelected}
                   style={{ display: "none" }}
                 />
@@ -82,7 +83,7 @@ export default function ScanReceipt() {
             </div>
             <p className="card-sub" style={{ marginTop: 4 }}>
               Chụp thẳng, đủ sáng, rõ nét cả bảng — OCR đọc chính xác hơn nhiều nếu ảnh không bị
-              nghiêng/mờ/thiếu sáng.
+              nghiêng/mờ/thiếu sáng. File PDF tối đa 10 trang, cả file được tính là 1 phiếu.
             </p>
           </>
         )}
@@ -127,7 +128,7 @@ export default function ScanReceipt() {
                       <div className="lineCard-sub">
                         SL: {line.quantity}
                         {line.batch_code ? ` · Lô ${line.batch_code}` : ""}
-                        {line.expiry_date ? ` · HSD ${line.expiry_date}` : ""}
+                        {line.expiry_date ? ` · HSD ${formatDateVN(line.expiry_date)}` : ""}
                       </div>
                     </div>
                     <span className={`badge ${line.product_id != null ? "matched" : "needs_review"}`}>

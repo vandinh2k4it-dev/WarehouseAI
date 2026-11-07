@@ -1,4 +1,4 @@
-fastapi==0.115.*
+﻿fastapi==0.115.*
 uvicorn[standard]==0.32.*
 sqlalchemy==2.0.*
 psycopg2-binary==2.9.*
@@ -10,6 +10,8 @@ python-dotenv==1.0.*
 paddlepaddle==2.6.*
 paddleocr==2.9.*
 rapidfuzz==3.10.*
+# Chuyển phiếu nhập dạng PDF thành ảnh trước khi OCR (ocr/pdf_utils.py)
+pypdfium2==5.*
 
 # OCR — VietOCR dùng để ĐỌC CHỮ (recognition), model riêng cho tiếng Việt,
 # đọc dấu chính xác hơn hẳn PaddleOCR lang='vi' (thực chất dùng chung bộ ký
@@ -28,7 +30,7 @@ torch
 setuptools<82
 # LƯU Ý: vietocr ghim albumentations==1.4.2, paddleocr cần ==1.4.10 -> pip sẽ
 # cảnh báo dependency conflict (không chặn cài). Sau khi `pip install -r
-# requirements.txt` xong, chạy thêm 1 lệnh để ép về bản paddleocr cần:
+# requirements.txt` xong, chạy thêm 1 lệnh để ép về bản paddleocr cần:  
 #   pip install albumentations==1.4.10 --no-deps
 # (an toàn vì cả 2 thư viện chỉ dùng albumentations lúc TRAIN, không dùng
 # lúc suy luận — ở đây ta chỉ inference, không train)
@@ -38,6 +40,10 @@ alembic==1.13.*
 
 # Camera counting pipeline (camera/count_pipeline.py) — YOLOv8 + ByteTrack thật
 ultralytics==8.3.*
+# ByteTrack của ultralytics cần `lap` (gán ID track) nhưng ultralytics KHÔNG
+# khai báo nó là dependency — chỉ tự pip install lúc chạy, dễ thất bại
+# (không có mạng / container read-only) -> ModuleNotFoundError: lap
+lap>=0.5.12
 requests==2.32.*
 
 # Push notification (Web Push) — đẩy cảnh báo ra điện thoại (app/push_service.py)

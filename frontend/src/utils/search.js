@@ -110,6 +110,14 @@ export function dateGroupLabel(key) {
   return pretty;
 }
 
+// "2026-10-04" (ngày thuần từ backend, không có giờ) -> "04/10/2026". Tách
+// chuỗi thay vì new Date() để không bị lệch 1 ngày do múi giờ.
+export function formatDateVN(isoDate) {
+  if (!isoDate) return "";
+  const [yy, mm, dd] = String(isoDate).slice(0, 10).split("-");
+  return dd && mm && yy ? `${dd}/${mm}/${yy}` : "";
+}
+
 // "14:32 04/10/2026" — giờ + ngày đầy đủ. Trả "" nếu không có/không hợp lệ.
 export function formatDateTimeVN(dateLike) {
   if (!dateLike) return "";

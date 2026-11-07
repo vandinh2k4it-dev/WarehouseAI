@@ -101,6 +101,7 @@ class ReceiptOCRResult:
     raw_text: str
     avg_confidence: float
     lines: list[ReceiptLineResult]
+    receipt_date: Optional[date] = None  # "Ngày nhập: dd/mm/yyyy" in ở đầu phiếu, None nếu không đọc được
 
 
 class ReceiptOCREngine:
@@ -168,13 +169,39 @@ class ReceiptOCREngine:
         self.rec_engine = Predictor(cfg)
 
     # ------------------------------------------------------------------
-    def process_receipt(self, image_path: str) -> ReceiptOCRResult:
-        raw_lines = self._run_ocr(image_path)  # list[(text, conf)], theo thứ tự đọc trên->dưới
+    def process_receipt(self, image_paths: str | list[str]) -> ReceiptOCRResult:
+        """image_paths: 1 ảnh, hoặc danh sách ảnh các trang của CÙNG 1 phiếu (PDF
+        nhiều trang) — dòng OCR được nối theo thứ tự trang rồi quét như 1 phiếu."""
+        if isinstance(image_paths, str):
+            image_paths = [image_paths]
+        raw_lines = []  # list[(text, conf)], theo thứ tự đọc trên->dưới
+        for image_path in image_paths:
+            raw_lines.extend(self._run_ocr(image_path))
         raw_text = "\n".join(t for t, _ in raw_lines)
         avg_conf = sum(c for _, c in raw_lines) / len(raw_lines) if raw_lines else 0.0
 
         lines = self._scan_product_groups(raw_lines)
-        return ReceiptOCRResult(raw_text=raw_text, avg_confidence=avg_conf, lines=lines)
+        return ReceiptOCRResult(
+            raw_text=raw_text, avg_confidence=avg_conf, lines=lines,
+            receipt_date=self._find_receipt_date(raw_lines),
+        )
+
+    @staticmethod
+    def _find_receipt_date(raw_lines: list[tuple[str, float]]) -> Optional[date]:
+        """Tìm ngày nhập in ở đầu phiếu ("Ngày nhập: 21/10/2026"). OCR có thể
+        đọc nhãn và ngày thành 1 dòng, hoặc 2 box riêng nằm cạnh nhau -> thử
+        parse ngay trên dòng chứa nhãn, không có thì thử dòng kế tiếp. Chỉ
+        nhận dòng có nhãn "ngay nhap"/"ngay lap" để không nhầm với cột HSD."""
+        for i, (text, _) in enumerate(raw_lines):
+            norm = _strip_diacritics(text)
+            if "ngay nhap" not in norm and "ngay lap" not in norm:
+                continue
+            found = parse_date(text)
+            if found is None and i + 1 < len(raw_lines):
+                found = parse_date(raw_lines[i + 1][0])
+            if found is not None:
+                return found
+        return None
 
     # ------------------------------------------------------------------
     def _run_ocr(self, image_path: str) -> list[tuple[str, float]]:

@@ -1,6 +1,7 @@
 import { NavLink, useLocation } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { api } from "../api";
+import ThemeToggle from "./ThemeToggle";
 
 const TABS = [
   { to: "/", label: "Tổng quan", icon: "📊", match: (p) => p === "/" },
@@ -52,6 +53,7 @@ export default function TopNav() {
               </span>
             </div>
           </div>
+          <ThemeToggle />
         </div>
       </div>
 

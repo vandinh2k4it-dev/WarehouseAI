@@ -82,7 +82,7 @@
 .linkBtn {
   border: none;
   background: transparent;
-  color: var(--accent);
+  color: var(--accent-text);
   font-size: 12.5px;
   font-weight: 600;
   cursor: pointer;
@@ -95,7 +95,7 @@
 /* Tô sáng chữ khớp từ khoá tìm kiếm */
 mark.hl {
   background: var(--accent-dim);
-  color: var(--accent);
+  color: var(--accent-text);
   border-radius: 3px;
   padding: 0 2px;
   font-weight: 700;
@@ -267,7 +267,7 @@ mark.hl {
   flex-shrink: 0;
   font-family: "IBM Plex Mono", monospace;
   font-size: 12.5px;
-  color: var(--accent);
+  color: var(--accent-text);
 }
 .rcLines-more {
   font-size: 12px;
@@ -390,7 +390,7 @@ mark.hl {
   background: var(--accent-dim);
 }
 .combo-item.selected .combo-name {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 .combo-name {
   min-width: 0;
@@ -413,7 +413,7 @@ mark.hl {
   text-align: right;
 }
 .combo-stock.low {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 .combo-stock.out {
   color: var(--danger);
@@ -455,7 +455,7 @@ mark.hl {
 .rc-link {
   font-size: 13px;
   font-weight: 600;
-  color: var(--accent);
+  color: var(--accent-text);
   text-decoration: none;
 }
 .rc-link:hover {

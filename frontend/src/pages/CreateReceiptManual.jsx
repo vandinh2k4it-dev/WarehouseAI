@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api";
+import { toLocalDateKey } from "../utils/search";
 import ProductSearchSelect from "../components/ProductSearchSelect";
 import ProductSuggestChips from "../components/ProductSuggestChips";
 import "../styles/listing.css";
@@ -11,6 +12,7 @@ export default function CreateReceiptManual() {
   const navigate = useNavigate();
   const [receiptCode, setReceiptCode] = useState("");
   const [storeLocation, setStoreLocation] = useState("");
+  const [receiptDate, setReceiptDate] = useState(() => toLocalDateKey(new Date())); // ngày nhập ghi trên phiếu giấy, mặc định hôm nay
   const [lines, setLines] = useState([{ ...EMPTY_LINE }]);
   const [errorMsg, setErrorMsg] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -98,6 +100,7 @@ export default function CreateReceiptManual() {
     const payload = {
       receipt_code: receiptCode.trim() || null,
       store_location: storeLocation.trim() || null,
+      receipt_date: receiptDate || null,
       line_items: validLines.map((l) => ({
         product_name_raw: l.product_name_raw.trim(),
         product_id: l.product_id ? parseInt(l.product_id, 10) : null,
@@ -140,6 +143,9 @@ export default function CreateReceiptManual() {
           value={storeLocation}
           onChange={(e) => setStoreLocation(e.target.value)}
         />
+
+        <label style={{ marginTop: 12 }}>Ngày nhập ghi trên phiếu</label>
+        <input type="date" value={receiptDate} onChange={(e) => setReceiptDate(e.target.value)} />
 
         <div className="card-headRow" style={{ marginTop: 20 }}>
           <h2 style={{ margin: 0 }}>Dòng hàng</h2>

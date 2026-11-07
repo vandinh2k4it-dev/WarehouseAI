@@ -14,18 +14,23 @@ const RECEIPT_STATUS_LABEL = {
   pending_ocr: "đang xử lý OCR",
   ocr_done: "chờ đếm hàng",
   reconciled: "đã xong hết",
+  flagged: "cần xử lý",
 };
 const RECEIPT_STATUS_BADGE = {
   pending_ocr: "counting",
   ocr_done: "not_started",
   reconciled: "matched",
+  flagged: "needs_review",
 };
+const MAX_FLAGGED_CODES = 5;
 
 export default function Overview() {
   const [products, setProducts] = useState(null);
   const [inventory, setInventory] = useState(null);
   const [alerts, setAlerts] = useState(null);
   const [receipts, setReceipts] = useState(null);
+  const [awaitingCountReceipts, setAwaitingCountReceipts] = useState(null);
+  const [flaggedReceipts, setFlaggedReceipts] = useState([]);
   const [analytics, setAnalytics] = useState(null);
   const [errorMsg, setErrorMsg] = useState("");
   const [ackBusy, setAckBusy] = useState(null);
@@ -38,16 +43,22 @@ export default function Overview() {
   async function loadAll() {
     setErrorMsg("");
     try {
-      const [p, inv, al, rc] = await Promise.all([
+      // Đếm theo trạng thái bằng lời gọi lọc riêng: GET /receipts chỉ trả 100 phiếu
+      // mới nhất, phiếu cũ còn tồn đọng sẽ không nằm trong danh sách chung.
+      const [p, inv, al, rc, awaiting, flagged] = await Promise.all([
         api.listProducts(),
         api.listInventory(),
         api.listAlerts("open"),
         api.listReceipts(),
+        api.listReceipts("ocr_done"),
+        api.listReceipts("flagged"),
       ]);
       setProducts(p);
       setInventory(inv);
       setAlerts(al);
       setReceipts(rc);
+      setAwaitingCountReceipts(awaiting.length);
+      setFlaggedReceipts(flagged);
     } catch (err) {
       setErrorMsg(err.message || String(err));
     }
@@ -81,9 +92,6 @@ export default function Overview() {
     ? inventory.reduce((sum, i) => sum + parseFloat(i.quantity), 0)
     : null;
   const openAlertCount = alerts?.length ?? null;
-  const pendingOcrCount = receipts
-    ? receipts.filter((r) => r.status === "pending_ocr").length
-    : null;
 
   const recentAlerts = alerts ? alerts.slice(0, 5) : null;
   const recentReceipts = receipts ? receipts.slice(0, 5) : null;
@@ -103,9 +111,22 @@ export default function Overview() {
           <StatCard value={openAlertCount} label="Cảnh báo đang mở" danger={openAlertCount > 0} />
         </Link>
         <Link to="/import" className="statCard-link">
-          <StatCard value={pendingOcrCount} label="Phiếu chờ xử lý OCR" />
+          <StatCard value={awaitingCountReceipts} label="Phiếu chờ đếm hàng" />
         </Link>
       </div>
+
+      {/* "flagged": OCR lỗi hoặc đối soát lệch số lượng. */}
+      {flaggedReceipts.length > 0 && (
+        <Link to="/import" className="flaggedNotice">
+          ⚠ {flaggedReceipts.length} phiếu cần xử lý (OCR lỗi hoặc lệch số lượng):{" "}
+          {flaggedReceipts
+            .slice(0, MAX_FLAGGED_CODES)
+            .map((r) => r.receipt_code || `#${r.id}`)
+            .join(", ")}
+          {flaggedReceipts.length > MAX_FLAGGED_CODES && ` và ${flaggedReceipts.length - MAX_FLAGGED_CODES} phiếu khác`}
+          {" "}— xem ở tab "Tất cả" của Nhập kho
+        </Link>
+      )}
 
       <div className="dashGrid">
         {analytics && analytics.daily_flow.length > 0 && (() => {

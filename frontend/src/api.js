@@ -201,12 +201,16 @@ export const api = {
     }),
 
   // Xử lý dòng đang lệch (needs_review) khi quay lại sau
-  resolveSegment: (sessionId, action, overrideNote) =>
-    request(`/camera-sessions/${sessionId}/resolve`, {
+  resolveSegment: async (sessionId, action, overrideNote) => {
+    const result = await request(`/camera-sessions/${sessionId}/resolve`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action, override_note: overrideNote }),
-    }),
+    });
+    // Backend tự đóng cảnh báo lệch số của phiên này (xem acknowledgeAlert).
+    window.dispatchEvent(new CustomEvent("alerts-changed"));
+    return result;
+  },
 
   // Lịch sử xuất kho — đọc lại InventoryTransaction đã có sẵn (xem
   // app/routers/inventory.py, endpoint export-history), không phải bảng mới.

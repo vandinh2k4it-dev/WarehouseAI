@@ -1,4 +1,6 @@
 import os
+import shutil
+import tempfile
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
@@ -10,6 +12,7 @@ from app.database import get_db
 from app import models, schemas
 from app.code_generator import generate_next_code, is_auto_code, renumber_codes
 from ocr.ocr_engine import ReceiptOCREngine
+from ocr.pdf_utils import render_pdf_pages, stack_pages
 from ocr.postprocess import match_product_name
 
 router = APIRouter(prefix="/receipts", tags=["receipts"])
@@ -77,10 +80,27 @@ def upload_receipt(
     store_location: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
-    """Nhận ảnh Phiếu nhập hàng, chạy OCR ngay, lưu kết quả từng dòng hàng.
+    """Nhận ảnh hoặc PDF Phiếu nhập hàng, chạy OCR ngay, lưu kết quả từng dòng hàng.
+    PDF nhiều trang được tính là 1 phiếu; chỉ lưu ảnh ghép các trang, không lưu file PDF gốc.
     Test nhanh bằng: curl -F "file=@sample_receipt.jpg" http://localhost:8000/receipts/upload
     """
-    saved_path = _save_validated_image(file)
+    fname = file.filename or ""
+    is_pdf = os.path.splitext(fname)[1].lower() == ".pdf" or file.file.read(5) == b"%PDF-"
+    file.file.seek(0)
+
+    if is_pdf:
+        # Kiểm tra PDF TRƯỚC khi tạo phiếu — file hỏng thì báo lỗi luôn, không để lại phiếu rác.
+        data = file.file.read(int(MAX_RECEIPT_IMAGE_MB * 1024 * 1024) + 1)
+        if len(data) > MAX_RECEIPT_IMAGE_MB * 1024 * 1024:
+            raise HTTPException(status_code=413, detail=f"File quá lớn (tối đa {MAX_RECEIPT_IMAGE_MB:g} MB).")
+        try:
+            pdf_pages = render_pdf_pages(data)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        saved_path = os.path.join(UPLOAD_DIR, f"{uuid.uuid4().hex}.png")
+        stack_pages(pdf_pages).save(saved_path)
+    else:
+        saved_path = _save_validated_image(file)
 
     receipt = models.ImportReceipt(
         receipt_code=generate_next_code(db, models.ImportReceipt, "receipt_code", "PN"),
@@ -95,9 +115,18 @@ def upload_receipt(
 
     # Chạy OCR ngay (đồng bộ để test nhanh trong tuần này;
     # khi tích hợp thật nên chuyển sang background task / queue để không block request)
+    page_dir = None
     try:
         engine = get_ocr_engine()
-        ocr_result = engine.process_receipt(saved_path)
+        ocr_input = saved_path
+        if pdf_pages:
+            page_dir = tempfile.mkdtemp()
+            ocr_input = []
+            for i, page in enumerate(pdf_pages):
+                page_path = os.path.join(page_dir, f"page_{i}.png")
+                page.save(page_path)
+                ocr_input.append(page_path)
+        ocr_result = engine.process_receipt(ocr_input)
     except Exception as exc:
         receipt.status = "flagged"
         db.commit()
@@ -112,9 +141,13 @@ def upload_receipt(
             cur = cur.__cause__ or cur.__context__
         detail = "OCR thất bại:\n" + "\n  -> gây ra bởi: ".join(chain)
         raise HTTPException(status_code=500, detail=detail)
+    finally:
+        if page_dir:
+            shutil.rmtree(page_dir, ignore_errors=True)
 
     receipt.ocr_raw_text = ocr_result.raw_text
     receipt.ocr_confidence = ocr_result.avg_confidence
+    receipt.receipt_date = ocr_result.receipt_date
     receipt.status = "ocr_done"
 
     # Tự động so khớp từng dòng OCR với danh mục sản phẩm ĐÃ CÓ SẴN trong DB
@@ -169,6 +202,7 @@ def create_receipt_manual(payload: schemas.ReceiptManualCreate, db: Session = De
         status="ocr_done",  # bỏ qua bước "pending_ocr" vì không có OCR nào để chạy
         source_type="manual",
         received_at=payload.received_at or datetime.now(timezone.utc),
+        receipt_date=payload.receipt_date,
     )
     db.add(receipt)
     db.flush()
@@ -205,6 +239,8 @@ def update_receipt(receipt_id: int, payload: schemas.ReceiptUpdateRequest, db: S
         receipt.store_location = payload.store_location
     if payload.received_at is not None:
         receipt.received_at = payload.received_at
+    if payload.receipt_date is not None:
+        receipt.receipt_date = payload.receipt_date
 
     db.commit()
     db.refresh(receipt)
@@ -415,6 +451,8 @@ def get_lines_progress(receipt_id: int, db: Session = Depends(get_db)):
             product_name_raw=line.product_name_raw,
             product_id=line.product_id,
             declared_quantity=float(line.quantity),
+            batch_code=line.batch_code,
+            expiry_date=line.expiry_date,
             counting_status=counting_status,
             latest_session_id=latest.id if latest else None,
             counted_quantity=latest.counted_quantity if latest else None,

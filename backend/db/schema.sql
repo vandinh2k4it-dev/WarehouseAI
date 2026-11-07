@@ -38,6 +38,7 @@ CREATE TABLE import_receipts (
     status          VARCHAR(20) NOT NULL DEFAULT 'pending_ocr'
                     CHECK (status IN ('pending_ocr','ocr_done','reconciled','flagged')),
     received_at     TIMESTAMPTZ,
+    receipt_date    DATE,                           -- ngày nhập ghi trên phiếu (OCR đọc / gõ tay), so với hôm nay khi đếm
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     -- 'ocr' (quét ảnh, mặc định) hoặc 'manual' (nhập tay toàn bộ) — dùng
     -- để UI hiện đúng ngữ cảnh và chặn sửa/xoá an toàn hơn.

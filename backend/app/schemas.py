@@ -28,6 +28,15 @@ class LineItemOut(BaseModel):
 
 
 # ---------- Receipt ----------
+class ReceiptDateCheck(BaseModel):
+    import_date: Optional[date]  # ngày nhập đem ra so
+    today: date  # ngày hôm nay theo giờ Việt Nam
+    source: str  # "phiếu" (đọc/gõ từ phiếu) | "hệ thống" (lùi về received_at) | "không có"
+    days_diff: Optional[int]  # hôm nay - ngày nhập; 0 là khớp
+    matches: bool
+    message: str
+
+
 class ReceiptOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int
@@ -38,7 +47,16 @@ class ReceiptOut(BaseModel):
     status: str
     source_type: str = "ocr"
     received_at: Optional[datetime]
+    receipt_date: Optional[date] = None  # ngày nhập ghi trên phiếu
     line_items: List[LineItemOut] = []
+
+    @computed_field
+    @property
+    def date_check(self) -> "ReceiptDateCheck":
+        """So ngày nhập trên phiếu với hôm nay — tính lại MỖI LẦN trả về,
+        nên mở lại phiếu hôm sau sẽ thấy cảnh báo phiếu đã cũ."""
+        from app.receipt_dates import check_receipt_date
+        return ReceiptDateCheck(**check_receipt_date(self))
 
     @computed_field
     @property
@@ -68,6 +86,7 @@ class ReceiptManualCreate(BaseModel):
     receipt_code: Optional[str] = None
     store_location: Optional[str] = None
     received_at: Optional[datetime] = None
+    receipt_date: Optional[date] = None  # ngày nhập ghi trên phiếu giấy
     line_items: List[ReceiptLineItemManualCreate]
 
 
@@ -78,6 +97,7 @@ class ReceiptUpdateRequest(BaseModel):
     receipt_code: Optional[str] = None
     store_location: Optional[str] = None
     received_at: Optional[datetime] = None
+    receipt_date: Optional[date] = None  # sửa lại nếu OCR đọc sai ngày trên phiếu
 
 
 class ReceiptLineItemCreateRequest(BaseModel):
@@ -167,6 +187,11 @@ class CameraSegmentStopResult(BaseModel):
     can_proceed_to_next: bool
     message: str
     annotated_video_url: Optional[str] = None  # URL video đã vẽ khung hộp nhận diện, chỉ có khi đếm qua /count-video
+    # Thời gian chạy — chỉ có khi đếm qua /count-video
+    inference_seconds: Optional[float] = None  # riêng mô hình YOLOv8+ByteTrack đếm
+    processing_seconds: Optional[float] = None  # toàn bộ xử lý trên server (đếm + chuyển đổi video + đối chiếu)
+    total_frames: Optional[int] = None  # số khung hình mô hình đã xử lý
+    date_check: Optional["ReceiptDateCheck"] = None  # so ngày nhập trên phiếu với hôm nay, chỉ có ở phiên nhập
 
 
 class CameraSegmentResolveRequest(BaseModel):
@@ -183,6 +208,8 @@ class ReceiptLineProgressOut(BaseModel):
     product_name_raw: str
     product_id: Optional[int]
     declared_quantity: float
+    batch_code: Optional[str] = None
+    expiry_date: Optional[date] = None
     counting_status: str  # not_started | counting | matched | blocked | resolved_override
     latest_session_id: Optional[int] = None
     counted_quantity: Optional[int] = None

@@ -1,6 +1,7 @@
 import os
 import shutil
 import subprocess
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -13,6 +14,7 @@ from app import push_service
 from app.routers.reconciliation import apply_line_import
 from app.routers.inventory import perform_fefo_export
 from app.code_generator import generate_next_code
+from app.receipt_dates import check_receipt_date
 
 router = APIRouter(prefix="/camera-sessions", tags=["camera"])
 
@@ -228,6 +230,14 @@ def _finalize_stop(
 
     product = db.get(models.Product, session.product_id) if session.product_id else None
 
+    # Đối chiếu ngày: lấy ngày hôm nay so với ngày nhập trên phiếu — chỉ
+    # cảnh báo kèm kết quả, không chặn (giống lệch số lượng).
+    date_check = None
+    if session.direction == "import" and session.linked_receipt_id:
+        receipt = db.get(models.ImportReceipt, session.linked_receipt_id)
+        if receipt:
+            date_check = schemas.ReceiptDateCheck(**check_receipt_date(receipt))
+
     # Xác định tên sản phẩm hiện trong thông báo — với phiên "export",
     # session.product_id có sẵn (product ở trên đã đúng). Với phiên
     # "import" thì session.product_id THƯỜNG LÀ NULL (sản phẩm chỉ được
@@ -284,6 +294,7 @@ def _finalize_stop(
             session=session, reconciliation=recon, can_proceed_to_next=True,
             message=f"Khớp số — đã cập nhật kho cho '{product_name}'. Có thể chuyển sang loại hàng tiếp theo.",
             annotated_video_url=annotated_video_url,
+            date_check=date_check,
         )
     else:
         session.status = "needs_review"
@@ -311,6 +322,7 @@ def _finalize_stop(
                 f"sau qua POST /camera-sessions/{session.id}/resolve (đếm lại hoặc xác nhận ghi đè)."
             ),
             annotated_video_url=annotated_video_url,
+            date_check=date_check,
         )
 
 
@@ -455,7 +467,12 @@ def count_video_segment(  # def (không phải async): đếm video là việc n
     # nhau lên cùng 1 file.
     annotated_raw_dir = Path("uploads/annotated_raw") / f"session_{session_id}"
 
+    # Đo thời gian chạy: model_started -> chỉ riêng mô hình YOLOv8+ByteTrack
+    # đếm; processing_started -> toàn bộ phần xử lý trên server (đếm + chuyển
+    # đổi video H.264 + đối chiếu/ghi DB), KHÔNG tính thời gian tải video lên.
+    processing_started = time.perf_counter()
     try:
+        model_started = time.perf_counter()
         result = count_boxes_in_video(
             model_path=model_path,
             video_path=str(video_path),
@@ -464,6 +481,7 @@ def count_video_segment(  # def (không phải async): đếm video là việc n
             save_annotated=True,
             output_dir=str(annotated_raw_dir),
         )
+        model_seconds = time.perf_counter() - model_started
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Đếm video thất bại: {e!r}")
 
@@ -512,7 +530,7 @@ def count_video_segment(  # def (không phải async): đếm video là việc n
             # không có video xem lại, annotated_url ở lại None.
             print(f"[annotated-video] LỖI khi chuyển đổi: {e!r}")
 
-    return _finalize_stop(
+    stop_result = _finalize_stop(
         db, session,
         counted_quantity=result.counted_quantity,
         avg_detection_confidence=result.avg_detection_confidence,
@@ -521,6 +539,14 @@ def count_video_segment(  # def (không phải async): đếm video là việc n
         threshold_pct=threshold_pct,
         annotated_video_url=annotated_url,
     )
+    stop_result.inference_seconds = round(model_seconds, 2)
+    stop_result.processing_seconds = round(time.perf_counter() - processing_started, 2)
+    stop_result.total_frames = result.total_frames
+    print(
+        f"[count-video] Phiên #{session_id}: mô hình {model_seconds:.2f}s "
+        f"({result.total_frames} khung hình), tổng xử lý {stop_result.processing_seconds:.2f}s"
+    )
+    return stop_result
 
 
 @router.post("/{session_id}/resolve", response_model=schemas.CameraSessionOut)
@@ -543,6 +569,7 @@ def resolve_segment(session_id: int, payload: schemas.CameraSegmentResolveReques
 
     if payload.action == "recount":
         session.status = "superseded"
+        _close_discrepancy_alerts(db, session.id)
         new_session = models.CameraCountSession(
             # Phiên đếm lại cũng phải có mã riêng (DEM… nhập / PX… xuất) — PX dùng
             # làm mã phiếu xuất khi in, thiếu mã thì phiếu in ra trống.
@@ -570,6 +597,7 @@ def resolve_segment(session_id: int, payload: schemas.CameraSegmentResolveReques
                 detail="Cần ghi rõ lý do (override_note) khi xác nhận ghi đè số liệu lệch.",
             )
         session.status = "resolved_override"
+        _close_discrepancy_alerts(db, session.id)
 
         recon = (
             db.query(models.Reconciliation)
@@ -607,6 +635,24 @@ def resolve_segment(session_id: int, payload: schemas.CameraSegmentResolveReques
         return session
 
     raise HTTPException(status_code=400, detail="action phải là 'recount' hoặc 'override'")
+
+
+def _close_discrepancy_alerts(db: Session, session_id: int):
+    """Phiên đã được đếm lại/ghi đè thì cảnh báo lệch số của phiên đó hết hiệu
+    lực — nếu lần đếm lại vẫn lệch, phiên mới sẽ tự tạo cảnh báo riêng."""
+    open_alerts = (
+        db.query(models.Alert)
+        .join(models.Reconciliation, models.Alert.reconciliation_id == models.Reconciliation.id)
+        .filter(
+            models.Reconciliation.session_id == session_id,
+            models.Alert.alert_type == "discrepancy",
+            models.Alert.status == "open",
+        )
+        .all()
+    )
+    for alert in open_alerts:
+        alert.status = "acknowledged"
+        alert.resolved_at = datetime.now(timezone.utc)
 
 
 def _maybe_complete_receipt(db: Session, receipt_id: int):

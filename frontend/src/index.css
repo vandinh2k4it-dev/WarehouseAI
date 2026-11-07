@@ -1,11 +1,37 @@
 :root {
+  --bg: #FFFFFF;
+  --surface: #FFFFFF;
+  --surface-raised: #F4F6F8;
+  --border: #DDE2E8;
+  --text: #1A2028;
+  --text-muted: #5B6775;
+  --accent: #F5A524;
+  --accent-text: #B45309;
+  --accent-dim: #FEF3D6;
+  --success: #15803D;
+  --success-dim: #E8F7EE;
+  --danger: #C81E1E;
+  --danger-dim: #FDECEC;
+  --info: #2563EB;
+  --info-dim: #EDF3FE;
+  --hover-overlay: rgba(0, 0, 0, 0.04);
+  --stripe-overlay: rgba(0, 0, 0, 0.025);
+  --nav-bg: var(--bg);
+  --radius: 14px;
+  color-scheme: light;
+}
+
+/* Chế độ tối — thuộc tính data-theme do ThemeToggle.jsx đặt (lúc mở trang thì
+   do đoạn script trong index.html đặt, để không bị nháy nền trắng).
+   color-scheme giúp icon lịch, ô chọn, thanh cuộn của trình duyệt đổi màu theo. */
+:root[data-theme="dark"] {
   --bg: #12161B;
   --surface: #1A2028;
   --surface-raised: #212933;
   --border: #2B333D;
   --text: #E7EAEE;
   --text-muted: #8996A6;
-  --accent: #F5A524;
+  --accent-text: #F5A524;
   --accent-dim: #3A2E14;
   --success: #2FAE68;
   --success-dim: #122A1D;
@@ -13,7 +39,13 @@
   --danger-dim: #341A1A;
   --info: #5B8DEF;
   --info-dim: #182338;
-  --radius: 14px;
+  --hover-overlay: rgba(255, 255, 255, 0.03);
+  --stripe-overlay: rgba(255, 255, 255, 0.02);
+  --nav-bg: linear-gradient(180deg, #161B22 0%, var(--bg) 100%);
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.14);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.18);
+  --shadow-lg: 0 8px 28px rgba(0, 0, 0, 0.28);
+  color-scheme: dark;
 }
 
 * {

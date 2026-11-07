@@ -38,6 +38,10 @@ class ImportReceipt(Base):
     ocr_confidence = Column(Numeric(5, 4))
     status = Column(String(20), nullable=False, default="pending_ocr")
     received_at = Column(TIMESTAMP(timezone=True))
+    # Ngày nhập GHI TRÊN PHIẾU (OCR đọc từ dòng "Ngày nhập: ..." hoặc người
+    # dùng gõ khi tạo phiếu tay) — khác received_at là lúc phiếu được đưa vào
+    # hệ thống. Dùng để đối chiếu với ngày hôm nay khi đếm (xem app/receipt_dates.py).
+    receipt_date = Column(Date, nullable=True)
     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
     # 'ocr' (quét ảnh, mặc định — khớp dữ liệu cũ) hoặc 'manual' (nhập tay
     # toàn bộ, không qua OCR) — dùng để UI hiện đúng ngữ cảnh (vd không hiện

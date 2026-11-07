@@ -4,8 +4,17 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="/icon-192.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
-    <meta name="theme-color" content="#12161B" />
+    <meta name="theme-color" content="#FFFFFF" />
     <title>Warehouse — Đếm hàng thông minh</title>
+    <script>
+      // Đặt theme trước khi vẽ trang để không bị nháy nền trắng (xem ThemeToggle.jsx).
+      try {
+        if (localStorage.getItem("theme") === "dark") {
+          document.documentElement.dataset.theme = "dark";
+          document.querySelector('meta[name="theme-color"]').content = "#12161B";
+        }
+      } catch {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

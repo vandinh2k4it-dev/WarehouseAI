@@ -1,8 +1,9 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { api, API_BASE } from "../api";
 import { useToast } from "./Toast";
 import LiveCountingScreen from "./LiveCountingScreen";
 import PrintExportReceipt from "./PrintExportReceipt";
+import DateCheckBanner from "./DateCheckBanner";
 
 // Màn hình đếm dùng chung cho cả nhập và xuất — nhận session đã tạo sẵn
 // (từ start-import hoặc start-export). Có 3 cách đối chiếu:
@@ -21,16 +22,39 @@ export default function CountingScreen({ session, expectedQuantity, label, onDon
   const inputRef = useRef(null);
   const [videoConf, setVideoConf] = useState(0.5); // độ nhạy phát hiện cho chế độ Quay video — khớp mặc định 0.5 bên backend
   const [showPrintReceipt, setShowPrintReceipt] = useState(false);
+  const [elapsedSec, setElapsedSec] = useState(0); // đồng hồ chạy lúc đang chờ tải lên & đếm
+  const [totalSec, setTotalSec] = useState(null); // tổng thời gian chờ (tải lên + xử lý), đo phía trình duyệt
+  const startedAtRef = useRef(0);
   const showToast = useToast();
+
+  useEffect(() => {
+    if (status !== "uploading") return;
+    const timer = setInterval(() => {
+      setElapsedSec((performance.now() - startedAtRef.current) / 1000);
+    }, 100);
+    return () => clearInterval(timer);
+  }, [status]);
+
+  function startTiming() {
+    startedAtRef.current = performance.now();
+    setElapsedSec(0);
+    setTotalSec(null);
+  }
+
+  function stopTiming() {
+    setTotalSec((performance.now() - startedAtRef.current) / 1000);
+  }
 
   async function handleFileSelected(e) {
     const file = e.target.files?.[0];
     if (!file || !session) return;
 
+    startTiming();
     setStatus("uploading");
     setErrorMsg("");
     try {
       const res = await api.countVideo(session.id, file, 0, videoConf);
+      stopTiming();
       setResult(res);
       setStatus("done");
     } catch (err) {
@@ -196,6 +220,7 @@ export default function CountingScreen({ session, expectedQuantity, label, onDon
               ? "Đang tải video lên & đếm — có thể mất chút thời gian…"
               : "Đang gửi & đối chiếu…"}
           </div>
+          {mode === "video" && <div className="countTimer mono">⏱ {formatSeconds(elapsedSec)}</div>}
         </>
       )}
 
@@ -218,7 +243,28 @@ export default function CountingScreen({ session, expectedQuantity, label, onDon
               Đã đếm: {result.session.counted_quantity} / cần {expectedQuantity}
             </div>
             <div className="resultBox-msg">{result.message}</div>
+            {result.inference_seconds != null && (
+              <div className="resultBox-timing">
+                ⏱ Mô hình đếm: <span className="mono">{formatSeconds(result.inference_seconds)}</span>
+                {result.total_frames ? (
+                  <>
+                    {" "}
+                    ({result.total_frames} khung hình ·{" "}
+                    {(result.total_frames / Math.max(result.inference_seconds, 0.001)).toFixed(1)} FPS)
+                  </>
+                ) : null}
+                <br />
+                Xử lý trên server: <span className="mono">{formatSeconds(result.processing_seconds)}</span>
+                {totalSec != null && (
+                  <>
+                    {" · "}Tổng (gồm tải lên): <span className="mono">{formatSeconds(totalSec)}</span>
+                  </>
+                )}
+              </div>
+            )}
           </div>
+
+          <DateCheckBanner check={result.date_check} />
 
           {result.annotated_video_url && (
             <div className="annotatedVideo">
@@ -254,4 +300,11 @@ export default function CountingScreen({ session, expectedQuantity, label, onDon
       )}
     </div>
   );
+}
+// 75.3 -> "1 phút 15.3 giây", 8.24 -> "8.2 giây"
+function formatSeconds(sec) {
+  if (sec == null) return "—";
+  if (sec < 60) return `${sec.toFixed(1)} giây`;
+  const m = Math.floor(sec / 60);
+  return `${m} phút ${(sec - m * 60).toFixed(1)} giây`;
 }

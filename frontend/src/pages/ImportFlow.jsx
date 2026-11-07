@@ -8,7 +8,8 @@ import ImageLightbox from "../components/ImageLightbox";
 import SmartSearchBox from "../components/SmartSearchBox";
 import ProductSearchSelect from "../components/ProductSearchSelect";
 import ProductSuggestChips from "../components/ProductSuggestChips";
-import { matchesQuery, normalizeVN, toLocalDateKey, dateGroupLabel, formatDateTimeVN } from "../utils/search";
+import DateCheckBanner from "../components/DateCheckBanner";
+import { matchesQuery, normalizeVN, toLocalDateKey, dateGroupLabel, formatDateTimeVN, formatDateVN } from "../utils/search";
 import "../styles/listing.css";
 
 const LINE_STATUS_LABEL = {
@@ -23,7 +24,7 @@ const RECEIPT_STATUS_LABEL = {
   pending_ocr: "đang xử lý OCR",
   ocr_done: "chờ đếm hàng",
   reconciled: "đã xong hết",
-  flagged: "lỗi OCR — cần xử lý",
+  flagged: "cần xử lý", // OCR lỗi hoặc đối soát lệch số lượng
 };
 const RECEIPT_STATUS_BADGE = {
   pending_ocr: "counting",
@@ -217,8 +218,8 @@ export default function ImportFlow() {
       product_name_raw: line.product_name_raw,
       product_id: line.product_id != null ? String(line.product_id) : "",
       quantity: String(line.declared_quantity),
-      batch_code: "",
-      expiry_date: "",
+      batch_code: line.batch_code || "",
+      expiry_date: line.expiry_date || "",
     });
   }
 
@@ -378,9 +379,15 @@ export default function ImportFlow() {
           </h2>
           <div className="rcDetailMeta">
             📅 Nhập kho: <b>{formatDateTimeVN(selectedReceipt.received_at) || "chưa có ngày"}</b>
+            {selectedReceipt.receipt_date && (
+              <>
+                {" · "}Ngày trên phiếu: <b>{formatDateVN(selectedReceipt.receipt_date)}</b>
+              </>
+            )}
             {" · "}
             {selectedReceipt.source_type === "manual" ? "✍️ Nhập tay" : "📷 Quét ảnh"}
           </div>
+          <DateCheckBanner check={selectedReceipt.date_check} />
 
           {selectedReceipt.image_url && (
             <div className="receiptImage">
@@ -520,6 +527,8 @@ export default function ImportFlow() {
                       <div className="lineCard-name">{line.product_name_raw}</div>
                       <div className="lineCard-sub">
                         Cần {line.declared_quantity}
+                        {line.batch_code ? ` · Lô ${line.batch_code}` : ""}
+                        {line.expiry_date ? ` · HSD ${formatDateVN(line.expiry_date)}` : ""}
                         {line.counted_quantity != null ? ` · camera đếm ${line.counted_quantity}` : ""}
                       </div>
                       {line.product_id == null && (
